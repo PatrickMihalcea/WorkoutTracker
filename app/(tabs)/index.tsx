@@ -1,25 +1,41 @@
-import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl } from 'react-native';
+import { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl, TouchableOpacity } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useRoutineStore } from '../../src/stores/routine.store';
 import { useWorkoutStore } from '../../src/stores/workout.store';
+import { useProfileStore } from '../../src/stores/profile.store';
 import { Button, Card, EmptyState } from '../../src/components/ui';
 import { colors, fonts } from '../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../src/utils/date';
+import { weightUnitLabel, formatWeight } from '../../src/utils/units';
 import { DAY_LABELS, DayOfWeek } from '../../src/models';
+import { sessionService } from '../../src/services';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { activeRoutine, fetchActiveRoutine } = useRoutineStore();
-  const { session: activeSession, startWorkout } = useWorkoutStore();
+  const { session: activeSession, startWorkout, resumeWorkout } = useWorkoutStore();
+  const { profile } = useProfileStore();
+  const wUnit = profile?.weight_unit ?? 'kg';
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [hasActiveSession, setHasActiveSession] = useState(!!activeSession);
+
+  useEffect(() => {
+    if (!activeSession) setHasActiveSession(false);
+  }, [activeSession]);
 
   useFocusEffect(
     useCallback(() => {
       fetchActiveRoutine();
-    }, [fetchActiveRoutine]),
+      if (user) {
+        sessionService.getActiveSession(user.id).then((s) => {
+          setHasActiveSession(!!s);
+        });
+      }
+    }, [fetchActiveRoutine, user]),
   );
 
   const onRefresh = useCallback(async () => {
@@ -93,32 +109,87 @@ export default function HomeScreen() {
       {todaysWorkout ? (
         <>
           <Card style={styles.workoutCard}>
-            <Text style={styles.dayLabel}>{todaysWorkout.label}</Text>
-            <Text style={styles.exerciseCount}>
-              {todaysWorkout.exercises.length} exercises
-            </Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                const allIds = todaysWorkout.exercises.map((e) => e.id);
+                const allExpanded = allIds.every((eid) => expandedIds.has(eid));
+                setExpandedIds(allExpanded ? new Set() : new Set(allIds));
+              }}
+            >
+              <Text style={styles.dayLabel}>{todaysWorkout.label}</Text>
+              <Text style={styles.exerciseCount}>
+                {todaysWorkout.exercises.length} exercises
+              </Text>
+            </TouchableOpacity>
 
-            {todaysWorkout.exercises.map((ex) => (
-              <View key={ex.id} style={styles.exerciseRow}>
-                <Text style={styles.exerciseName}>
-                  {ex.exercise?.name ?? 'Exercise'}
-                </Text>
-                <Text style={styles.exerciseTarget}>
-                  {ex.target_sets}x{ex.target_reps}
-                </Text>
-              </View>
-            ))}
+            {todaysWorkout.exercises.map((ex) => {
+              const setsLabel = ex.sets && ex.sets.length > 0
+                ? `${ex.sets.length} sets`
+                : `${ex.target_sets}x${ex.target_reps}`;
+              const isExpanded = expandedIds.has(ex.id);
+              return (
+                <View key={ex.id}>
+                  <TouchableOpacity
+                    style={styles.exerciseRow}
+                    onPress={() => {
+                      setExpandedIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(ex.id)) next.delete(ex.id);
+                        else next.add(ex.id);
+                        return next;
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.exerciseName}>
+                      {ex.exercise?.name ?? 'Exercise'}
+                    </Text>
+                    <Text style={styles.exerciseTarget}>{setsLabel}</Text>
+                  </TouchableOpacity>
+                  {isExpanded && ex.sets && ex.sets.length > 0 && (
+                    <View style={styles.setDetails}>
+                      <View style={styles.setDetailHeader}>
+                        <Text style={[styles.setDetailCol, styles.setColNum]}>SET</Text>
+                        <Text style={[styles.setDetailCol, styles.setColWeight]}>{weightUnitLabel(wUnit)}</Text>
+                        <Text style={[styles.setDetailCol, styles.setColReps]}>REPS</Text>
+                      </View>
+                      {ex.sets.map((s) => (
+                        <View key={s.id} style={styles.setDetailRow}>
+                          <Text style={[styles.setDetailCell, styles.setColNum]}>{s.set_number}</Text>
+                          <Text style={[styles.setDetailCell, styles.setColWeight]}>
+                            {s.target_weight > 0 ? formatWeight(s.target_weight, wUnit) : '-'}
+                          </Text>
+                          <Text style={[styles.setDetailCell, styles.setColReps]}>
+                            {s.target_reps_min === s.target_reps_max
+                              ? String(s.target_reps_min)
+                              : `${s.target_reps_min}-${s.target_reps_max}`}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
           </Card>
 
-          {activeSession ? (
+          {hasActiveSession || activeSession ? (
             <View>
               <Text style={styles.inProgress}>Workout in progress</Text>
-              <Text style={styles.duration}>
-                {formatDuration(activeSession.started_at, null)}
-              </Text>
+              {activeSession && (
+                <Text style={styles.duration}>
+                  {formatDuration(activeSession.started_at, null)}
+                </Text>
+              )}
               <Button
                 title="Continue Workout"
-                onPress={() => router.push('/workout/active')}
+                onPress={async () => {
+                  if (!user || !todaysWorkout) return;
+                  const ok = await resumeWorkout(user.id, todaysWorkout.exercises);
+                  if (ok) router.push('/workout/active');
+                  else setHasActiveSession(false);
+                }}
               />
             </View>
           ) : (
@@ -213,6 +284,37 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
   },
+  setDetails: {
+    paddingLeft: 8,
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  setDetailHeader: {
+    flexDirection: 'row',
+    paddingBottom: 4,
+    marginBottom: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  setDetailCol: {
+    fontSize: 10,
+    fontFamily: fonts.bold,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  setDetailRow: {
+    flexDirection: 'row',
+    paddingVertical: 3,
+  },
+  setDetailCell: {
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  setColNum: { width: 32 },
+  setColWeight: { flex: 1 },
+  setColReps: { flex: 1 },
   inProgress: {
     color: colors.textSecondary,
     fontSize: 16,

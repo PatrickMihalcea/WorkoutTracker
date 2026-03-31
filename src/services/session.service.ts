@@ -136,6 +136,30 @@ export const sessionService = {
     if (error) throw error;
   },
 
+  async getActiveSession(userId: string): Promise<WorkoutSession | null> {
+    const { data, error } = await supabase
+      .from('workout_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'in_progress')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  async getSetsBySession(sessionId: string): Promise<SetLog[]> {
+    const { data, error } = await supabase
+      .from('set_logs')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('exercise_id')
+      .order('set_number');
+    if (error) throw error;
+    return data ?? [];
+  },
+
   async getLastSessionSets(exerciseId: string, userId: string): Promise<SetLog[]> {
     const { data, error } = await supabase
       .from('set_logs')

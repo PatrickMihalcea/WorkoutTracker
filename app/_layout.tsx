@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from 'react';
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -8,7 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '../src/stores/auth.store';
 import { useProfileStore } from '../src/stores/profile.store';
 import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
-import { colors } from '../src/constants';
+import { colors, fonts } from '../src/constants';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -70,7 +70,23 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root} onLayout={onLayoutRootView}>
       <StatusBar style="light" />
-      <Slot />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(onboarding)" />
+        <Stack.Screen
+          name="workout"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: colors.background },
+            headerTintColor: colors.text,
+            headerTitleStyle: { fontFamily: fonts.bold },
+            headerBackTitleStyle: { fontSize: 12, fontFamily: fonts.regular },
+            title: 'Workout',
+            headerBackTitle: 'Today',
+          }}
+        />
+      </Stack>
       <KeyboardDismiss />
     </GestureHandlerRootView>
   );

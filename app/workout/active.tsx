@@ -14,7 +14,6 @@ import { ExerciseCard } from '../../src/components/workout';
 import { Button } from '../../src/components/ui';
 import { colors, fonts } from '../../src/constants';
 import { formatDuration } from '../../src/utils/date';
-import { parseWeightToKg } from '../../src/utils/units';
 
 export default function ActiveWorkoutScreen() {
   const router = useRouter();
@@ -24,11 +23,13 @@ export default function ActiveWorkoutScreen() {
   const {
     session,
     exercises,
-    sets,
+    rows,
     previousSets,
-    addSet,
-    updateSet,
     loadPreviousSets,
+    updateRow,
+    toggleRow,
+    deleteRow,
+    addRow,
     completeWorkout,
     cancelWorkout,
   } = useWorkoutStore();
@@ -40,12 +41,11 @@ export default function ActiveWorkoutScreen() {
       router.replace('/(tabs)');
       return;
     }
-
     const exerciseIds = exercises.map((e) => e.exercise_id);
     if (user && exerciseIds.length > 0) {
       loadPreviousSets(exerciseIds, user.id);
     }
-  }, [session, exercises, user, loadPreviousSets, router]);
+  }, [session?.id]);
 
   useEffect(() => {
     if (!session) return;
@@ -56,39 +56,33 @@ export default function ActiveWorkoutScreen() {
     return () => clearInterval(interval);
   }, [session]);
 
-  const handleAddSet = async (
-    exerciseId: string,
-    weight: number,
-    reps: number,
-    rir: number | null,
-  ) => {
-    if (!session) return;
-    const exerciseSets = sets[exerciseId] ?? [];
-    const weightKg = parseWeightToKg(weight, weightUnit);
+  const handleUpdate = async (id: string, exerciseId: string, updates: { weight?: string; reps?: string; rir?: string }) => {
     try {
-      await addSet({
-        session_id: session.id,
-        exercise_id: exerciseId,
-        set_number: exerciseSets.length + 1,
-        weight: weightKg,
-        reps_performed: reps,
-        rir,
-        is_warmup: false,
-      });
+      await updateRow(id, exerciseId, updates);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
   };
 
-  const handleUpdateSet = async (
-    setId: string,
-    weight: number,
-    reps: number,
-    rir: number | null,
-  ) => {
-    const weightKg = parseWeightToKg(weight, weightUnit);
+  const handleToggle = async (id: string, exerciseId: string) => {
     try {
-      await updateSet(setId, { weight: weightKg, reps_performed: reps, rir });
+      await toggleRow(id, exerciseId);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
+  const handleDelete = async (id: string, exerciseId: string, setNumber: number) => {
+    try {
+      await deleteRow(id, exerciseId, setNumber);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
+  const handleAdd = async (exerciseId: string) => {
+    try {
+      await addRow(exerciseId);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
@@ -100,7 +94,7 @@ export default function ActiveWorkoutScreen() {
       {
         text: 'Complete',
         onPress: async () => {
-          await completeWorkout();
+          await completeWorkout(weightUnit);
           router.replace('/(tabs)');
         },
       },
@@ -139,11 +133,13 @@ export default function ActiveWorkoutScreen() {
           <ExerciseCard
             key={entry.id}
             entry={entry}
-            sets={sets[entry.exercise_id] ?? []}
+            rows={rows[entry.exercise_id] ?? []}
             previousSets={previousSets[entry.exercise_id] ?? []}
             weightUnit={weightUnit}
-            onAddSet={handleAddSet}
-            onUpdateSet={handleUpdateSet}
+            onUpdateRow={handleUpdate}
+            onToggleRow={handleToggle}
+            onDeleteRow={handleDelete}
+            onAddRow={handleAdd}
           />
         ))}
       </ScrollView>
@@ -186,7 +182,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 16,
     paddingBottom: 32,
   },
   footer: {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { RoutineDayExercise, SetLog, WeightUnit } from '../../models';
+import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { Card } from '../ui/Card';
 import { SetRow } from './SetRow';
@@ -8,36 +8,29 @@ import { weightUnitLabel } from '../../utils/units';
 
 interface ExerciseCardProps {
   entry: RoutineDayExercise;
-  sets: SetLog[];
+  rows: WorkoutRow[];
   previousSets: SetLog[];
   weightUnit: WeightUnit;
-  onAddSet: (exerciseId: string, weight: number, reps: number, rir: number | null) => void;
-  onUpdateSet: (setId: string, weight: number, reps: number, rir: number | null) => void;
+  onUpdateRow: (id: string, exerciseId: string, updates: { weight?: string; reps?: string; rir?: string }) => void;
+  onToggleRow: (id: string, exerciseId: string) => void;
+  onDeleteRow: (id: string, exerciseId: string, setNumber: number) => void;
+  onAddRow: (exerciseId: string) => void;
 }
 
 export function ExerciseCard({
   entry,
-  sets,
+  rows,
   previousSets,
   weightUnit,
-  onAddSet,
-  onUpdateSet,
+  onUpdateRow,
+  onToggleRow,
+  onDeleteRow,
+  onAddRow,
 }: ExerciseCardProps) {
   const exerciseName = entry.exercise?.name ?? 'Unknown Exercise';
   const muscleGroup = entry.exercise?.muscle_group ?? '';
-  const completedSets = sets.length;
-  const targetSets = entry.target_sets;
-
-  const handleSetSave = (index: number, weight: number, reps: number, rir: number | null) => {
-    const existingSet = sets[index];
-    if (existingSet) {
-      onUpdateSet(existingSet.id, weight, reps, rir);
-    } else {
-      onAddSet(entry.exercise_id, weight, reps, rir);
-    }
-  };
-
-  const displayRows = Math.max(targetSets, completedSets + 1);
+  const completedCount = rows.filter((r) => r.is_completed).length;
+  const templates = entry.sets ?? [];
 
   return (
     <Card style={styles.card}>
@@ -47,7 +40,7 @@ export function ExerciseCard({
           <Text style={styles.muscleGroup}>{muscleGroup}</Text>
         </View>
         <Text style={styles.setCount}>
-          {completedSets}/{targetSets}
+          {completedCount}/{rows.length}
         </Text>
       </View>
 
@@ -58,7 +51,7 @@ export function ExerciseCard({
         <View style={styles.previousCol}>
           <Text style={styles.colHeader}>PREV</Text>
         </View>
-        <View style={styles.inputCol}>
+        <View style={styles.weightCol}>
           <Text style={styles.colHeader}>{weightUnitLabel(weightUnit)}</Text>
         </View>
         <View style={styles.inputCol}>
@@ -70,20 +63,22 @@ export function ExerciseCard({
         <View style={styles.actionCol} />
       </View>
 
-      {Array.from({ length: displayRows }, (_, i) => (
+      {rows.map((row, i) => (
         <SetRow
-          key={i}
-          setNumber={i + 1}
-          currentSet={sets[i]}
+          key={row.id}
+          row={row}
           previousSet={previousSets[i]}
+          templateSet={templates[i]}
           weightUnit={weightUnit}
-          onSave={(w, r, rir) => handleSetSave(i, w, r, rir)}
+          onUpdateRow={(updates) => onUpdateRow(row.id, entry.exercise_id, updates)}
+          onToggle={() => onToggleRow(row.id, entry.exercise_id)}
+          onSwipeDelete={() => onDeleteRow(row.id, entry.exercise_id, row.set_number)}
         />
       ))}
 
       <TouchableOpacity
         style={styles.addSetButton}
-        onPress={() => onAddSet(entry.exercise_id, 0, 0, null)}
+        onPress={() => onAddRow(entry.exercise_id)}
         activeOpacity={0.7}
       >
         <Text style={styles.addSetText}>+ Add Set</Text>
@@ -122,11 +117,11 @@ const styles = StyleSheet.create({
   columnHeaders: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
     paddingBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    gap: 6,
+    gap: 4,
   },
   colHeader: {
     fontSize: 11,
@@ -134,11 +129,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-  setLabelCol: { width: 28, alignItems: 'center' },
-  previousCol: { width: 70, alignItems: 'center' },
+  setLabelCol: { width: 22, alignItems: 'center' },
+  previousCol: { width: 72, alignItems: 'center' },
+  weightCol: { flex: 0.8, alignItems: 'center' },
   inputCol: { flex: 1, alignItems: 'center' },
-  rirCol: { maxWidth: 50, flex: 1, alignItems: 'center' },
-  actionCol: { width: 36 },
+  rirCol: { maxWidth: 44, flex: 1, alignItems: 'center' },
+  actionCol: { width: 32, marginLeft: 4 },
   addSetButton: {
     alignItems: 'center',
     paddingVertical: 10,

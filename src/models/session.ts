@@ -38,6 +38,17 @@ export interface SessionWithSetsAndExercises extends WorkoutSession {
   sets: SetLogWithExercise[];
 }
 
+export interface WorkoutRow {
+  id: string;
+  session_id: string;
+  exercise_id: string;
+  set_number: number;
+  weight: string;
+  reps: string;
+  rir: string;
+  is_completed: boolean;
+}
+
 export interface WorkoutSessionWithRoutine extends WorkoutSession {
   routine_day?: {
     label: string;

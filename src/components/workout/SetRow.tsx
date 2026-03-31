@@ -1,111 +1,182 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { SetLog, WeightUnit } from '../../models';
+import React, { useRef, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
+import { WorkoutRow, SetLog, WeightUnit, RoutineDayExerciseSet } from '../../models';
 import { colors, fonts } from '../../constants';
 import { formatWeight } from '../../utils/units';
 
 interface SetRowProps {
-  setNumber: number;
+  row: WorkoutRow;
   previousSet?: SetLog;
-  currentSet?: SetLog;
-  isWarmup?: boolean;
+  templateSet?: RoutineDayExerciseSet;
   weightUnit: WeightUnit;
-  onSave: (weight: number, reps: number, rir: number | null) => void;
-  onDelete?: () => void;
+  onUpdateRow: (updates: { weight?: string; reps?: string; rir?: string }) => void;
+  onToggle: () => void;
+  onSwipeDelete: () => void;
 }
 
 export function SetRow({
-  setNumber,
+  row,
   previousSet,
-  currentSet,
-  isWarmup = false,
+  templateSet,
   weightUnit,
-  onSave,
-  onDelete,
+  onUpdateRow,
+  onToggle,
+  onSwipeDelete,
 }: SetRowProps) {
+  const swipeableRef = useRef<Swipeable>(null);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const heightAnim = useRef(new Animated.Value(1)).current;
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
 
-  const [weight, setWeight] = useState(
-    currentSet ? displayStoredWeight(currentSet.weight) : '',
-  );
-  const [reps, setReps] = useState(currentSet?.reps_performed?.toString() ?? '');
-  const [rir, setRir] = useState(currentSet?.rir?.toString() ?? '');
-  const [saved, setSaved] = useState(!!currentSet);
+  const [weight, setWeight] = useState(row.weight);
+  const [reps, setReps] = useState(row.reps);
+  const [rir, setRir] = useState(row.rir);
 
-  useEffect(() => {
-    if (currentSet) {
-      setWeight(displayStoredWeight(currentSet.weight));
-      setReps(currentSet.reps_performed.toString());
-      setRir(currentSet.rir?.toString() ?? '');
-      setSaved(true);
-    }
-  }, [currentSet]);
+  const templateWeight = templateSet && templateSet.target_weight > 0
+    ? formatWeight(templateSet.target_weight, weightUnit)
+    : undefined;
+  const templateReps = templateSet
+    ? (templateSet.target_reps_min === templateSet.target_reps_max
+        ? String(templateSet.target_reps_min)
+        : `${templateSet.target_reps_min}-${templateSet.target_reps_max}`)
+    : undefined;
 
-  const handleSave = () => {
-    const w = parseFloat(weight) || 0;
-    const r = parseInt(reps, 10) || 0;
-    const rirVal = rir ? parseInt(rir, 10) : null;
-    onSave(w, r, rirVal);
-    setSaved(true);
+  const handleWeightBlur = () => {
+    if (weight !== row.weight) onUpdateRow({ weight });
+  };
+  const handleRepsBlur = () => {
+    if (reps !== row.reps) onUpdateRow({ reps });
+  };
+  const handleRirBlur = () => {
+    if (rir !== row.rir) onUpdateRow({ rir });
   };
 
-  return (
-    <View style={[styles.row, saved && styles.rowSaved, isWarmup && styles.rowWarmup]}>
-      <View style={styles.setLabel}>
-        <Text style={styles.setNumber}>
-          {isWarmup ? 'W' : setNumber}
-        </Text>
-      </View>
+  const handleToggle = () => {
+    if (!row.is_completed) {
+      const finalWeight = weight || '0';
+      const finalReps = reps || '0';
+      const pendingUpdates: { weight?: string; reps?: string; rir?: string } = {};
+      if (finalWeight !== row.weight) pendingUpdates.weight = finalWeight;
+      if (finalReps !== row.reps) pendingUpdates.reps = finalReps;
+      if (rir !== row.rir) pendingUpdates.rir = rir;
+      if (Object.keys(pendingUpdates).length > 0) {
+        onUpdateRow(pendingUpdates);
+      }
+      setWeight(finalWeight);
+      setReps(finalReps);
+    }
+    onToggle();
+  };
 
-      <View style={styles.previousCol}>
-        {previousSet ? (
-          <Text style={styles.previousText}>
-            {displayStoredWeight(previousSet.weight)}x{previousSet.reps_performed}
-            {previousSet.rir !== null && ` @${previousSet.rir}`}
-          </Text>
-        ) : (
-          <Text style={styles.previousText}>-</Text>
-        )}
-      </View>
+  const handleSwipeOpen = () => {
+    swipeableRef.current?.close();
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: false,
+      }),
+      Animated.timing(heightAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      onSwipeDelete();
+    });
+  };
 
-      <TextInput
-        style={styles.input}
-        value={weight}
-        onChangeText={setWeight}
-        placeholder="0"
-        placeholderTextColor={colors.textMuted}
-        keyboardType="decimal-pad"
-        selectTextOnFocus
-      />
-
-      <TextInput
-        style={styles.input}
-        value={reps}
-        onChangeText={setReps}
-        placeholder="0"
-        placeholderTextColor={colors.textMuted}
-        keyboardType="number-pad"
-        selectTextOnFocus
-      />
-
-      <TextInput
-        style={[styles.input, styles.rirInput]}
-        value={rir}
-        onChangeText={setRir}
-        placeholder="-"
-        placeholderTextColor={colors.textMuted}
-        keyboardType="number-pad"
-        selectTextOnFocus
-      />
-
-      <TouchableOpacity
-        style={[styles.saveButton, saved && styles.saveButtonDone]}
-        onPress={handleSave}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.saveButtonText}>{saved ? '✓' : '+'}</Text>
+  const renderRightActions = (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const translateX = dragX.interpolate({
+      inputRange: [-70, 0],
+      outputRange: [0, 70],
+      extrapolate: 'clamp',
+    });
+    return (
+      <TouchableOpacity style={styles.deleteAction} onPress={handleSwipeOpen} activeOpacity={0.8}>
+        <Animated.View style={[styles.deleteContent, { transform: [{ translateX }] }]}>
+          <Text style={styles.deleteText}>X</Text>
+        </Animated.View>
       </TouchableOpacity>
-    </View>
+    );
+  };
+
+  const rowMaxHeight = heightAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 60],
+  });
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim, maxHeight: rowMaxHeight, overflow: 'hidden' }}>
+      <Swipeable
+        ref={swipeableRef}
+        renderRightActions={renderRightActions}
+        onSwipeableOpen={handleSwipeOpen}
+        rightThreshold={70}
+        overshootRight={false}
+      >
+        <View style={[styles.row, row.is_completed && styles.rowSaved]}>
+          <View style={styles.setLabel}>
+            <Text style={styles.setNumber}>{row.set_number}</Text>
+          </View>
+
+          <View style={styles.previousCol}>
+            {previousSet ? (
+              <Text style={styles.previousText}>
+                {displayStoredWeight(previousSet.weight)}x{previousSet.reps_performed}
+                {previousSet.rir !== null && ` @${previousSet.rir}`}
+              </Text>
+            ) : (
+              <Text style={styles.previousText}>-</Text>
+            )}
+          </View>
+
+          <TextInput
+            style={[styles.input, styles.weightInput]}
+            value={weight}
+            onChangeText={setWeight}
+            onBlur={handleWeightBlur}
+            placeholder={templateWeight ?? '0'}
+            placeholderTextColor={colors.textMuted}
+            keyboardType="decimal-pad"
+            selectTextOnFocus
+          />
+
+          <TextInput
+            style={styles.input}
+            value={reps}
+            onChangeText={setReps}
+            onBlur={handleRepsBlur}
+            placeholder={templateReps ?? '0'}
+            placeholderTextColor={colors.textMuted}
+            keyboardType="number-pad"
+            selectTextOnFocus
+          />
+
+          <TextInput
+            style={[styles.input, styles.rirInput]}
+            value={rir}
+            onChangeText={setRir}
+            onBlur={handleRirBlur}
+            placeholder="-"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="number-pad"
+            selectTextOnFocus
+          />
+
+          <TouchableOpacity
+            style={[styles.saveButton, row.is_completed && styles.saveButtonDone]}
+            onPress={handleToggle}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.saveButtonText, row.is_completed && styles.saveButtonTextDone]}>
+              {row.is_completed ? '✓' : '+'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Swipeable>
+    </Animated.View>
   );
 }
 
@@ -114,17 +185,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 4,
-    gap: 6,
+    paddingHorizontal: 2,
+    gap: 4,
+    backgroundColor: colors.surface,
   },
   rowSaved: {
     opacity: 0.7,
   },
-  rowWarmup: {
-    opacity: 0.6,
-  },
   setLabel: {
-    width: 28,
+    width: 22,
     alignItems: 'center',
   },
   setNumber: {
@@ -133,35 +202,40 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
   },
   previousCol: {
-    width: 70,
+    width: 72,
     alignItems: 'center',
   },
   previousText: {
     color: colors.textMuted,
     fontSize: 12,
     fontFamily: fonts.light,
+    textAlign: 'center',
   },
   input: {
     flex: 1,
     backgroundColor: colors.surfaceLight,
     borderRadius: 8,
     paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     textAlign: 'center',
     color: colors.text,
     fontSize: 15,
     fontFamily: fonts.semiBold,
   },
+  weightInput: {
+    flex: 0.8,
+  },
   rirInput: {
-    maxWidth: 50,
+    maxWidth: 44,
   },
   saveButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.text,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 4,
   },
   saveButtonDone: {
     backgroundColor: colors.surfaceLight,
@@ -171,6 +245,24 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: colors.background,
     fontSize: 16,
+    fontFamily: fonts.bold,
+  },
+  saveButtonTextDone: {
+    color: colors.textSecondary,
+  },
+  deleteAction: {
+    width: 70,
+    backgroundColor: '#cc3333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteText: {
+    color: '#fff',
+    fontSize: 18,
     fontFamily: fonts.bold,
   },
 });
