@@ -1,0 +1,18 @@
+import { Stack } from 'expo-router';
+import { colors, fonts } from '../../../src/constants';
+
+export default function RoutinesLayout() {
+  return (
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
+        headerTitleStyle: { fontFamily: fonts.bold },
+      }}
+    >
+      <Stack.Screen name="index" options={{ title: 'Routines' }} />
+      <Stack.Screen name="create" options={{ title: 'New Routine' }} />
+      <Stack.Screen name="[id]" options={{ title: 'Routine Details' }} />
+    </Stack>
+  );
+}
