@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '../src/stores/auth.store';
@@ -67,11 +68,11 @@ export default function RootLayout() {
   }
 
   return (
-    <View style={styles.root} onLayout={onLayoutRootView}>
+    <GestureHandlerRootView style={styles.root} onLayout={onLayoutRootView}>
       <StatusBar style="light" />
       <Slot />
       <KeyboardDismiss />
-    </View>
+    </GestureHandlerRootView>
   );
 }
 

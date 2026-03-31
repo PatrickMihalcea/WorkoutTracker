@@ -44,9 +44,39 @@ export default function HomeScreen() {
 
   if (!activeRoutine) {
     return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Today</Text>
+        </View>
+        <ScrollView
+          contentContainerStyle={styles.emptyContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.textSecondary}
+            />
+          }
+        >
+          <EmptyState
+            title="No Active Routine"
+            message="Create a routine and set it as active to see today's workout."
+            actionLabel="Go to Routines"
+            onAction={() => router.push('/(tabs)/routines')}
+          />
+        </ScrollView>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Today</Text>
+      </View>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.emptyContainer}
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -55,28 +85,6 @@ export default function HomeScreen() {
           />
         }
       >
-        <EmptyState
-          title="No Active Routine"
-          message="Create a routine and set it as active to see today's workout."
-          actionLabel="Go to Routines"
-          onAction={() => router.push('/(tabs)/routines')}
-        />
-      </ScrollView>
-    );
-  }
-
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.textSecondary}
-        />
-      }
-    >
       <Text style={styles.greeting}>
         {DAY_LABELS[currentDay as DayOfWeek]}
       </Text>
@@ -129,7 +137,8 @@ export default function HomeScreen() {
           </Text>
         </Card>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -138,8 +147,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  emptyContainer: {
+  header: {
+    backgroundColor: colors.background,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  scrollView: {
     flex: 1,
+  },
+  emptyContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   content: {
     padding: 20,

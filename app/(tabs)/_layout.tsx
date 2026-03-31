@@ -1,91 +1,141 @@
-import { Tabs } from 'expo-router';
-import { Text, Image, StyleSheet } from 'react-native';
+import { withLayoutContext, useSegments } from 'expo-router';
+import { createMaterialTopTabNavigator, type MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
+import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '../../src/constants';
 
-function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  if (name === 'History') {
-    return (
-      <Image
-        source={require('../../assets/icons/history.png')}
-        style={[styles.tabImage, { tintColor: focused ? colors.text : colors.textMuted }]}
-      />
-    );
-  }
-  const icons: Record<string, string> = {
-    Home: '●',
-    Routines: '≡',
-    Profile: '○',
-  };
+const { Navigator } = createMaterialTopTabNavigator();
+const SwipeableTabs = withLayoutContext(Navigator);
+
+const TAB_ICONS: Record<string, string> = {
+  index: '●',
+  routines: '≡',
+  profile: '○',
+};
+
+const TAB_LABELS: Record<string, string> = {
+  index: 'Today',
+  routines: 'Routines',
+  history: 'History',
+  profile: 'Profile',
+};
+
+function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <Text style={[styles.icon, focused && styles.iconFocused]}>
-      {icons[name] ?? '•'}
-    </Text>
+    <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {state.routes.map((route, index) => {
+        const focused = state.index === index;
+        const color = focused ? colors.text : colors.textMuted;
+
+        return (
+          <TouchableOpacity
+            key={route.key}
+            style={styles.tab}
+            activeOpacity={0.7}
+            onPress={() => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!focused && !event.defaultPrevented) {
+                navigation.navigate(route.name);
+              }
+            }}
+            onLongPress={() => {
+              navigation.emit({
+                type: 'tabLongPress',
+                target: route.key,
+              });
+            }}
+          >
+            {route.name === 'history' ? (
+              <Image
+                source={require('../../assets/icons/history.png')}
+                style={[styles.tabImage, { tintColor: color }]}
+              />
+            ) : (
+              <Text style={[styles.tabIcon, { color }]}>
+                {TAB_ICONS[route.name] ?? '•'}
+              </Text>
+            )}
+            <Text style={[styles.tabLabel, { color }]}>
+              {TAB_LABELS[route.name] ?? route.name}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 }
 
 export default function TabLayout() {
+  const segments = useSegments();
+  const isAtTabRoot = segments.length <= 2;
+
   return (
-    <Tabs
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontFamily: fonts.bold },
-        tabBarStyle: {
-          backgroundColor: colors.background,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          paddingTop: 4,
-        },
-        tabBarLabelStyle: { fontFamily: fonts.regular, fontSize: 11 },
-        tabBarActiveTintColor: colors.text,
-        tabBarInactiveTintColor: colors.textMuted,
-      }}
-    >
-      <Tabs.Screen
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SwipeableTabs
+        tabBar={(props) => <BottomTabBar {...props} />}
+        tabBarPosition="bottom"
+        screenOptions={{
+          swipeEnabled: isAtTabRoot,
+          lazy: true,
+          lazyPreloadDistance: 1,
+          animationEnabled: true,
+        }}
+      >
+      <SwipeableTabs.Screen
         name="index"
-        options={{
-          title: 'Today',
-          tabBarIcon: ({ focused }) => <TabIcon name="Home" focused={focused} />,
-        }}
+        options={{ title: 'Today' }}
       />
-      <Tabs.Screen
+      <SwipeableTabs.Screen
         name="routines"
-        options={{
-          title: 'Routines',
-          headerShown: false,
-          tabBarIcon: ({ focused }) => <TabIcon name="Routines" focused={focused} />,
-        }}
+        options={{ title: 'Routines' }}
       />
-      <Tabs.Screen
+      <SwipeableTabs.Screen
         name="history"
-        options={{
-          title: 'History',
-          headerShown: false,
-          tabBarIcon: ({ focused }) => <TabIcon name="History" focused={focused} />,
-        }}
+        options={{ title: 'History' }}
       />
-      <Tabs.Screen
+      <SwipeableTabs.Screen
         name="profile"
-        options={{
-          title: 'Profile',
-          headerShown: false,
-          tabBarIcon: ({ focused }) => <TabIcon name="Profile" focused={focused} />,
-        }}
+        options={{ title: 'Profile' }}
       />
-    </Tabs>
+      </SwipeableTabs>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  icon: {
-    fontSize: 18,
-    color: colors.textMuted,
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  iconFocused: {
-    color: colors.text,
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 8,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  tabIcon: {
+    fontSize: 18,
   },
   tabImage: {
     width: 20,
     height: 20,
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontFamily: fonts.regular,
+    marginTop: 2,
   },
 });
