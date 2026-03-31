@@ -4,11 +4,13 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
   ActivityIndicator,
   Modal,
   Platform,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -205,76 +207,80 @@ export default function SessionDetailScreen() {
       </ScrollView>
 
       <Modal visible={showEdit} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Session</Text>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Edit Session</Text>
 
-            <Text style={styles.fieldLabel}>Date</Text>
-            {Platform.OS === 'android' && (
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={styles.pickerButtonText}>
-                  {editDate.toLocaleDateString()}
+              <Text style={styles.fieldLabel}>Date</Text>
+              {Platform.OS === 'android' && (
+                <TouchableOpacity
+                  style={styles.pickerButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text style={styles.pickerButtonText}>
+                    {editDate.toLocaleDateString()}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {showDatePicker && (
+                <DateTimePicker
+                  value={editDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleDateChange}
+                  themeVariant="dark"
+                />
+              )}
+
+              <Text style={styles.fieldLabel}>Start Time</Text>
+              {Platform.OS === 'android' && (
+                <TouchableOpacity
+                  style={styles.pickerButton}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Text style={styles.pickerButtonText}>
+                    {editTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {showTimePicker && (
+                <DateTimePicker
+                  value={editTime}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleTimeChange}
+                  themeVariant="dark"
+                />
+              )}
+
+              <Input
+                label="Duration (minutes)"
+                value={editDuration}
+                onChangeText={setEditDuration}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                blurOnSubmit
+              />
+
+              <View style={styles.endTimeRow}>
+                <Text style={styles.fieldLabel}>End Time</Text>
+                <Text style={styles.endTimeValue}>
+                  {endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </Text>
-              </TouchableOpacity>
-            )}
-            {showDatePicker && (
-              <DateTimePicker
-                value={editDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleDateChange}
-                themeVariant="dark"
-              />
-            )}
+              </View>
 
-            <Text style={styles.fieldLabel}>Start Time</Text>
-            {Platform.OS === 'android' && (
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowTimePicker(true)}
-              >
-                <Text style={styles.pickerButtonText}>
-                  {editTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </TouchableOpacity>
-            )}
-            {showTimePicker && (
-              <DateTimePicker
-                value={editTime}
-                mode="time"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleTimeChange}
-                themeVariant="dark"
-              />
-            )}
-
-            <Input
-              label="Duration (minutes)"
-              value={editDuration}
-              onChangeText={setEditDuration}
-              keyboardType="number-pad"
-            />
-
-            <View style={styles.endTimeRow}>
-              <Text style={styles.fieldLabel}>End Time</Text>
-              <Text style={styles.endTimeValue}>
-                {endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            </View>
-
-            <View style={styles.modalActions}>
-              <Button
-                title="Cancel"
-                variant="ghost"
-                onPress={() => setShowEdit(false)}
-              />
-              <Button title="Save" onPress={handleSaveEdit} />
+              <View style={styles.modalActions}>
+                <Button
+                  title="Cancel"
+                  variant="ghost"
+                  onPress={() => setShowEdit(false)}
+                />
+                <Button title="Save" onPress={handleSaveEdit} />
+              </View>
             </View>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );

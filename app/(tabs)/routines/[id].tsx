@@ -127,6 +127,16 @@ export default function RoutineDetailScreen() {
       Alert.alert('Error', 'Please enter an exercise name');
       return;
     }
+    const duplicate = exercises.find(
+      (ex) =>
+        ex.name.toLowerCase() === newExerciseName.trim().toLowerCase() &&
+        ex.muscle_group === newExerciseMuscle &&
+        ex.equipment === newExerciseEquipment,
+    );
+    if (duplicate) {
+      Alert.alert('Duplicate', 'An exercise with the same name, muscle group, and equipment already exists.');
+      return;
+    }
     try {
       const exercise = await exerciseService.create({
         user_id: user.id,
@@ -140,6 +150,39 @@ export default function RoutineDetailScreen() {
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
+  };
+
+  const handleDeleteExercise = async (exercise: Exercise) => {
+    let hasLogs = false;
+    try {
+      const sets = await import('../../../src/services').then(
+        (m) => m.sessionService.getLastSessionSets(exercise.id, user?.id ?? ''),
+      );
+      hasLogs = sets.length > 0;
+    } catch {
+      // Assume no logs on error
+    }
+
+    const message = hasLogs
+      ? `Permanently delete "${exercise.name}"?\n\nWARNING: This exercise has logged workout history. All sets logged for this exercise will be permanently deleted.`
+      : `Permanently delete "${exercise.name}"? This will also remove it from any routine days using it.`;
+
+    Alert.alert('Delete Exercise', message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: hasLogs ? 'Delete Everything' : 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await exerciseService.delete(exercise.id);
+            setExercises((prev) => prev.filter((e) => e.id !== exercise.id));
+            if (id) fetchRoutineDetail(id);
+          } catch {
+            Alert.alert('Error', 'Could not delete exercise.');
+          }
+        },
+      },
+    ]);
   };
 
   const handleRemoveExercise = (entryId: string) => {
@@ -315,48 +358,53 @@ export default function RoutineDetailScreen() {
       <Modal visible={showAddExercise} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Exercise</Text>
-
-            <View style={styles.targetRow}>
-              <Input
-                label="Target Sets"
-                value={targetSets}
-                onChangeText={setTargetSets}
-                keyboardType="number-pad"
-                containerStyle={styles.halfInput}
-              />
-              <Input
-                label="Target Reps"
-                value={targetReps}
-                onChangeText={setTargetReps}
-                keyboardType="number-pad"
-                containerStyle={styles.halfInput}
-              />
-            </View>
-
-            <Text style={styles.fieldLabel}>Your Exercises</Text>
-            <ScrollView style={styles.exerciseList}>
-              {exercises.map((ex) => (
-                <TouchableOpacity
-                  key={ex.id}
-                  style={styles.exercisePickItem}
-                  onPress={() => handlePickExercise(ex.id)}
-                >
-                  <Text style={styles.exercisePickName}>{ex.name}</Text>
-                  <Text style={styles.exercisePickMeta}>
-                    {ex.muscle_group} · {ex.equipment}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <Text style={styles.modalTitle}>
+              {showCreateExercise ? 'Create New Exercise' : 'Add Exercise'}
+            </Text>
 
             {!showCreateExercise && (
-              <Button
-                title="+ Create New Exercise"
-                variant="secondary"
-                onPress={() => setShowCreateExercise(true)}
-                style={styles.createExBtn}
-              />
+              <>
+                <View style={styles.targetRow}>
+                  <Input
+                    label="Target Sets"
+                    value={targetSets}
+                    onChangeText={setTargetSets}
+                    keyboardType="number-pad"
+                    containerStyle={styles.halfInput}
+                  />
+                  <Input
+                    label="Target Reps"
+                    value={targetReps}
+                    onChangeText={setTargetReps}
+                    keyboardType="number-pad"
+                    containerStyle={styles.halfInput}
+                  />
+                </View>
+
+                <Text style={styles.fieldLabel}>Your Exercises</Text>
+                <ScrollView style={styles.exerciseList}>
+                  {exercises.map((ex) => (
+                    <TouchableOpacity
+                      key={ex.id}
+                      style={styles.exercisePickItem}
+                      onPress={() => handlePickExercise(ex.id)}
+                      onLongPress={() => handleDeleteExercise(ex)}
+                    >
+                      <Text style={styles.exercisePickName}>{ex.name}</Text>
+                      <Text style={styles.exercisePickMeta}>
+                        {ex.muscle_group} · {ex.equipment}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <Button
+                  title="+ Create New Exercise"
+                  variant="secondary"
+                  onPress={() => setShowCreateExercise(true)}
+                  style={styles.createExBtn}
+                />
+              </>
             )}
 
             {showCreateExercise && (
