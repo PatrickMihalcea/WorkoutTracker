@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { SetLog } from '../../models';
+import { SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
+import { formatWeight } from '../../utils/units';
 
 interface SetRowProps {
   setNumber: number;
   previousSet?: SetLog;
   currentSet?: SetLog;
   isWarmup?: boolean;
+  weightUnit: WeightUnit;
   onSave: (weight: number, reps: number, rir: number | null) => void;
   onDelete?: () => void;
 }
@@ -17,17 +19,22 @@ export function SetRow({
   previousSet,
   currentSet,
   isWarmup = false,
+  weightUnit,
   onSave,
   onDelete,
 }: SetRowProps) {
-  const [weight, setWeight] = useState(currentSet?.weight?.toString() ?? '');
+  const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
+
+  const [weight, setWeight] = useState(
+    currentSet ? displayStoredWeight(currentSet.weight) : '',
+  );
   const [reps, setReps] = useState(currentSet?.reps_performed?.toString() ?? '');
   const [rir, setRir] = useState(currentSet?.rir?.toString() ?? '');
   const [saved, setSaved] = useState(!!currentSet);
 
   useEffect(() => {
     if (currentSet) {
-      setWeight(currentSet.weight.toString());
+      setWeight(displayStoredWeight(currentSet.weight));
       setReps(currentSet.reps_performed.toString());
       setRir(currentSet.rir?.toString() ?? '');
       setSaved(true);
@@ -53,7 +60,7 @@ export function SetRow({
       <View style={styles.previousCol}>
         {previousSet ? (
           <Text style={styles.previousText}>
-            {previousSet.weight}x{previousSet.reps_performed}
+            {displayStoredWeight(previousSet.weight)}x{previousSet.reps_performed}
             {previousSet.rir !== null && ` @${previousSet.rir}`}
           </Text>
         ) : (

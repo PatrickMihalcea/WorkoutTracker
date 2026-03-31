@@ -1,12 +1,19 @@
 import { Tabs } from 'expo-router';
-import { Text, StyleSheet } from 'react-native';
+import { Text, Image, StyleSheet } from 'react-native';
 import { colors, fonts } from '../../src/constants';
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
+  if (name === 'History') {
+    return (
+      <Image
+        source={require('../../assets/icons/history.png')}
+        style={[styles.tabImage, { tintColor: focused ? colors.text : colors.textMuted }]}
+      />
+    );
+  }
   const icons: Record<string, string> = {
     Home: '●',
     Routines: '≡',
-    History: '◷',
     Profile: '○',
   };
   return (
@@ -61,6 +68,7 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
+          headerShown: false,
           tabBarIcon: ({ focused }) => <TabIcon name="Profile" focused={focused} />,
         }}
       />
@@ -75,5 +83,9 @@ const styles = StyleSheet.create({
   },
   iconFocused: {
     color: colors.text,
+  },
+  tabImage: {
+    width: 20,
+    height: 20,
   },
 });

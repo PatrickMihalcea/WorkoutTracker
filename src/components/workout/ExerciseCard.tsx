@@ -1,14 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { RoutineDayExercise, SetLog } from '../../models';
+import { RoutineDayExercise, SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { Card } from '../ui/Card';
 import { SetRow } from './SetRow';
+import { weightUnitLabel } from '../../utils/units';
 
 interface ExerciseCardProps {
   entry: RoutineDayExercise;
   sets: SetLog[];
   previousSets: SetLog[];
+  weightUnit: WeightUnit;
   onAddSet: (exerciseId: string, weight: number, reps: number, rir: number | null) => void;
   onUpdateSet: (setId: string, weight: number, reps: number, rir: number | null) => void;
 }
@@ -17,6 +19,7 @@ export function ExerciseCard({
   entry,
   sets,
   previousSets,
+  weightUnit,
   onAddSet,
   onUpdateSet,
 }: ExerciseCardProps) {
@@ -56,7 +59,7 @@ export function ExerciseCard({
           <Text style={styles.colHeader}>PREV</Text>
         </View>
         <View style={styles.inputCol}>
-          <Text style={styles.colHeader}>KG</Text>
+          <Text style={styles.colHeader}>{weightUnitLabel(weightUnit)}</Text>
         </View>
         <View style={styles.inputCol}>
           <Text style={styles.colHeader}>REPS</Text>
@@ -73,6 +76,7 @@ export function ExerciseCard({
           setNumber={i + 1}
           currentSet={sets[i]}
           previousSet={previousSets[i]}
+          weightUnit={weightUnit}
           onSave={(w, r, rir) => handleSetSave(i, w, r, rir)}
         />
       ))}

@@ -37,3 +37,12 @@ export interface SessionWithSets extends WorkoutSession {
 export interface SessionWithSetsAndExercises extends WorkoutSession {
   sets: SetLogWithExercise[];
 }
+
+export interface WorkoutSessionWithRoutine extends WorkoutSession {
+  routine_day?: {
+    label: string;
+    routine?: {
+      name: string;
+    };
+  } | null;
+}

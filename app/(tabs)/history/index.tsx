@@ -11,12 +11,12 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { sessionService } from '../../../src/services';
 import { Card, EmptyState } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
-import { WorkoutSession } from '../../../src/models';
+import { WorkoutSessionWithRoutine } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 
 export default function HistoryScreen() {
   const router = useRouter();
-  const [sessions, setSessions] = useState<WorkoutSession[]>([]);
+  const [sessions, setSessions] = useState<WorkoutSessionWithRoutine[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadSessions = useCallback(async () => {
@@ -40,7 +40,7 @@ export default function HistoryScreen() {
     setRefreshing(false);
   }, [loadSessions]);
 
-  const handleDeleteSession = (item: WorkoutSession) => {
+  const handleDeleteSession = (item: WorkoutSessionWithRoutine) => {
     Alert.alert(
       'Delete Workout',
       `Remove the workout from ${formatDate(item.started_at)}?`,
@@ -62,19 +62,27 @@ export default function HistoryScreen() {
     );
   };
 
-  const renderSession = ({ item }: { item: WorkoutSession }) => (
+  const renderSession = ({ item }: { item: WorkoutSessionWithRoutine }) => (
     <TouchableOpacity
       activeOpacity={0.7}
       onPress={() => router.push(`/(tabs)/history/${item.id}`)}
       onLongPress={() => handleDeleteSession(item)}
     >
       <Card style={styles.sessionCard}>
-        <View style={styles.sessionHeader}>
+        {item.routine_day?.label && (
+          <Text style={styles.routineDayLabel}>{item.routine_day.label}</Text>
+        )}
+        {item.routine_day?.routine?.name && (
+          <Text style={styles.routineName}>{item.routine_day.routine.name}</Text>
+        )}
+        <View style={styles.sessionDetailsRow}>
           <Text style={styles.sessionDate}>{formatDate(item.started_at)}</Text>
-          <Text style={styles.sessionTime}>{formatTime(item.started_at)}</Text>
+          <Text style={styles.sessionDuration}>
+            {formatDuration(item.started_at, item.completed_at)}
+          </Text>
         </View>
-        <Text style={styles.sessionDuration}>
-          {formatDuration(item.started_at, item.completed_at)}
+        <Text style={styles.sessionTime}>
+          {formatTime(item.started_at)} – {formatTime(item.completed_at ?? new Date().toISOString())}
         </Text>
       </Card>
     </TouchableOpacity>
@@ -116,25 +124,37 @@ const styles = StyleSheet.create({
   sessionCard: {
     marginBottom: 12,
   },
-  sessionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sessionDate: {
+  routineDayLabel: {
     fontSize: 16,
     fontFamily: fonts.bold,
     color: colors.text,
   },
-  sessionTime: {
-    fontSize: 14,
-    fontFamily: fonts.light,
+  routineName: {
+    fontSize: 13,
+    fontFamily: fonts.regular,
     color: colors.textMuted,
+    marginTop: 2,
+  },
+  sessionDetailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  sessionDate: {
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
   },
   sessionDuration: {
     fontSize: 14,
-    fontFamily: fonts.regular,
+    fontFamily: fonts.semiBold,
     color: colors.textSecondary,
-    marginTop: 6,
+  },
+  sessionTime: {
+    fontSize: 12,
+    fontFamily: fonts.light,
+    color: colors.textMuted,
+    marginTop: 4,
   },
 });

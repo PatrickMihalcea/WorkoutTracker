@@ -11,14 +11,17 @@ import {
   Platform,
   Alert,
   Keyboard,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { sessionService } from '../../../src/services';
+import { useProfileStore } from '../../../src/stores/profile.store';
 import { Card, Input, Button } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import { SessionWithSetsAndExercises, SetLogWithExercise } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
+import { formatWeight, weightUnitLabel } from '../../../src/utils/units';
 
 interface ExerciseGroup {
   exerciseId: string;
@@ -55,6 +58,8 @@ function computeDurationMinutes(startedAt: string, completedAt: string | null): 
 
 export default function SessionDetailScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
+  const { profile } = useProfileStore();
+  const weightUnit = profile?.weight_unit ?? 'kg';
   const [session, setSession] = useState<SessionWithSetsAndExercises | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -154,7 +159,7 @@ export default function SessionDetailScreen() {
 
   return (
     <View style={styles.flex}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.date}>{formatDate(session.started_at)}</Text>
@@ -163,7 +168,7 @@ export default function SessionDetailScreen() {
             </Text>
           </View>
           <TouchableOpacity onPress={openEditModal} style={styles.editBtn}>
-            <Text style={styles.editIcon}>✎</Text>
+            <Image source={require('../../../assets/icons/edit.png')} style={styles.editIcon} />
           </TouchableOpacity>
         </View>
 
@@ -187,7 +192,7 @@ export default function SessionDetailScreen() {
 
             <View style={styles.tableHeader}>
               <Text style={[styles.tableCol, styles.colSet]}>SET</Text>
-              <Text style={[styles.tableCol, styles.colWeight]}>KG</Text>
+              <Text style={[styles.tableCol, styles.colWeight]}>{weightUnitLabel(weightUnit)}</Text>
               <Text style={[styles.tableCol, styles.colReps]}>REPS</Text>
               <Text style={[styles.tableCol, styles.colRir]}>RIR</Text>
             </View>
@@ -195,7 +200,7 @@ export default function SessionDetailScreen() {
             {group.sets.map((set) => (
               <View key={set.id} style={styles.tableRow}>
                 <Text style={[styles.tableCell, styles.colSet]}>{set.set_number}</Text>
-                <Text style={[styles.tableCell, styles.colWeight]}>{set.weight}</Text>
+                <Text style={[styles.tableCell, styles.colWeight]}>{formatWeight(set.weight, weightUnit)}</Text>
                 <Text style={[styles.tableCell, styles.colReps]}>{set.reps_performed}</Text>
                 <Text style={[styles.tableCell, styles.colRir]}>
                   {set.rir !== null ? set.rir : '-'}
@@ -333,8 +338,9 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   editIcon: {
-    fontSize: 22,
-    color: colors.textSecondary,
+    width: 22,
+    height: 22,
+    tintColor: colors.textSecondary,
   },
   summary: {
     flexDirection: 'row',

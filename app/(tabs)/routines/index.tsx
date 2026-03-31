@@ -65,20 +65,19 @@ export default function RoutineListScreen() {
       <Card style={StyleSheet.flatten([styles.routineCard, item.is_active ? styles.activeCard : undefined])}>
         <View style={styles.routineHeader}>
           <Text style={styles.routineName}>{item.name}</Text>
-          {item.is_active && (
+          {item.is_active ? (
             <View style={styles.activeBadge}>
               <Text style={styles.activeBadgeText}>Active</Text>
             </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.setActiveBtn}
+              onPress={() => handleSetActive(item)}
+            >
+              <Text style={styles.setActiveText}>Set as Active</Text>
+            </TouchableOpacity>
           )}
         </View>
-        {!item.is_active && (
-          <TouchableOpacity
-            style={styles.setActiveBtn}
-            onPress={() => handleSetActive(item)}
-          >
-            <Text style={styles.setActiveText}>Set as Active</Text>
-          </TouchableOpacity>
-        )}
       </Card>
     </TouchableOpacity>
   );
@@ -152,7 +151,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
   },
   setActiveBtn: {
-    marginTop: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
   },
   setActiveText: {
     color: colors.textSecondary,

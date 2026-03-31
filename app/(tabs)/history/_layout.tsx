@@ -8,6 +8,7 @@ export default function HistoryLayout() {
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
         headerTitleStyle: { fontFamily: fonts.bold },
+        headerBackTitleStyle: { fontSize: 12, fontFamily: fonts.regular },
       }}
     >
       <Stack.Screen name="index" options={{ title: 'History' }} />

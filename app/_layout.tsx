@@ -5,12 +5,15 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '../src/stores/auth.store';
+import { useProfileStore } from '../src/stores/profile.store';
+import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
 import { colors } from '../src/constants';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const { session, initialized, initialize } = useAuthStore();
+  const { profile, loading: profileLoading } = useProfileStore();
   const segments = useSegments();
   const router = useRouter();
 
@@ -25,7 +28,7 @@ export default function RootLayout() {
     initialize();
   }, [initialize]);
 
-  const ready = fontsLoaded && initialized;
+  const ready = fontsLoaded && initialized && !profileLoading;
 
   const onLayoutRootView = useCallback(async () => {
     if (ready) {
@@ -34,16 +37,25 @@ export default function RootLayout() {
   }, [ready]);
 
   useEffect(() => {
-    if (!initialized) return;
+    if (!ready) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const inOnboarding = segments[0] === '(onboarding)';
 
     if (!session && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (session && inAuthGroup) {
+      if (!profile || !profile.onboarding_complete) {
+        router.replace('/(onboarding)/display-name');
+      } else {
+        router.replace('/(tabs)');
+      }
+    } else if (session && !inOnboarding && !inAuthGroup && (!profile || !profile.onboarding_complete)) {
+      router.replace('/(onboarding)/display-name');
+    } else if (session && inOnboarding && profile?.onboarding_complete) {
       router.replace('/(tabs)');
     }
-  }, [session, initialized, segments, router]);
+  }, [session, profile, ready, segments, router]);
 
   if (!ready) {
     return (
@@ -58,6 +70,7 @@ export default function RootLayout() {
     <View style={styles.root} onLayout={onLayoutRootView}>
       <StatusBar style="light" />
       <Slot />
+      <KeyboardDismiss />
     </View>
   );
 }

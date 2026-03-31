@@ -1,6 +1,7 @@
 import {
   WorkoutSession,
   WorkoutSessionInsert,
+  WorkoutSessionWithRoutine,
   SetLog,
   SetLogInsert,
   SessionWithSets,
@@ -9,13 +10,13 @@ import {
 import { supabase } from './supabase';
 
 export const sessionService = {
-  async getAll(): Promise<WorkoutSession[]> {
+  async getAll(): Promise<WorkoutSessionWithRoutine[]> {
     const { data, error } = await supabase
       .from('workout_sessions')
-      .select('*')
+      .select('*, routine_day:routine_days(label, routine:routines(name))')
       .order('started_at', { ascending: false });
     if (error) throw error;
-    return data;
+    return data as WorkoutSessionWithRoutine[];
   },
 
   async getById(id: string): Promise<SessionWithSets> {

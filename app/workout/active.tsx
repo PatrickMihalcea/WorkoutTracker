@@ -9,14 +9,18 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useWorkoutStore } from '../../src/stores/workout.store';
+import { useProfileStore } from '../../src/stores/profile.store';
 import { ExerciseCard } from '../../src/components/workout';
 import { Button } from '../../src/components/ui';
 import { colors, fonts } from '../../src/constants';
 import { formatDuration } from '../../src/utils/date';
+import { parseWeightToKg } from '../../src/utils/units';
 
 export default function ActiveWorkoutScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { profile } = useProfileStore();
+  const weightUnit = profile?.weight_unit ?? 'kg';
   const {
     session,
     exercises,
@@ -60,12 +64,13 @@ export default function ActiveWorkoutScreen() {
   ) => {
     if (!session) return;
     const exerciseSets = sets[exerciseId] ?? [];
+    const weightKg = parseWeightToKg(weight, weightUnit);
     try {
       await addSet({
         session_id: session.id,
         exercise_id: exerciseId,
         set_number: exerciseSets.length + 1,
-        weight,
+        weight: weightKg,
         reps_performed: reps,
         rir,
         is_warmup: false,
@@ -81,8 +86,9 @@ export default function ActiveWorkoutScreen() {
     reps: number,
     rir: number | null,
   ) => {
+    const weightKg = parseWeightToKg(weight, weightUnit);
     try {
-      await updateSet(setId, { weight, reps_performed: reps, rir });
+      await updateSet(setId, { weight: weightKg, reps_performed: reps, rir });
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
@@ -127,6 +133,7 @@ export default function ActiveWorkoutScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
       >
         {exercises.map((entry) => (
           <ExerciseCard
@@ -134,6 +141,7 @@ export default function ActiveWorkoutScreen() {
             entry={entry}
             sets={sets[entry.exercise_id] ?? []}
             previousSets={previousSets[entry.exercise_id] ?? []}
+            weightUnit={weightUnit}
             onAddSet={handleAddSet}
             onUpdateSet={handleUpdateSet}
           />

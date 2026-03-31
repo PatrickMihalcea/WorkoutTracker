@@ -8,6 +8,9 @@ import {
   StyleSheet,
   Alert,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
@@ -268,7 +271,7 @@ export default function RoutineDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
         {editingName ? (
           <View style={styles.nameEditRow}>
             <TextInput
@@ -289,7 +292,7 @@ export default function RoutineDetailScreen() {
         ) : (
           <TouchableOpacity onPress={handleStartEditName} style={styles.titleRow}>
             <Text style={styles.title}>{currentRoutine.name}</Text>
-            <Text style={styles.editHint}>✎</Text>
+            <Image source={require('../../../assets/icons/edit.png')} style={styles.editHintIcon} />
           </TouchableOpacity>
         )}
 
@@ -304,7 +307,7 @@ export default function RoutineDetailScreen() {
 
       {/* Add Day Modal */}
       <Modal visible={showAddDay} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Training Day</Text>
 
@@ -351,12 +354,12 @@ export default function RoutineDetailScreen() {
               <Button title="Add Day" onPress={handleAddDay} />
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Add Exercise Modal */}
       <Modal visible={showAddExercise} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
               {showCreateExercise ? 'Create New Exercise' : 'Add Exercise'}
@@ -495,7 +498,7 @@ export default function RoutineDetailScreen() {
               style={styles.closeBtn}
             />
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -521,9 +524,10 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     color: colors.text,
   },
-  editHint: {
-    fontSize: 18,
-    color: colors.textMuted,
+  editHintIcon: {
+    width: 18,
+    height: 18,
+    tintColor: colors.textMuted,
   },
   nameEditRow: {
     flexDirection: 'row',
