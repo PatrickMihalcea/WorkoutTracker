@@ -1,15 +1,17 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { WorkoutRow, SetLog, WeightUnit, RoutineDayExerciseSet } from '../../models';
+import { WorkoutRow, SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { formatWeight } from '../../utils/units';
 
 interface SetRowProps {
   row: WorkoutRow;
   previousSet?: SetLog;
-  templateSet?: RoutineDayExerciseSet;
   weightUnit: WeightUnit;
+  suggestedWeight?: string;
+  suggestedReps?: string;
+  completionColor?: string;
   onUpdateRow: (updates: { weight?: string; reps?: string; rir?: string }) => void;
   onToggle: () => void;
   onSwipeDelete: () => void;
@@ -18,8 +20,10 @@ interface SetRowProps {
 export function SetRow({
   row,
   previousSet,
-  templateSet,
   weightUnit,
+  suggestedWeight,
+  suggestedReps,
+  completionColor,
   onUpdateRow,
   onToggle,
   onSwipeDelete,
@@ -33,14 +37,24 @@ export function SetRow({
   const [reps, setReps] = useState(row.reps);
   const [rir, setRir] = useState(row.rir);
 
-  const templateWeight = templateSet && templateSet.target_weight > 0
-    ? formatWeight(templateSet.target_weight, weightUnit)
-    : undefined;
-  const templateReps = templateSet
-    ? (templateSet.target_reps_min === templateSet.target_reps_max
-        ? String(templateSet.target_reps_min)
-        : `${templateSet.target_reps_min}-${templateSet.target_reps_max}`)
-    : undefined;
+  const suggestedRepsValue = suggestedReps?.includes('-')
+    ? suggestedReps.split('-')[1]
+    : suggestedReps;
+
+  const markDone = () => {
+    const finalWeight = weight || suggestedWeight || '0';
+    const finalReps = reps || suggestedRepsValue || '0';
+    const pendingUpdates: { weight?: string; reps?: string; rir?: string } = {};
+    if (finalWeight !== row.weight) pendingUpdates.weight = finalWeight;
+    if (finalReps !== row.reps) pendingUpdates.reps = finalReps;
+    if (rir !== row.rir) pendingUpdates.rir = rir;
+    if (Object.keys(pendingUpdates).length > 0) {
+      onUpdateRow(pendingUpdates);
+    }
+    setWeight(finalWeight);
+    setReps(finalReps);
+    onToggle();
+  };
 
   const handleWeightBlur = () => {
     if (weight !== row.weight) onUpdateRow({ weight });
@@ -50,23 +64,17 @@ export function SetRow({
   };
   const handleRirBlur = () => {
     if (rir !== row.rir) onUpdateRow({ rir });
+    if (rir && !row.is_completed) {
+      markDone();
+    }
   };
 
   const handleToggle = () => {
     if (!row.is_completed) {
-      const finalWeight = weight || '0';
-      const finalReps = reps || '0';
-      const pendingUpdates: { weight?: string; reps?: string; rir?: string } = {};
-      if (finalWeight !== row.weight) pendingUpdates.weight = finalWeight;
-      if (finalReps !== row.reps) pendingUpdates.reps = finalReps;
-      if (rir !== row.rir) pendingUpdates.rir = rir;
-      if (Object.keys(pendingUpdates).length > 0) {
-        onUpdateRow(pendingUpdates);
-      }
-      setWeight(finalWeight);
-      setReps(finalReps);
+      markDone();
+    } else {
+      onToggle();
     }
-    onToggle();
   };
 
   const handleSwipeOpen = () => {
@@ -87,18 +95,16 @@ export function SetRow({
     });
   };
 
-  const renderRightActions = (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
-    const translateX = dragX.interpolate({
-      inputRange: [-70, 0],
-      outputRange: [0, 70],
+  const renderRightActions = (progress: Animated.AnimatedInterpolation<number>) => {
+    const translateX = progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [70, 0],
       extrapolate: 'clamp',
     });
     return (
-      <TouchableOpacity style={styles.deleteAction} onPress={handleSwipeOpen} activeOpacity={0.8}>
-        <Animated.View style={[styles.deleteContent, { transform: [{ translateX }] }]}>
-          <Text style={styles.deleteText}>X</Text>
-        </Animated.View>
-      </TouchableOpacity>
+      <Animated.View style={[styles.deleteAction, { transform: [{ translateX }] }]}>
+        <Text style={styles.deleteText}>X</Text>
+      </Animated.View>
     );
   };
 
@@ -116,19 +122,32 @@ export function SetRow({
         rightThreshold={70}
         overshootRight={false}
       >
-        <View style={[styles.row, row.is_completed && styles.rowSaved]}>
+        <View style={[
+          styles.row,
+          row.is_completed && styles.rowSaved,
+          row.is_completed && completionColor && completionColor !== 'transparent' && { backgroundColor: completionColor },
+        ]}>
           <View style={styles.setLabel}>
-            <Text style={styles.setNumber}>{row.set_number}</Text>
+            <Text style={[
+              styles.setNumber,
+              row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+            ]}>{row.set_number}</Text>
           </View>
 
           <View style={styles.previousCol}>
             {previousSet ? (
-              <Text style={styles.previousText}>
+              <Text style={[
+                styles.previousText,
+                row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+              ]}>
                 {displayStoredWeight(previousSet.weight)}x{previousSet.reps_performed}
                 {previousSet.rir !== null && ` @${previousSet.rir}`}
               </Text>
             ) : (
-              <Text style={styles.previousText}>-</Text>
+              <Text style={[
+                styles.previousText,
+                row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+              ]}>-</Text>
             )}
           </View>
 
@@ -137,7 +156,7 @@ export function SetRow({
             value={weight}
             onChangeText={setWeight}
             onBlur={handleWeightBlur}
-            placeholder={templateWeight ?? '0'}
+            placeholder={suggestedWeight ?? '0'}
             placeholderTextColor={colors.textMuted}
             keyboardType="decimal-pad"
             selectTextOnFocus
@@ -148,7 +167,7 @@ export function SetRow({
             value={reps}
             onChangeText={setReps}
             onBlur={handleRepsBlur}
-            placeholder={templateReps ?? '0'}
+            placeholder={suggestedReps ?? '0'}
             placeholderTextColor={colors.textMuted}
             keyboardType="number-pad"
             selectTextOnFocus
@@ -253,10 +272,6 @@ const styles = StyleSheet.create({
   deleteAction: {
     width: 70,
     backgroundColor: '#cc3333',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteContent: {
     justifyContent: 'center',
     alignItems: 'center',
   },

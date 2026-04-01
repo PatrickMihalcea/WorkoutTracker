@@ -8,13 +8,13 @@ const { Navigator } = createMaterialTopTabNavigator();
 const SwipeableTabs = withLayoutContext(Navigator);
 
 const TAB_ICONS: Record<string, string> = {
-  index: '●',
+  today: '●',
   routines: '≡',
   profile: '○',
 };
 
 const TAB_LABELS: Record<string, string> = {
-  index: 'Today',
+  today: 'Today',
   routines: 'Routines',
   history: 'History',
   profile: 'Profile',
@@ -88,7 +88,7 @@ export default function TabLayout() {
         }}
       >
       <SwipeableTabs.Screen
-        name="index"
+        name="today"
         options={{ title: 'Today' }}
       />
       <SwipeableTabs.Screen

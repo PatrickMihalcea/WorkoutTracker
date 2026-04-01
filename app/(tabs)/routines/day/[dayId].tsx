@@ -79,18 +79,16 @@ function SwipeableExerciseRow({
     <Animated.View style={{ opacity: fadeAnim, maxHeight, overflow: 'hidden' }}>
       <Swipeable
         ref={swipeRef}
-        renderRightActions={(_progress, dragX) => {
-          const translateX = dragX.interpolate({
-            inputRange: [-70, 0],
-            outputRange: [0, 70],
+        renderRightActions={(progress) => {
+          const translateX = progress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [70, 0],
             extrapolate: 'clamp',
           });
           return (
-            <TouchableOpacity style={styles.swipeDeleteAction} onPress={animateDelete} activeOpacity={0.8}>
-              <Animated.View style={{ transform: [{ translateX }] }}>
-                <Text style={styles.swipeDeleteText}>X</Text>
-              </Animated.View>
-            </TouchableOpacity>
+            <Animated.View style={[styles.swipeDeleteAction, { transform: [{ translateX }] }]}>
+              <Text style={styles.swipeDeleteText}>X</Text>
+            </Animated.View>
           );
         }}
         onSwipeableOpen={animateDelete}

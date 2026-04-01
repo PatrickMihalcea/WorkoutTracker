@@ -30,6 +30,8 @@ export default function SettingsScreen() {
       <Text style={styles.sectionHeader}>Preferences</Text>
       <View style={styles.section}>
         <SettingsItem label="Units" onPress={() => router.push('/(tabs)/profile/units')} />
+        <SettingsItem label="Colour Customization" onPress={() => router.push('/(tabs)/profile/colour-customization')} />
+        <SettingsItem label="Workouts" onPress={() => router.push('/(tabs)/profile/workouts')} />
       </View>
     </View>
   );

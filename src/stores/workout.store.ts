@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { LayoutAnimation } from 'react-native';
 import { WorkoutSession, WorkoutRow, SetLog, RoutineDayExercise, Exercise } from '../models';
 import { sessionService, workoutRowService, routineService, exerciseService } from '../services';
 
@@ -25,6 +26,7 @@ interface WorkoutState {
   rows: RowMap;
   previousSets: PreviousSetsMap;
   exercises: RoutineDayExercise[];
+  collapsedCards: Record<string, boolean>;
   loading: boolean;
 
   startWorkout: (userId: string, routineDayId: string, exercises: RoutineDayExercise[]) => Promise<void>;
@@ -37,6 +39,7 @@ interface WorkoutState {
   addExercise: (exercise: Exercise, setsPayload: { set_number: number; target_weight: number; target_reps_min: number; target_reps_max: number }[]) => Promise<void>;
   loadPreviousSets: (exerciseIds: string[], userId: string) => Promise<void>;
   reorderExercises: (newOrder: RoutineDayExercise[]) => Promise<void>;
+  toggleCollapse: (entryId: string) => void;
   completeWorkout: (weightUnit: string) => Promise<void>;
   cancelWorkout: () => Promise<void>;
   reset: () => void;
@@ -56,6 +59,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   rows: {},
   previousSets: {},
   exercises: [],
+  collapsedCards: {},
   loading: false,
 
   startWorkout: async (userId, routineDayId, exercises) => {
@@ -74,7 +78,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         status: 'in_progress',
       });
       const allRows = await workoutRowService.createInitialRows(session.id, exercises);
-      set({ session, exercises, rows: groupByEntry(allRows) });
+      set({ session, exercises, rows: groupByEntry(allRows), collapsedCards: {} });
     } finally {
       set({ loading: false });
     }
@@ -123,7 +127,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         const orderB = grouped[b.id]?.[0]?.exercise_order ?? 999;
         return orderA - orderB;
       });
-      set({ session, exercises: allEntries, rows: grouped });
+      const collapsedCards: Record<string, boolean> = {};
+      for (const entry of allEntries) {
+        const entryRows = grouped[entry.id] ?? [];
+        if (entryRows.length > 0 && entryRows.every((r) => r.is_completed)) {
+          collapsedCards[entry.id] = true;
+        }
+      }
+      set({ session, exercises: allEntries, rows: grouped, collapsedCards });
       return true;
     } finally {
       set({ loading: false });
@@ -155,6 +166,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         ),
       },
     }));
+    const updatedRows = get().rows[entryId] ?? [];
+    const allDone = updatedRows.length > 0 && updatedRows.every((r) => r.is_completed);
+    if (allDone) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      set((state) => ({
+        collapsedCards: { ...state.collapsedCards, [entryId]: true },
+      }));
+    }
   },
 
   deleteRow: async (id, entryId, setNumber) => {
@@ -254,6 +273,15 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     set({ previousSets });
   },
 
+  toggleCollapse: (entryId) => {
+    set((state) => ({
+      collapsedCards: {
+        ...state.collapsedCards,
+        [entryId]: !state.collapsedCards[entryId],
+      },
+    }));
+  },
+
   reorderExercises: async (newOrder) => {
     const { session } = get();
     if (!session) return;
@@ -296,7 +324,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
     await workoutRowService.deleteBySession(session.id);
     await sessionService.complete(session.id);
-    set({ session: null, rows: {}, exercises: [], previousSets: {} });
+    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {} });
   },
 
   cancelWorkout: async () => {
@@ -304,10 +332,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     if (!session) return;
     await workoutRowService.deleteBySession(session.id);
     await sessionService.cancel(session.id);
-    set({ session: null, rows: {}, exercises: [], previousSets: {} });
+    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {} });
   },
 
   reset: () => {
-    set({ session: null, rows: {}, exercises: [], previousSets: {} });
+    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {} });
   },
 }));

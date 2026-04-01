@@ -1,16 +1,16 @@
 import { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useAuthStore } from '../../src/stores/auth.store';
-import { useRoutineStore } from '../../src/stores/routine.store';
-import { useWorkoutStore } from '../../src/stores/workout.store';
-import { useProfileStore } from '../../src/stores/profile.store';
-import { Button, Card, EmptyState } from '../../src/components/ui';
-import { colors, fonts } from '../../src/constants';
-import { getCurrentDayOfWeek, formatDuration } from '../../src/utils/date';
-import { weightUnitLabel, formatWeight } from '../../src/utils/units';
-import { DAY_LABELS, DayOfWeek, Routine, RoutineWithDays, RoutineDayWithExercises } from '../../src/models';
-import { sessionService, routineService } from '../../src/services';
+import { useAuthStore } from '../../../src/stores/auth.store';
+import { useRoutineStore } from '../../../src/stores/routine.store';
+import { useWorkoutStore } from '../../../src/stores/workout.store';
+import { useProfileStore } from '../../../src/stores/profile.store';
+import { Button, Card, EmptyState } from '../../../src/components/ui';
+import { colors, fonts } from '../../../src/constants';
+import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
+import { weightUnitLabel, formatWeight } from '../../../src/utils/units';
+import { DAY_LABELS, DayOfWeek, Routine, RoutineWithDays, RoutineDayWithExercises } from '../../../src/models';
+import { sessionService, routineService } from '../../../src/services';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -108,9 +108,6 @@ export default function HomeScreen() {
   if (!activeRoutine) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Today</Text>
-        </View>
         <ScrollView
           contentContainerStyle={styles.emptyContainer}
           refreshControl={
@@ -134,9 +131,6 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Today</Text>
-      </View>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
@@ -356,17 +350,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    backgroundColor: colors.background,
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    textAlign: 'center',
-  },
   scrollView: {
     flex: 1,
   },
@@ -525,7 +508,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     paddingHorizontal: 20,

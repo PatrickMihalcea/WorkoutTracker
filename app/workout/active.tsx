@@ -1,35 +1,41 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useLayoutEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   Pressable,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation } from 'expo-router';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useWorkoutStore } from '../../src/stores/workout.store';
 import { useProfileStore } from '../../src/stores/profile.store';
-import { ExerciseCard } from '../../src/components/workout';
+import { ExerciseCard, RestTimerBar, RestTimerModal } from '../../src/components/workout';
 import { Button } from '../../src/components/ui';
 import { AddExerciseModal, SetsPayloadItem } from '../../src/components/routine/AddExerciseModal';
 import { colors, fonts } from '../../src/constants';
-import { formatDuration } from '../../src/utils/date';
+import { formatElapsed } from '../../src/utils/date';
 import { Exercise, RoutineDayExercise } from '../../src/models';
 
 export default function ActiveWorkoutScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { user } = useAuthStore();
-  const { profile } = useProfileStore();
+  const { profile, updateProfile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
+  const restTimerDefault = profile?.rest_timer_seconds ?? 90;
   const {
     session,
     exercises,
     rows,
     previousSets,
+    collapsedCards,
     loadPreviousSets,
     updateRow,
     toggleRow,
@@ -38,13 +44,52 @@ export default function ActiveWorkoutScreen() {
     removeExercise,
     addExercise,
     reorderExercises,
+    toggleCollapse,
     completeWorkout,
     cancelWorkout,
   } = useWorkoutStore();
 
-  const [elapsed, setElapsed] = useState('0m');
+  const [elapsed, setElapsed] = useState('0m 00s');
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const [restTimerActive, setRestTimerActive] = useState(false);
+  const [restTimerKey, setRestTimerKey] = useState(0);
+  const [showTimerSettings, setShowTimerSettings] = useState(false);
+
+  const { completedSets, totalSets } = useMemo(() => {
+    let completed = 0;
+    let total = 0;
+    for (const entryRows of Object.values(rows)) {
+      for (const r of entryRows) {
+        total++;
+        if (r.is_completed) completed++;
+      }
+    }
+    return { completedSets: completed, totalSets: total };
+  }, [rows]);
+
+  const handleComplete = useCallback(() => {
+    Alert.alert('Complete Workout', 'Finish and save this workout?', [
+      { text: 'Keep Going', style: 'cancel' },
+      {
+        text: 'Complete',
+        onPress: async () => {
+          await completeWorkout(weightUnit);
+          router.replace('/(tabs)');
+        },
+      },
+    ]);
+  }, [completeWorkout, weightUnit, router]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity style={headerStyles.finishBtn} onPress={handleComplete} activeOpacity={0.7}>
+          <Text style={headerStyles.finishBtnText}>Finish</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, handleComplete]);
 
   useEffect(() => {
     if (!session) {
@@ -60,11 +105,18 @@ export default function ActiveWorkoutScreen() {
   useEffect(() => {
     if (!session) return;
     const interval = setInterval(() => {
-      setElapsed(formatDuration(session.started_at, null));
-    }, 10000);
-    setElapsed(formatDuration(session.started_at, null));
+      setElapsed(formatElapsed(session.started_at));
+    }, 1000);
+    setElapsed(formatElapsed(session.started_at));
     return () => clearInterval(interval);
   }, [session]);
+
+  const startRestTimer = useCallback(() => {
+    if (restTimerDefault > 0) {
+      setRestTimerActive(true);
+      setRestTimerKey((k) => k + 1);
+    }
+  }, [restTimerDefault]);
 
   const handleUpdate = async (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => {
     try {
@@ -77,6 +129,10 @@ export default function ActiveWorkoutScreen() {
   const handleToggle = async (id: string, entryId: string) => {
     try {
       await toggleRow(id, entryId);
+      const row = (rows[entryId] ?? []).find((r) => r.id === id);
+      if (row && !row.is_completed) {
+        startRestTimer();
+      }
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
@@ -124,19 +180,6 @@ export default function ActiveWorkoutScreen() {
     }
   };
 
-  const handleComplete = () => {
-    Alert.alert('Complete Workout', 'Finish and save this workout?', [
-      { text: 'Keep Going', style: 'cancel' },
-      {
-        text: 'Complete',
-        onPress: async () => {
-          await completeWorkout(weightUnit);
-          router.replace('/(tabs)');
-        },
-      },
-    ]);
-  };
-
   const handleCancel = () => {
     Alert.alert('Cancel Workout', 'Discard this workout session?', [
       { text: 'Keep Going', style: 'cancel' },
@@ -151,25 +194,30 @@ export default function ActiveWorkoutScreen() {
     ]);
   };
 
+  const handleTimerSettingsSave = async (seconds: number) => {
+    await updateProfile({ rest_timer_seconds: seconds });
+  };
+
   const handleDragEnd = useCallback(({ data }: { data: RoutineDayExercise[] }) => {
     reorderExercises(data);
   }, [reorderExercises]);
 
   const renderNormalItem = useCallback(({ item }: { item: RoutineDayExercise }) => (
-    <Pressable onLongPress={() => setReordering(true)}>
-      <ExerciseCard
-        entry={item}
-        rows={rows[item.id] ?? []}
-        previousSets={previousSets[item.exercise_id] ?? []}
-        weightUnit={weightUnit}
-        onUpdateRow={handleUpdate}
-        onToggleRow={handleToggle}
-        onDeleteRow={handleDelete}
-        onAddRow={handleAdd}
-        onRemove={() => handleRemoveExercise(item.id)}
-      />
-    </Pressable>
-  ), [rows, previousSets, weightUnit, handleUpdate, handleToggle, handleDelete, handleAdd, handleRemoveExercise]);
+    <ExerciseCard
+      entry={item}
+      rows={rows[item.id] ?? []}
+      previousSets={previousSets[item.exercise_id] ?? []}
+      weightUnit={weightUnit}
+      isCollapsed={collapsedCards[item.id] ?? false}
+      onToggleCollapse={() => toggleCollapse(item.id)}
+      onLongPress={() => setReordering(true)}
+      onUpdateRow={handleUpdate}
+      onToggleRow={handleToggle}
+      onDeleteRow={handleDelete}
+      onAddRow={handleAdd}
+      onRemove={() => handleRemoveExercise(item.id)}
+    />
+  ), [rows, previousSets, weightUnit, collapsedCards, toggleCollapse, handleUpdate, handleToggle, handleDelete, handleAdd, handleRemoveExercise]);
 
   const noop = useCallback(() => {}, []);
 
@@ -181,7 +229,7 @@ export default function ActiveWorkoutScreen() {
           rows={rows[item.id] ?? []}
           previousSets={previousSets[item.exercise_id] ?? []}
           weightUnit={weightUnit}
-          collapsed
+          reorderCollapsed
           onUpdateRow={noop as any}
           onToggleRow={noop as any}
           onDeleteRow={noop as any}
@@ -195,21 +243,40 @@ export default function ActiveWorkoutScreen() {
   const keyExtractor = useCallback((item: RoutineDayExercise) => item.id, []);
 
   const normalFooter = useCallback(() => (
-    <TouchableOpacity
-      style={styles.addExerciseBtn}
-      onPress={() => setShowAddExercise(true)}
-      activeOpacity={0.7}
-    >
-      <Text style={styles.addExerciseText}>+ Add Exercise</Text>
-    </TouchableOpacity>
-  ), []);
+    <View>
+      <TouchableOpacity
+        style={styles.addExerciseBtn}
+        onPress={() => setShowAddExercise(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.addExerciseText}>+ Add Exercise</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.cancelBtn}
+        onPress={handleCancel}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.cancelText}>Cancel Workout</Text>
+      </TouchableOpacity>
+    </View>
+  ), [handleCancel]);
 
   if (!session) return null;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.timer}>{elapsed}</Text>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.infoBar}>
+        <Text style={styles.elapsedTimer}>{elapsed}</Text>
+        <TouchableOpacity onPress={() => setShowTimerSettings(true)} activeOpacity={0.7} style={styles.timerIconBtn}>
+          <Image
+            source={require('../../assets/icons/stopwatch.png')}
+            style={styles.timerIcon}
+          />
+        </TouchableOpacity>
+        <Text style={styles.setsCounter}>Sets: {completedSets}/{totalSets}</Text>
       </View>
 
       <View style={{ flex: 1 }}>
@@ -229,34 +296,36 @@ export default function ActiveWorkoutScreen() {
             ListFooterComponent={normalFooter}
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
           />
         )}
       </View>
 
-      <View style={styles.footer}>
-        {reordering ? (
+      {reordering && (
+        <View style={styles.reorderFooter}>
           <Button
             title="Done Reordering"
             onPress={() => setReordering(false)}
-            style={styles.completeBtn}
+            style={{ flex: 1 }}
           />
-        ) : (
-          <>
-            <Button
-              title="Cancel"
-              variant="danger"
-              onPress={handleCancel}
-              style={styles.cancelBtn}
-              size="sm"
-            />
-            <Button
-              title="Complete Workout"
-              onPress={handleComplete}
-              style={styles.completeBtn}
-            />
-          </>
-        )}
-      </View>
+        </View>
+      )}
+
+      {restTimerActive && (
+        <RestTimerBar
+          key={restTimerKey}
+          initialSeconds={restTimerDefault}
+          onDismiss={() => setRestTimerActive(false)}
+          onLongPress={() => setShowTimerSettings(true)}
+        />
+      )}
+
+      <RestTimerModal
+        visible={showTimerSettings}
+        currentValue={restTimerDefault}
+        onSave={handleTimerSettingsSave}
+        onClose={() => setShowTimerSettings(false)}
+      />
 
       <AddExerciseModal
         visible={showAddExercise}
@@ -264,25 +333,57 @@ export default function ActiveWorkoutScreen() {
         onConfirm={handleAddExerciseConfirm}
         weightUnit={weightUnit}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
+
+const headerStyles = StyleSheet.create({
+  finishBtn: {
+    backgroundColor: colors.text,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  finishBtnText: {
+    color: colors.background,
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
+  infoBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  timer: {
-    fontSize: 20,
-    fontFamily: fonts.bold,
-    color: colors.text,
+  elapsedTimer: {
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  timerIconBtn: {
+    paddingHorizontal: 12,
+  },
+  timerIcon: {
+    width: 18,
+    height: 18,
+    tintColor: colors.text,
+  },
+  setsCounter: {
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    flex: 1,
+    textAlign: 'right',
   },
   scrollContent: {
     paddingHorizontal: 8,
@@ -293,7 +394,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
     marginTop: 4,
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
@@ -304,18 +405,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.semiBold,
   },
-  footer: {
+  cancelBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  cancelText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+  },
+  reorderFooter: {
     flexDirection: 'row',
     padding: 16,
     gap: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-  },
-  cancelBtn: {
-    flex: 0,
-    paddingHorizontal: 20,
-  },
-  completeBtn: {
-    flex: 1,
   },
 });

@@ -3,6 +3,11 @@ export type WeightUnit = 'kg' | 'lbs';
 export type HeightUnit = 'cm' | 'in';
 export type DistanceUnit = 'km' | 'miles';
 
+export interface ColorPreferences {
+  setCompletion?: string;
+  accent?: string;
+}
+
 export interface UserProfile {
   id: string;
   display_name: string;
@@ -15,6 +20,8 @@ export interface UserProfile {
   weight_unit: WeightUnit;
   height_unit: HeightUnit;
   distance_unit: DistanceUnit;
+  color_preferences: ColorPreferences;
+  rest_timer_seconds: number;
   onboarding_complete: boolean;
   created_at: string;
 }
