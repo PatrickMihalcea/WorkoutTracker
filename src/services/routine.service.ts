@@ -7,6 +7,7 @@ import {
   RoutineDayExerciseInsert,
   RoutineDayExerciseSetInsert,
   RoutineWithDays,
+  RoutineDayWithExercises,
 } from '../models';
 import { supabase } from './supabase';
 
@@ -87,6 +88,28 @@ export const routineService = {
       });
     });
     return routine;
+  },
+
+  async getDayWithExercises(dayId: string): Promise<RoutineDayWithExercises> {
+    const { data, error } = await supabase
+      .from('routine_days')
+      .select(`
+        *,
+        exercises:routine_day_exercises (
+          *,
+          exercise:exercises (*),
+          sets:routine_day_exercise_sets (*)
+        )
+      `)
+      .eq('id', dayId)
+      .single();
+    if (error) throw error;
+    const day = data as RoutineDayWithExercises;
+    day.exercises.sort((a, b) => a.sort_order - b.sort_order);
+    day.exercises.forEach((ex) => {
+      ex.sets?.sort((a, b) => a.set_number - b.set_number);
+    });
+    return day;
   },
 
   async create(routine: RoutineInsert): Promise<Routine> {

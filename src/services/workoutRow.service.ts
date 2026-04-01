@@ -9,15 +9,21 @@ export const workoutRowService = {
   ): Promise<WorkoutRow[]> {
     const rows: Omit<WorkoutRow, 'id'>[] = [];
     for (const ex of exercises) {
+      const sets = ex.sets ?? [];
       for (let i = 1; i <= ex.target_sets; i++) {
+        const tpl = sets.find((s) => s.set_number === i);
         rows.push({
           session_id: sessionId,
           exercise_id: ex.exercise_id,
+          routine_day_exercise_id: ex.id,
           set_number: i,
           weight: '',
           reps: '',
           rir: '',
           is_completed: false,
+          target_weight: tpl?.target_weight ?? 0,
+          target_reps_min: tpl?.target_reps_min ?? 0,
+          target_reps_max: tpl?.target_reps_max ?? 0,
         });
       }
     }
@@ -35,7 +41,7 @@ export const workoutRowService = {
       .from('workout_rows')
       .select('*')
       .eq('session_id', sessionId)
-      .order('exercise_id')
+      .order('routine_day_exercise_id')
       .order('set_number');
     if (error) throw error;
     return data ?? [];
@@ -55,17 +61,27 @@ export const workoutRowService = {
     return data;
   },
 
-  async addRow(sessionId: string, exerciseId: string, setNumber: number): Promise<WorkoutRow> {
+  async addRow(
+    sessionId: string,
+    exerciseId: string,
+    entryId: string,
+    setNumber: number,
+    targets?: { target_weight: number; target_reps_min: number; target_reps_max: number },
+  ): Promise<WorkoutRow> {
     const { data, error } = await supabase
       .from('workout_rows')
       .insert({
         session_id: sessionId,
         exercise_id: exerciseId,
+        routine_day_exercise_id: entryId,
         set_number: setNumber,
         weight: '',
         reps: '',
         rir: '',
         is_completed: false,
+        target_weight: targets?.target_weight ?? 0,
+        target_reps_min: targets?.target_reps_min ?? 0,
+        target_reps_max: targets?.target_reps_max ?? 0,
       })
       .select()
       .single();
@@ -76,7 +92,7 @@ export const workoutRowService = {
   async deleteAndRenumber(
     id: string,
     sessionId: string,
-    exerciseId: string,
+    entryId: string,
     deletedSetNumber: number,
   ): Promise<void> {
     const { error: delError } = await supabase
@@ -89,7 +105,7 @@ export const workoutRowService = {
       .from('workout_rows')
       .select('*')
       .eq('session_id', sessionId)
-      .eq('exercise_id', exerciseId)
+      .eq('routine_day_exercise_id', entryId)
       .gt('set_number', deletedSetNumber)
       .order('set_number');
     if (fetchError) throw fetchError;
@@ -101,6 +117,15 @@ export const workoutRowService = {
         .eq('id', row.id);
       if (error) throw error;
     }
+  },
+
+  async deleteByEntry(sessionId: string, entryId: string): Promise<void> {
+    const { error } = await supabase
+      .from('workout_rows')
+      .delete()
+      .eq('session_id', sessionId)
+      .eq('routine_day_exercise_id', entryId);
+    if (error) throw error;
   },
 
   async deleteBySession(sessionId: string): Promise<void> {

@@ -28,6 +28,9 @@ export const sessionService = {
     if (error) throw error;
     const session = data as SessionWithSets;
     session.sets.sort((a, b) => {
+      const orderA = a.exercise_order ?? -1;
+      const orderB = b.exercise_order ?? -1;
+      if (orderA !== orderB) return orderA - orderB;
       if (a.exercise_id !== b.exercise_id) return a.exercise_id.localeCompare(b.exercise_id);
       return a.set_number - b.set_number;
     });
@@ -43,6 +46,9 @@ export const sessionService = {
     if (error) throw error;
     const session = data as SessionWithSetsAndExercises;
     session.sets.sort((a, b) => {
+      const orderA = a.exercise_order ?? -1;
+      const orderB = b.exercise_order ?? -1;
+      if (orderA !== orderB) return orderA - orderB;
       if (a.exercise_id !== b.exercise_id) return a.exercise_id.localeCompare(b.exercise_id);
       return a.set_number - b.set_number;
     });

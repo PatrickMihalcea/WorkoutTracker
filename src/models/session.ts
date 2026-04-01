@@ -22,6 +22,7 @@ export interface SetLog {
   reps_performed: number;
   rir: number | null;
   is_warmup: boolean;
+  exercise_order: number | null;
 }
 
 export type SetLogInsert = Omit<SetLog, 'id'>;
@@ -42,11 +43,15 @@ export interface WorkoutRow {
   id: string;
   session_id: string;
   exercise_id: string;
+  routine_day_exercise_id: string;
   set_number: number;
   weight: string;
   reps: string;
   rir: string;
   is_completed: boolean;
+  target_weight: number;
+  target_reps_min: number;
+  target_reps_max: number;
 }
 
 export interface WorkoutSessionWithRoutine extends WorkoutSession {

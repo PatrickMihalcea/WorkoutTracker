@@ -1,5 +1,6 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { Card } from '../ui/Card';
@@ -11,10 +12,11 @@ interface ExerciseCardProps {
   rows: WorkoutRow[];
   previousSets: SetLog[];
   weightUnit: WeightUnit;
-  onUpdateRow: (id: string, exerciseId: string, updates: { weight?: string; reps?: string; rir?: string }) => void;
-  onToggleRow: (id: string, exerciseId: string) => void;
-  onDeleteRow: (id: string, exerciseId: string, setNumber: number) => void;
-  onAddRow: (exerciseId: string) => void;
+  onUpdateRow: (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => void;
+  onToggleRow: (id: string, entryId: string) => void;
+  onDeleteRow: (id: string, entryId: string, setNumber: number) => void;
+  onAddRow: (entryId: string, exerciseId: string) => void;
+  onRemove?: () => void;
 }
 
 export function ExerciseCard({
@@ -26,64 +28,107 @@ export function ExerciseCard({
   onToggleRow,
   onDeleteRow,
   onAddRow,
+  onRemove,
 }: ExerciseCardProps) {
   const exerciseName = entry.exercise?.name ?? 'Unknown Exercise';
   const muscleGroup = entry.exercise?.muscle_group ?? '';
   const completedCount = rows.filter((r) => r.is_completed).length;
   const templates = entry.sets ?? [];
 
+  const swipeRef = useRef<Swipeable>(null);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const heightAnim = useRef(new Animated.Value(1)).current;
+
+  const renderRightActions = () => (
+    <View style={styles.swipeDeleteAction}>
+      <Text style={styles.swipeDeleteText}>✕</Text>
+    </View>
+  );
+
+  const handleSwipeOpen = () => {
+    swipeRef.current?.close();
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
+      Animated.timing(heightAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
+    ]).start(() => {
+      onRemove?.();
+    });
+  };
+
+  const maxHeight = heightAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 600],
+  });
+
+  const headerContent = (
+    <View style={styles.header}>
+      <View>
+        <Text style={styles.exerciseName}>{exerciseName}</Text>
+        <Text style={styles.muscleGroup}>{muscleGroup}</Text>
+      </View>
+      <Text style={styles.setCount}>
+        {completedCount}/{rows.length}
+      </Text>
+    </View>
+  );
+
   return (
-    <Card style={styles.card}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.exerciseName}>{exerciseName}</Text>
-          <Text style={styles.muscleGroup}>{muscleGroup}</Text>
-        </View>
-        <Text style={styles.setCount}>
-          {completedCount}/{rows.length}
-        </Text>
-      </View>
+    <Animated.View style={{ opacity: fadeAnim, maxHeight, overflow: 'hidden' }}>
+      <Card style={styles.card}>
+        {onRemove ? (
+          <Swipeable
+            ref={swipeRef}
+            renderRightActions={renderRightActions}
+            onSwipeableOpen={handleSwipeOpen}
+            overshootRight={false}
+          >
+            {headerContent}
+          </Swipeable>
+        ) : (
+          headerContent
+        )}
 
-      <View style={styles.columnHeaders}>
-        <View style={styles.setLabelCol}>
-          <Text style={styles.colHeader}>SET</Text>
+        <View style={styles.columnHeaders}>
+          <View style={styles.setLabelCol}>
+            <Text style={styles.colHeader}>SET</Text>
+          </View>
+          <View style={styles.previousCol}>
+            <Text style={styles.colHeader}>PREV</Text>
+          </View>
+          <View style={styles.weightCol}>
+            <Text style={styles.colHeader}>{weightUnitLabel(weightUnit)}</Text>
+          </View>
+          <View style={styles.inputCol}>
+            <Text style={styles.colHeader}>REPS</Text>
+          </View>
+          <View style={styles.rirCol}>
+            <Text style={styles.colHeader}>RIR</Text>
+          </View>
+          <View style={styles.actionCol} />
         </View>
-        <View style={styles.previousCol}>
-          <Text style={styles.colHeader}>PREV</Text>
-        </View>
-        <View style={styles.weightCol}>
-          <Text style={styles.colHeader}>{weightUnitLabel(weightUnit)}</Text>
-        </View>
-        <View style={styles.inputCol}>
-          <Text style={styles.colHeader}>REPS</Text>
-        </View>
-        <View style={styles.rirCol}>
-          <Text style={styles.colHeader}>RIR</Text>
-        </View>
-        <View style={styles.actionCol} />
-      </View>
 
-      {rows.map((row, i) => (
-        <SetRow
-          key={row.id}
-          row={row}
-          previousSet={previousSets[i]}
-          templateSet={templates[i]}
-          weightUnit={weightUnit}
-          onUpdateRow={(updates) => onUpdateRow(row.id, entry.exercise_id, updates)}
-          onToggle={() => onToggleRow(row.id, entry.exercise_id)}
-          onSwipeDelete={() => onDeleteRow(row.id, entry.exercise_id, row.set_number)}
-        />
-      ))}
+        {rows.map((row, i) => (
+          <SetRow
+            key={row.id}
+            row={row}
+            previousSet={previousSets[i]}
+            templateSet={templates[i]}
+            weightUnit={weightUnit}
+            onUpdateRow={(updates) => onUpdateRow(row.id, entry.id, updates)}
+            onToggle={() => onToggleRow(row.id, entry.id)}
+            onSwipeDelete={() => onDeleteRow(row.id, entry.id, row.set_number)}
+          />
+        ))}
 
-      <TouchableOpacity
-        style={styles.addSetButton}
-        onPress={() => onAddRow(entry.exercise_id)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.addSetText}>+ Add Set</Text>
-      </TouchableOpacity>
-    </Card>
+        <TouchableOpacity
+          style={styles.addSetButton}
+          onPress={() => onAddRow(entry.id, entry.exercise_id)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.addSetText}>+ Add Set</Text>
+        </TouchableOpacity>
+      </Card>
+    </Animated.View>
   );
 }
 
@@ -113,6 +158,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: fonts.bold,
     color: colors.text,
+  },
+  swipeDeleteAction: {
+    width: 70,
+    backgroundColor: '#cc3333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  swipeDeleteText: {
+    color: '#fff',
+    fontSize: 18,
+    fontFamily: fonts.bold,
   },
   columnHeaders: {
     flexDirection: 'row',

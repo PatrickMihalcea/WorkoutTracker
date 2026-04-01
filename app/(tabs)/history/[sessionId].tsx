@@ -30,23 +30,29 @@ interface ExerciseGroup {
 }
 
 function groupSetsByExercise(sets: SetLogWithExercise[]): ExerciseGroup[] {
+  const groups: ExerciseGroup[] = [];
   const map = new Map<string, ExerciseGroup>();
 
   for (const set of sets) {
-    const existing = map.get(set.exercise_id);
+    const key = set.exercise_order != null
+      ? `${set.exercise_order}_${set.exercise_id}`
+      : set.exercise_id;
+    const existing = map.get(key);
     if (existing) {
       existing.sets.push(set);
     } else {
-      map.set(set.exercise_id, {
+      const group: ExerciseGroup = {
         exerciseId: set.exercise_id,
         exerciseName: set.exercise?.name ?? 'Unknown',
         muscleGroup: set.exercise?.muscle_group ?? '',
         sets: [set],
-      });
+      };
+      map.set(key, group);
+      groups.push(group);
     }
   }
 
-  return Array.from(map.values());
+  return groups;
 }
 
 function computeDurationMinutes(startedAt: string, completedAt: string | null): number {
@@ -182,8 +188,8 @@ export default function SessionDetailScreen() {
           </View>
         </View>
 
-        {groups.map((group) => (
-          <Card key={group.exerciseId} style={styles.exerciseCard}>
+        {groups.map((group, idx) => (
+          <Card key={idx} style={styles.exerciseCard}>
             <View style={styles.exerciseHeader}>
               <Text style={styles.exerciseName}>{group.exerciseName}</Text>
               <Text style={styles.muscleGroup}>{group.muscleGroup}</Text>

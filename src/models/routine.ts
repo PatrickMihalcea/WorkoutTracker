@@ -13,7 +13,7 @@ export type RoutineInsert = Omit<Routine, 'id' | 'created_at'>;
 export interface RoutineDay {
   id: string;
   routine_id: string;
-  day_of_week: DayOfWeek;
+  day_of_week: DayOfWeek | null;
   label: string;
 }
 

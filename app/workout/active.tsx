@@ -3,6 +3,7 @@ import {
   View,
   Text,
   ScrollView,
+  TouchableOpacity,
   StyleSheet,
   Alert,
 } from 'react-native';
@@ -12,8 +13,10 @@ import { useWorkoutStore } from '../../src/stores/workout.store';
 import { useProfileStore } from '../../src/stores/profile.store';
 import { ExerciseCard } from '../../src/components/workout';
 import { Button } from '../../src/components/ui';
+import { AddExerciseModal, SetsPayloadItem } from '../../src/components/routine/AddExerciseModal';
 import { colors, fonts } from '../../src/constants';
 import { formatDuration } from '../../src/utils/date';
+import { Exercise } from '../../src/models';
 
 export default function ActiveWorkoutScreen() {
   const router = useRouter();
@@ -30,11 +33,14 @@ export default function ActiveWorkoutScreen() {
     toggleRow,
     deleteRow,
     addRow,
+    removeExercise,
+    addExercise,
     completeWorkout,
     cancelWorkout,
   } = useWorkoutStore();
 
   const [elapsed, setElapsed] = useState('0m');
+  const [showAddExercise, setShowAddExercise] = useState(false);
 
   useEffect(() => {
     if (!session) {
@@ -56,33 +62,59 @@ export default function ActiveWorkoutScreen() {
     return () => clearInterval(interval);
   }, [session]);
 
-  const handleUpdate = async (id: string, exerciseId: string, updates: { weight?: string; reps?: string; rir?: string }) => {
+  const handleUpdate = async (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => {
     try {
-      await updateRow(id, exerciseId, updates);
+      await updateRow(id, entryId, updates);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
   };
 
-  const handleToggle = async (id: string, exerciseId: string) => {
+  const handleToggle = async (id: string, entryId: string) => {
     try {
-      await toggleRow(id, exerciseId);
+      await toggleRow(id, entryId);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
   };
 
-  const handleDelete = async (id: string, exerciseId: string, setNumber: number) => {
+  const handleDelete = async (id: string, entryId: string, setNumber: number) => {
     try {
-      await deleteRow(id, exerciseId, setNumber);
+      await deleteRow(id, entryId, setNumber);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
   };
 
-  const handleAdd = async (exerciseId: string) => {
+  const handleAdd = async (entryId: string, exerciseId: string) => {
     try {
-      await addRow(exerciseId);
+      await addRow(entryId, exerciseId);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
+  const handleRemoveExercise = async (entryId: string) => {
+    try {
+      await removeExercise(entryId);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
+  const handleAddExerciseConfirm = async (exercise: Exercise, setsPayload: SetsPayloadItem[]) => {
+    try {
+      await addExercise(exercise, setsPayload);
+      if (user) {
+        const sets = await import('../../src/services').then(
+          (m) => m.sessionService.getLastSessionSets(exercise.id, user.id),
+        );
+        if (sets.length > 0) {
+          useWorkoutStore.setState((state) => ({
+            previousSets: { ...state.previousSets, [exercise.id]: sets },
+          }));
+        }
+      }
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
@@ -133,15 +165,24 @@ export default function ActiveWorkoutScreen() {
           <ExerciseCard
             key={entry.id}
             entry={entry}
-            rows={rows[entry.exercise_id] ?? []}
+            rows={rows[entry.id] ?? []}
             previousSets={previousSets[entry.exercise_id] ?? []}
             weightUnit={weightUnit}
             onUpdateRow={handleUpdate}
             onToggleRow={handleToggle}
             onDeleteRow={handleDelete}
             onAddRow={handleAdd}
+            onRemove={() => handleRemoveExercise(entry.id)}
           />
         ))}
+
+        <TouchableOpacity
+          style={styles.addExerciseBtn}
+          onPress={() => setShowAddExercise(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.addExerciseText}>+ Add Exercise</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <View style={styles.footer}>
@@ -158,6 +199,13 @@ export default function ActiveWorkoutScreen() {
           style={styles.completeBtn}
         />
       </View>
+
+      <AddExerciseModal
+        visible={showAddExercise}
+        onClose={() => setShowAddExercise(false)}
+        onConfirm={handleAddExerciseConfirm}
+        weightUnit={weightUnit}
+      />
     </View>
   );
 }
@@ -185,6 +233,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 16,
     paddingBottom: 32,
+  },
+  addExerciseBtn: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginTop: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderStyle: 'dashed',
+  },
+  addExerciseText: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
   },
   footer: {
     flexDirection: 'row',
