@@ -36,6 +36,7 @@ interface WorkoutState {
   removeExercise: (entryId: string) => Promise<void>;
   addExercise: (exercise: Exercise, setsPayload: { set_number: number; target_weight: number; target_reps_min: number; target_reps_max: number }[]) => Promise<void>;
   loadPreviousSets: (exerciseIds: string[], userId: string) => Promise<void>;
+  reorderExercises: (newOrder: RoutineDayExercise[]) => Promise<void>;
   completeWorkout: (weightUnit: string) => Promise<void>;
   cancelWorkout: () => Promise<void>;
   reset: () => void;
@@ -115,7 +116,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         });
       }
 
-      set({ session, exercises: [...day.exercises, ...adHocEntries], rows: grouped });
+      const activeRoutineEntries = day.exercises.filter((e) => grouped[e.id]?.length > 0);
+      const allEntries = [...activeRoutineEntries, ...adHocEntries];
+      allEntries.sort((a, b) => {
+        const orderA = grouped[a.id]?.[0]?.exercise_order ?? 999;
+        const orderB = grouped[b.id]?.[0]?.exercise_order ?? 999;
+        return orderA - orderB;
+      });
+      set({ session, exercises: allEntries, rows: grouped });
       return true;
     } finally {
       set({ loading: false });
@@ -198,13 +206,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const { session } = get();
     if (!session) return;
     const entryId = generateId();
+    const exerciseOrder = get().exercises.length;
     const newRows: WorkoutRow[] = [];
     for (const sp of setsPayload) {
       const row = await workoutRowService.addRow(session.id, exercise.id, entryId, sp.set_number, {
         target_weight: sp.target_weight,
         target_reps_min: sp.target_reps_min,
         target_reps_max: sp.target_reps_max,
-      });
+      }, exerciseOrder);
       newRows.push(row);
     }
     const syntheticEntry: RoutineDayExercise = {
@@ -243,6 +252,17 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       }),
     );
     set({ previousSets });
+  },
+
+  reorderExercises: async (newOrder) => {
+    const { session } = get();
+    if (!session) return;
+    set({ exercises: newOrder });
+    await Promise.all(
+      newOrder.map((entry, idx) =>
+        workoutRowService.updateExerciseOrder(session.id, entry.id, idx),
+      ),
+    );
   },
 
   completeWorkout: async (weightUnit) => {

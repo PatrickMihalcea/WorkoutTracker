@@ -8,7 +8,8 @@ export const workoutRowService = {
     exercises: RoutineDayExercise[],
   ): Promise<WorkoutRow[]> {
     const rows: Omit<WorkoutRow, 'id'>[] = [];
-    for (const ex of exercises) {
+    for (let exIdx = 0; exIdx < exercises.length; exIdx++) {
+      const ex = exercises[exIdx];
       const sets = ex.sets ?? [];
       for (let i = 1; i <= ex.target_sets; i++) {
         const tpl = sets.find((s) => s.set_number === i);
@@ -24,6 +25,7 @@ export const workoutRowService = {
           target_weight: tpl?.target_weight ?? 0,
           target_reps_min: tpl?.target_reps_min ?? 0,
           target_reps_max: tpl?.target_reps_max ?? 0,
+          exercise_order: exIdx,
         });
       }
     }
@@ -41,7 +43,7 @@ export const workoutRowService = {
       .from('workout_rows')
       .select('*')
       .eq('session_id', sessionId)
-      .order('routine_day_exercise_id')
+      .order('exercise_order')
       .order('set_number');
     if (error) throw error;
     return data ?? [];
@@ -67,6 +69,7 @@ export const workoutRowService = {
     entryId: string,
     setNumber: number,
     targets?: { target_weight: number; target_reps_min: number; target_reps_max: number },
+    exerciseOrder?: number,
   ): Promise<WorkoutRow> {
     const { data, error } = await supabase
       .from('workout_rows')
@@ -82,6 +85,7 @@ export const workoutRowService = {
         target_weight: targets?.target_weight ?? 0,
         target_reps_min: targets?.target_reps_min ?? 0,
         target_reps_max: targets?.target_reps_max ?? 0,
+        exercise_order: exerciseOrder ?? 0,
       })
       .select()
       .single();
@@ -133,6 +137,15 @@ export const workoutRowService = {
       .from('workout_rows')
       .delete()
       .eq('session_id', sessionId);
+    if (error) throw error;
+  },
+
+  async updateExerciseOrder(sessionId: string, entryId: string, order: number): Promise<void> {
+    const { error } = await supabase
+      .from('workout_rows')
+      .update({ exercise_order: order })
+      .eq('session_id', sessionId)
+      .eq('routine_day_exercise_id', entryId);
     if (error) throw error;
   },
 };

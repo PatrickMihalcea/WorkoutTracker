@@ -17,6 +17,7 @@ interface ExerciseCardProps {
   onDeleteRow: (id: string, entryId: string, setNumber: number) => void;
   onAddRow: (entryId: string, exerciseId: string) => void;
   onRemove?: () => void;
+  collapsed?: boolean;
 }
 
 export function ExerciseCard({
@@ -29,6 +30,7 @@ export function ExerciseCard({
   onDeleteRow,
   onAddRow,
   onRemove,
+  collapsed,
 }: ExerciseCardProps) {
   const exerciseName = entry.exercise?.name ?? 'Unknown Exercise';
   const muscleGroup = entry.exercise?.muscle_group ?? '';
@@ -39,11 +41,20 @@ export function ExerciseCard({
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const heightAnim = useRef(new Animated.Value(1)).current;
 
-  const renderRightActions = () => (
-    <View style={styles.swipeDeleteAction}>
-      <Text style={styles.swipeDeleteText}>✕</Text>
-    </View>
-  );
+  const renderRightActions = (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+    const translateX = dragX.interpolate({
+      inputRange: [-70, 0],
+      outputRange: [0, 70],
+      extrapolate: 'clamp',
+    });
+    return (
+      <TouchableOpacity style={styles.deleteAction} onPress={handleSwipeOpen} activeOpacity={0.8}>
+        <Animated.View style={[styles.deleteContent, { transform: [{ translateX }] }]}>
+          <Text style={styles.deleteText}>X</Text>
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  };
 
   const handleSwipeOpen = () => {
     swipeRef.current?.close();
@@ -62,7 +73,7 @@ export function ExerciseCard({
 
   const headerContent = (
     <View style={styles.header}>
-      <View>
+      <View style={{ flex: 1 }}>
         <Text style={styles.exerciseName}>{exerciseName}</Text>
         <Text style={styles.muscleGroup}>{muscleGroup}</Text>
       </View>
@@ -72,6 +83,37 @@ export function ExerciseCard({
     </View>
   );
 
+  if (collapsed) {
+    const collapsedHeader = (
+      <View style={styles.headerCollapsed}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.exerciseName}>{exerciseName}</Text>
+          <Text style={styles.muscleGroup}>{muscleGroup}</Text>
+        </View>
+        <Text style={styles.setCount}>
+          {completedCount}/{rows.length}
+        </Text>
+      </View>
+    );
+    return (
+      <Card style={styles.cardCollapsed}>
+        {onRemove ? (
+          <Swipeable
+            ref={swipeRef}
+            renderRightActions={renderRightActions}
+            onSwipeableOpen={handleSwipeOpen}
+            rightThreshold={70}
+            overshootRight={false}
+          >
+            {collapsedHeader}
+          </Swipeable>
+        ) : (
+          collapsedHeader
+        )}
+      </Card>
+    );
+  }
+
   return (
     <Animated.View style={{ opacity: fadeAnim, maxHeight, overflow: 'hidden' }}>
       <Card style={styles.card}>
@@ -80,6 +122,7 @@ export function ExerciseCard({
             ref={swipeRef}
             renderRightActions={renderRightActions}
             onSwipeableOpen={handleSwipeOpen}
+            rightThreshold={70}
             overshootRight={false}
           >
             {headerContent}
@@ -136,11 +179,22 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 16,
   },
+  cardCollapsed: {
+    marginBottom: 6,
+    paddingVertical: 10,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    paddingBottom: 12,
+    backgroundColor: colors.surface,
+  },
+  headerCollapsed: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
   },
   exerciseName: {
     fontSize: 17,
@@ -159,14 +213,17 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     color: colors.text,
   },
-  swipeDeleteAction: {
+  deleteAction: {
     width: 70,
     backgroundColor: '#cc3333',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 8,
   },
-  swipeDeleteText: {
+  deleteContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteText: {
     color: '#fff',
     fontSize: 18,
     fontFamily: fonts.bold,

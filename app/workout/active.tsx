@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
+  Pressable,
+  FlatList,
   StyleSheet,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useWorkoutStore } from '../../src/stores/workout.store';
 import { useProfileStore } from '../../src/stores/profile.store';
@@ -16,7 +18,7 @@ import { Button } from '../../src/components/ui';
 import { AddExerciseModal, SetsPayloadItem } from '../../src/components/routine/AddExerciseModal';
 import { colors, fonts } from '../../src/constants';
 import { formatDuration } from '../../src/utils/date';
-import { Exercise } from '../../src/models';
+import { Exercise, RoutineDayExercise } from '../../src/models';
 
 export default function ActiveWorkoutScreen() {
   const router = useRouter();
@@ -35,12 +37,14 @@ export default function ActiveWorkoutScreen() {
     addRow,
     removeExercise,
     addExercise,
+    reorderExercises,
     completeWorkout,
     cancelWorkout,
   } = useWorkoutStore();
 
   const [elapsed, setElapsed] = useState('0m');
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   useEffect(() => {
     if (!session) {
@@ -147,6 +151,59 @@ export default function ActiveWorkoutScreen() {
     ]);
   };
 
+  const handleDragEnd = useCallback(({ data }: { data: RoutineDayExercise[] }) => {
+    reorderExercises(data);
+  }, [reorderExercises]);
+
+  const renderNormalItem = useCallback(({ item }: { item: RoutineDayExercise }) => (
+    <Pressable onLongPress={() => setReordering(true)}>
+      <ExerciseCard
+        entry={item}
+        rows={rows[item.id] ?? []}
+        previousSets={previousSets[item.exercise_id] ?? []}
+        weightUnit={weightUnit}
+        onUpdateRow={handleUpdate}
+        onToggleRow={handleToggle}
+        onDeleteRow={handleDelete}
+        onAddRow={handleAdd}
+        onRemove={() => handleRemoveExercise(item.id)}
+      />
+    </Pressable>
+  ), [rows, previousSets, weightUnit, handleUpdate, handleToggle, handleDelete, handleAdd, handleRemoveExercise]);
+
+  const noop = useCallback(() => {}, []);
+
+  const renderReorderItem = useCallback(({ item, drag, isActive }: RenderItemParams<RoutineDayExercise>) => (
+    <ScaleDecorator>
+      <Pressable onLongPress={drag} disabled={isActive} delayLongPress={150}>
+        <ExerciseCard
+          entry={item}
+          rows={rows[item.id] ?? []}
+          previousSets={previousSets[item.exercise_id] ?? []}
+          weightUnit={weightUnit}
+          collapsed
+          onUpdateRow={noop as any}
+          onToggleRow={noop as any}
+          onDeleteRow={noop as any}
+          onAddRow={noop as any}
+          onRemove={() => handleRemoveExercise(item.id)}
+        />
+      </Pressable>
+    </ScaleDecorator>
+  ), [rows, previousSets, weightUnit, noop, handleRemoveExercise]);
+
+  const keyExtractor = useCallback((item: RoutineDayExercise) => item.id, []);
+
+  const normalFooter = useCallback(() => (
+    <TouchableOpacity
+      style={styles.addExerciseBtn}
+      onPress={() => setShowAddExercise(true)}
+      activeOpacity={0.7}
+    >
+      <Text style={styles.addExerciseText}>+ Add Exercise</Text>
+    </TouchableOpacity>
+  ), []);
+
   if (!session) return null;
 
   return (
@@ -155,49 +212,50 @@ export default function ActiveWorkoutScreen() {
         <Text style={styles.timer}>{elapsed}</Text>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
-      >
-        {exercises.map((entry) => (
-          <ExerciseCard
-            key={entry.id}
-            entry={entry}
-            rows={rows[entry.id] ?? []}
-            previousSets={previousSets[entry.exercise_id] ?? []}
-            weightUnit={weightUnit}
-            onUpdateRow={handleUpdate}
-            onToggleRow={handleToggle}
-            onDeleteRow={handleDelete}
-            onAddRow={handleAdd}
-            onRemove={() => handleRemoveExercise(entry.id)}
+      <View style={{ flex: 1 }}>
+        {reordering ? (
+          <DraggableFlatList
+            data={exercises}
+            keyExtractor={keyExtractor}
+            renderItem={renderReorderItem}
+            onDragEnd={handleDragEnd}
+            contentContainerStyle={styles.scrollContent}
           />
-        ))}
-
-        <TouchableOpacity
-          style={styles.addExerciseBtn}
-          onPress={() => setShowAddExercise(true)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.addExerciseText}>+ Add Exercise</Text>
-        </TouchableOpacity>
-      </ScrollView>
+        ) : (
+          <FlatList
+            data={exercises}
+            keyExtractor={keyExtractor}
+            renderItem={renderNormalItem}
+            ListFooterComponent={normalFooter}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          />
+        )}
+      </View>
 
       <View style={styles.footer}>
-        <Button
-          title="Cancel"
-          variant="danger"
-          onPress={handleCancel}
-          style={styles.cancelBtn}
-          size="sm"
-        />
-        <Button
-          title="Complete Workout"
-          onPress={handleComplete}
-          style={styles.completeBtn}
-        />
+        {reordering ? (
+          <Button
+            title="Done Reordering"
+            onPress={() => setReordering(false)}
+            style={styles.completeBtn}
+          />
+        ) : (
+          <>
+            <Button
+              title="Cancel"
+              variant="danger"
+              onPress={handleCancel}
+              style={styles.cancelBtn}
+              size="sm"
+            />
+            <Button
+              title="Complete Workout"
+              onPress={handleComplete}
+              style={styles.completeBtn}
+            />
+          </>
+        )}
       </View>
 
       <AddExerciseModal
@@ -225,9 +283,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: fonts.bold,
     color: colors.text,
-  },
-  scroll: {
-    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 8,

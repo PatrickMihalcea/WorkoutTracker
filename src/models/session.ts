@@ -52,6 +52,7 @@ export interface WorkoutRow {
   target_weight: number;
   target_reps_min: number;
   target_reps_max: number;
+  exercise_order: number;
 }
 
 export interface WorkoutSessionWithRoutine extends WorkoutSession {
