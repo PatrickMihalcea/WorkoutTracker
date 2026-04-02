@@ -40,7 +40,7 @@ export default function MeasurementsScreen() {
       height_cm: finalHeightCm,
       onboarding_complete: true,
     });
-    router.replace('/(tabs)');
+    router.replace('/(tabs)/today');
   };
 
   return (

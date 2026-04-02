@@ -109,6 +109,7 @@ export function useRestTimerCollapse() {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
+    paddingBottom: 24,
   },
   progressBarExpanded: {
     height: 4,

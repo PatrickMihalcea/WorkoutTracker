@@ -75,25 +75,29 @@ export default function ActiveWorkoutScreen() {
         text: 'Complete',
         onPress: async () => {
           await completeWorkout(weightUnit);
-          router.replace('/(tabs)');
+          router.replace('/(tabs)/today');
         },
       },
     ]);
   }, [completeWorkout, weightUnit, router]);
 
+  const parentNav = navigation.getParent();
   useLayoutEffect(() => {
-    navigation.setOptions({
+    parentNav?.setOptions({
       headerRight: () => (
         <TouchableOpacity style={headerStyles.finishBtn} onPress={handleComplete} activeOpacity={0.7}>
           <Text style={headerStyles.finishBtnText}>Finish</Text>
         </TouchableOpacity>
       ),
     });
-  }, [navigation, handleComplete]);
+    return () => {
+      parentNav?.setOptions({ headerRight: undefined });
+    };
+  }, [parentNav, handleComplete]);
 
   useEffect(() => {
     if (!session) {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/today');
       return;
     }
     const exerciseIds = exercises.map((e) => e.exercise_id);
@@ -188,7 +192,7 @@ export default function ActiveWorkoutScreen() {
         style: 'destructive',
         onPress: async () => {
           await cancelWorkout();
-          router.replace('/(tabs)');
+          router.replace('/(tabs)/today');
         },
       },
     ]);

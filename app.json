@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.workouttracker.app"
+      "bundleIdentifier": "com.patrickmihalcea.workouttracker"
     },
     "android": {
       "adaptiveIcon": {

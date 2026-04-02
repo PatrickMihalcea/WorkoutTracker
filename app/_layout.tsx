@@ -49,12 +49,12 @@ export default function RootLayout() {
       if (!profile || !profile.onboarding_complete) {
         router.replace('/(onboarding)/display-name');
       } else {
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/today');
       }
     } else if (session && !inOnboarding && !inAuthGroup && (!profile || !profile.onboarding_complete)) {
       router.replace('/(onboarding)/display-name');
     } else if (session && inOnboarding && profile?.onboarding_complete) {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/today');
     }
   }, [session, profile, ready, segments, router]);
 
@@ -71,6 +71,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root} onLayout={onLayoutRootView}>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(onboarding)" />
