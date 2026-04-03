@@ -6,17 +6,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Modal,
   Platform,
   Alert,
-  KeyboardAvoidingView,
   Image,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { sessionService } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { Card, Input, Button, KeyboardDismiss } from '../../../src/components/ui';
+import { Card, Input, Button, BottomSheetModal } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import { SessionWithSetsAndExercises, SetLogWithExercise } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
@@ -216,11 +214,7 @@ export default function SessionDetailScreen() {
         ))}
       </ScrollView>
 
-      <Modal visible={showEdit} animationType="slide" transparent>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
-            <Text style={styles.modalTitle}>Edit Session</Text>
-
+      <BottomSheetModal visible={showEdit} title="Edit Session" scrollable>
             <Text style={styles.fieldLabel}>Date</Text>
             {Platform.OS === 'android' && (
               <TouchableOpacity
@@ -285,10 +279,7 @@ export default function SessionDetailScreen() {
               />
               <Button title="Save" onPress={handleSaveEdit} />
             </View>
-          </ScrollView>
-          <KeyboardDismiss />
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheetModal>
     </View>
   );
 }
@@ -417,24 +408,6 @@ const styles = StyleSheet.create({
   colReps: { flex: 1 },
   colRir: { width: 50 },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: '85%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 20,
-  },
   fieldLabel: {
     color: colors.textSecondary,
     fontSize: 14,

@@ -1,9 +1,9 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { WorkoutRow, SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { formatWeight } from '../../utils/units';
+import { SwipeToDeleteRow } from '../ui';
 
 interface SetRowProps {
   row: WorkoutRow;
@@ -28,9 +28,6 @@ export function SetRow({
   onToggle,
   onSwipeDelete,
 }: SetRowProps) {
-  const swipeableRef = useRef<Swipeable>(null);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const heightAnim = useRef(new Animated.Value(1)).current;
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
 
   const [weight, setWeight] = useState(row.weight);
@@ -77,52 +74,9 @@ export function SetRow({
     }
   };
 
-  const handleSwipeOpen = () => {
-    swipeableRef.current?.close();
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: false,
-      }),
-      Animated.timing(heightAnim, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: false,
-      }),
-    ]).start(() => {
-      onSwipeDelete();
-    });
-  };
-
-  const renderRightActions = (progress: Animated.AnimatedInterpolation<number>) => {
-    const translateX = progress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [70, 0],
-      extrapolate: 'clamp',
-    });
-    return (
-      <Animated.View style={[styles.deleteAction, { transform: [{ translateX }] }]}>
-        <Text style={styles.deleteText}>X</Text>
-      </Animated.View>
-    );
-  };
-
-  const rowMaxHeight = heightAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 60],
-  });
-
   return (
-    <Animated.View style={{ opacity: fadeAnim, maxHeight: rowMaxHeight, overflow: 'hidden' }}>
-      <Swipeable
-        ref={swipeableRef}
-        renderRightActions={renderRightActions}
-        onSwipeableOpen={handleSwipeOpen}
-        rightThreshold={70}
-        overshootRight={false}
-      >
-        <View style={[
+    <SwipeToDeleteRow onDelete={onSwipeDelete} expandedHeight={60}>
+      <View style={[
           styles.row,
           row.is_completed && styles.rowSaved,
           row.is_completed && completionColor && completionColor !== 'transparent' && { backgroundColor: completionColor },
@@ -194,8 +148,7 @@ export function SetRow({
             </Text>
           </TouchableOpacity>
         </View>
-      </Swipeable>
-    </Animated.View>
+    </SwipeToDeleteRow>
   );
 }
 
@@ -268,16 +221,5 @@ const styles = StyleSheet.create({
   },
   saveButtonTextDone: {
     color: colors.textSecondary,
-  },
-  deleteAction: {
-    width: 70,
-    backgroundColor: '#cc3333',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteText: {
-    color: '#fff',
-    fontSize: 18,
-    fontFamily: fonts.bold,
   },
 });

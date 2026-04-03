@@ -6,13 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Modal,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { useAuthStore } from '../../stores/auth.store';
 import { exerciseService } from '../../services';
-import { Button, Input, KeyboardDismiss } from '../ui';
+import { Button, Input, ChipPicker, BottomSheetModal } from '../ui';
 import { colors, fonts } from '../../constants';
 import {
   Exercise,
@@ -24,10 +21,9 @@ import {
 import {
   TemplateSetRow,
   defaultSetRow,
-  getSuggestion,
-  resolveValue,
   buildSetsPayload,
-  updateSetRow,
+  setsToTemplateRows,
+  validateRepRange,
   SetsTableEditor,
 } from './SetsTableEditor';
 
@@ -73,32 +69,13 @@ export function AddExerciseModal({
       loadExercises();
       if (editingEntry) {
         setSelectedExerciseId(editingEntry.exercise_id);
-        const existing = editingEntry.sets ?? [];
-        const hasRange = existing.some((s) => s.target_reps_min !== s.target_reps_max);
-        setUseRepRange(hasRange);
-        if (existing.length > 0) {
-          setTemplateSets(
-            existing.map((s) => ({
-              weight: s.target_weight > 0 ? String(
-                weightUnit === 'lbs'
-                  ? Math.round(s.target_weight * 2.20462 * 10) / 10
-                  : Math.round(s.target_weight * 10) / 10
-              ) : '',
-              repsMin: String(s.target_reps_min),
-              repsMax: String(s.target_reps_max),
-              editedFields: new Set(['weight', 'repsMin', 'repsMax']),
-            })),
-          );
-        } else {
-          setTemplateSets([
-            {
-              weight: '',
-              repsMin: String(editingEntry.target_reps),
-              repsMax: String(editingEntry.target_reps),
-              editedFields: new Set(['repsMin', 'repsMax']),
-            },
-          ]);
-        }
+        const { rows, hasRepRange } = setsToTemplateRows(
+          editingEntry.sets ?? [],
+          editingEntry.target_reps,
+          weightUnit,
+        );
+        setTemplateSets(rows);
+        setUseRepRange(hasRepRange);
       } else {
         setSelectedExerciseId(null);
         setTemplateSets([defaultSetRow()]);
@@ -133,17 +110,7 @@ export function AddExerciseModal({
 
   const handleConfirm = () => {
     if (!selectedExerciseId) return;
-    if (useRepRange) {
-      const badRow = templateSets.find((_, i) => {
-        const min = parseInt(resolveValue(templateSets, i, 'repsMin'), 10) || 0;
-        const max = parseInt(resolveValue(templateSets, i, 'repsMax'), 10) || 0;
-        return min > max;
-      });
-      if (badRow !== undefined) {
-        Alert.alert('Invalid Range', 'The minimum reps cannot be greater than the maximum reps.');
-        return;
-      }
-    }
+    if (useRepRange && !validateRepRange(templateSets)) return;
     const setsPayload = buildSetsPayload(templateSets, weightUnit, useRepRange);
     const exercise = exercises.find((e) => e.id === selectedExerciseId);
     if (!exercise) return;
@@ -184,12 +151,12 @@ export function AddExerciseModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.modalContent}>
+    <BottomSheetModal
+      visible={visible}
+      title={showExercisePicker ? 'Select Exercise' : showCreateExercise ? 'Create New Exercise' : (editingEntry ? 'Edit Exercise' : 'Add Exercise')}
+    >
           {!showExercisePicker && !showCreateExercise && (
             <>
-              <Text style={styles.modalTitle}>{editingEntry ? 'Edit Exercise' : 'Add Exercise'}</Text>
 
               <Text style={styles.fieldLabel}>Exercise</Text>
               <TouchableOpacity
@@ -230,8 +197,6 @@ export function AddExerciseModal({
 
           {showExercisePicker && !showCreateExercise && (
             <>
-              <Text style={styles.modalTitle}>Select Exercise</Text>
-
               <ScrollView style={styles.exerciseList}>
                 {exercises.map((ex) => (
                   <TouchableOpacity
@@ -269,8 +234,6 @@ export function AddExerciseModal({
 
           {showCreateExercise && (
             <>
-              <Text style={styles.modalTitle}>Create New Exercise</Text>
-
               <View style={styles.createExForm}>
                 <Input
                   label="Exercise Name"
@@ -280,54 +243,20 @@ export function AddExerciseModal({
                 />
 
                 <Text style={styles.fieldLabel}>Muscle Group</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.chipRow}>
-                    {Object.values(MuscleGroup).map((mg) => (
-                      <TouchableOpacity
-                        key={mg}
-                        style={[
-                          styles.chip,
-                          newExerciseMuscle === mg && styles.chipSelected,
-                        ]}
-                        onPress={() => setNewExerciseMuscle(mg)}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            newExerciseMuscle === mg && styles.chipTextSelected,
-                          ]}
-                        >
-                          {mg}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
+                <ChipPicker
+                  items={Object.values(MuscleGroup).map((mg) => ({ key: mg, label: mg, value: mg }))}
+                  selected={newExerciseMuscle}
+                  onChange={(v) => setNewExerciseMuscle(v as MuscleGroup)}
+                  allowDeselect={false}
+                />
 
                 <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Equipment</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.chipRow}>
-                    {Object.values(Equipment).map((eq) => (
-                      <TouchableOpacity
-                        key={eq}
-                        style={[
-                          styles.chip,
-                          newExerciseEquipment === eq && styles.chipSelected,
-                        ]}
-                        onPress={() => setNewExerciseEquipment(eq)}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            newExerciseEquipment === eq && styles.chipTextSelected,
-                          ]}
-                        >
-                          {eq}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
+                <ChipPicker
+                  items={Object.values(Equipment).map((eq) => ({ key: eq, label: eq, value: eq }))}
+                  selected={newExerciseEquipment}
+                  onChange={(v) => setNewExerciseEquipment(v as Equipment)}
+                  allowDeselect={false}
+                />
 
                 <View style={styles.createExActions}>
                   <Button
@@ -348,32 +277,11 @@ export function AddExerciseModal({
               </View>
             </>
           )}
-        </View>
-        <KeyboardDismiss />
-      </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: '85%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 20,
-  },
   fieldLabel: {
     color: colors.textSecondary,
     fontSize: 14,
@@ -448,29 +356,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingTop: 16,
     marginBottom: 12,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceLight,
-  },
-  chipSelected: {
-    backgroundColor: colors.text,
-  },
-  chipText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    textTransform: 'capitalize',
-  },
-  chipTextSelected: {
-    color: colors.background,
   },
   createExActions: {
     flexDirection: 'row',

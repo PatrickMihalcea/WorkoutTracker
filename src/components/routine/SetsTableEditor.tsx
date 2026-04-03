@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { colors, fonts } from '../../constants';
 import { WeightUnit } from '../../models';
@@ -72,6 +73,49 @@ export function buildSetsPayload(
   }));
 }
 
+export function setsToTemplateRows(
+  sets: { target_weight: number; target_reps_min: number; target_reps_max: number }[],
+  fallbackReps: number,
+  wUnit: WeightUnit,
+): { rows: TemplateSetRow[]; hasRepRange: boolean } {
+  if (sets.length === 0) {
+    return {
+      rows: [{
+        weight: '',
+        repsMin: String(fallbackReps),
+        repsMax: String(fallbackReps),
+        editedFields: new Set(['repsMin', 'repsMax']),
+      }],
+      hasRepRange: false,
+    };
+  }
+  const hasRepRange = sets.some((s) => s.target_reps_min !== s.target_reps_max);
+  const rows = sets.map((s) => ({
+    weight: s.target_weight > 0
+      ? String(wUnit === 'lbs'
+          ? Math.round(s.target_weight * 2.20462 * 10) / 10
+          : Math.round(s.target_weight * 10) / 10)
+      : '',
+    repsMin: String(s.target_reps_min),
+    repsMax: String(s.target_reps_max),
+    editedFields: new Set(['weight', 'repsMin', 'repsMax']),
+  }));
+  return { rows, hasRepRange };
+}
+
+export function validateRepRange(rows: TemplateSetRow[]): boolean {
+  const bad = rows.find((_, i) => {
+    const min = parseInt(resolveValue(rows, i, 'repsMin'), 10) || 0;
+    const max = parseInt(resolveValue(rows, i, 'repsMax'), 10) || 0;
+    return min > max;
+  });
+  if (bad !== undefined) {
+    Alert.alert('Invalid Range', 'The minimum reps cannot be greater than the maximum reps.');
+    return false;
+  }
+  return true;
+}
+
 export function updateSetRow(
   rows: TemplateSetRow[],
   setRows: (r: TemplateSetRow[]) => void,
@@ -113,6 +157,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }:
           </Text>
           <Text style={styles.repsToggleArrow}>▾</Text>
         </TouchableOpacity>
+        {rows.length > 1 && <View style={styles.headerSpacer} />}
       </View>
 
       <ScrollView style={rows.length > 9 ? styles.rowsScroll : undefined} nestedScrollEnabled>
@@ -209,18 +254,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   colSet: { width: 36 },
-  colWeight: { flex: 1, textAlign: 'center' },
+  colWeight: { width: '30%', textAlign: 'center', marginHorizontal: 4 },
   colReps: { flex: 1, textAlign: 'center' },
   repsHeaderBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginHorizontal: 4,
     gap: 4,
   },
   repsToggleArrow: {
     fontSize: 10,
     color: colors.textMuted,
+  },
+  headerSpacer: {
+    width: 28,
   },
   tableRow: {
     flexDirection: 'row',

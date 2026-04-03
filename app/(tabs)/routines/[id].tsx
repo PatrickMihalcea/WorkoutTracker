@@ -1,25 +1,20 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Modal,
-  KeyboardAvoidingView,
-  Platform,
   Image,
-  Animated,
 } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { routineService, exerciseService } from '../../../src/services';
-import { Button, Input, Card, KeyboardDismiss } from '../../../src/components/ui';
+import { routineService } from '../../../src/services';
+import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
+import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import {
   DayOfWeek,
@@ -39,55 +34,22 @@ function SwipeableExerciseRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const swipeRef = useRef<Swipeable>(null);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const heightAnim = useRef(new Animated.Value(1)).current;
-
   const setsCount = ex.sets?.length ?? ex.target_sets;
   const setsLabel =
     ex.sets && ex.sets.length > 0
       ? `${setsCount} sets`
       : `${ex.target_sets}×${ex.target_reps}`;
 
-  const animateDelete = () => {
-    swipeRef.current?.close();
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
-      Animated.timing(heightAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
-    ]).start(() => onDelete());
-  };
-
-  const maxHeight = heightAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 80] });
-
   return (
-    <Animated.View style={{ opacity: fadeAnim, maxHeight, overflow: 'hidden' }}>
-      <Swipeable
-        ref={swipeRef}
-        renderRightActions={(progress) => {
-          const translateX = progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [70, 0],
-            extrapolate: 'clamp',
-          });
-          return (
-            <Animated.View style={[styles.swipeDeleteAction, { transform: [{ translateX }] }]}>
-              <Text style={styles.swipeDeleteText}>X</Text>
-            </Animated.View>
-          );
-        }}
-        onSwipeableOpen={animateDelete}
-        rightThreshold={70}
-        overshootRight={false}
-      >
-        <TouchableOpacity style={styles.exerciseRow} onPress={onEdit} activeOpacity={0.7}>
-          <View style={styles.exerciseInfo}>
-            <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
-            <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group} · {ex.exercise?.equipment}</Text>
-          </View>
-          <Text style={styles.exerciseTarget}>{setsLabel}</Text>
-        </TouchableOpacity>
-      </Swipeable>
-    </Animated.View>
+    <SwipeToDeleteRow onDelete={onDelete} expandedHeight={80}>
+      <TouchableOpacity style={styles.exerciseRow} onPress={onEdit} activeOpacity={0.7}>
+        <View style={styles.exerciseInfo}>
+          <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+          <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group} · {ex.exercise?.equipment}</Text>
+        </View>
+        <Text style={styles.exerciseTarget}>{setsLabel}</Text>
+      </TouchableOpacity>
+    </SwipeToDeleteRow>
   );
 }
 
@@ -191,37 +153,8 @@ export default function RoutineDetailScreen() {
     }
   };
 
-  const handleDeleteExercise = async (exercise: Exercise) => {
-    let hasLogs = false;
-    try {
-      const sets = await import('../../../src/services').then(
-        (m) => m.sessionService.getLastSessionSets(exercise.id, user?.id ?? ''),
-      );
-      hasLogs = sets.length > 0;
-    } catch {
-      // Assume no logs on error
-    }
-
-    const message = hasLogs
-      ? `Permanently delete "${exercise.name}"?\n\nWARNING: This exercise has logged workout history. All sets logged for this exercise will be permanently deleted.`
-      : `Permanently delete "${exercise.name}"? This will also remove it from any routine days using it.`;
-
-    Alert.alert('Delete Exercise', message, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: hasLogs ? 'Delete Everything' : 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await exerciseService.delete(exercise.id);
-            if (id) fetchRoutineDetail(id);
-          } catch {
-            Alert.alert('Error', 'Could not delete exercise.');
-          }
-        },
-      },
-    ]);
-  };
+  const handleDeleteExercise = (exercise: Exercise) =>
+    confirmDeleteExercise(exercise, user?.id ?? '', () => { if (id) fetchRoutineDetail(id); });
 
   const handleRemoveExercise = async (entryId: string) => {
     await routineService.removeDayExercise(entryId);
@@ -284,12 +217,7 @@ export default function RoutineDetailScreen() {
         />
       ))}
 
-      <TouchableOpacity
-        style={styles.addExerciseBtn}
-        onPress={() => openAddExercise(day.id)}
-      >
-        <Text style={styles.addExerciseText}>+ Add Exercise</Text>
-      </TouchableOpacity>
+      <AddRowButton label="+ Add Exercise" onPress={() => openAddExercise(day.id)} borderTop />
     </Card>
   );
 
@@ -297,22 +225,12 @@ export default function RoutineDetailScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
         {editingName ? (
-          <View style={styles.nameEditRow}>
-            <TextInput
-              style={styles.nameInput}
-              value={nameDraft}
-              onChangeText={setNameDraft}
-              autoFocus
-              onSubmitEditing={handleSaveName}
-              returnKeyType="done"
-            />
-            <TouchableOpacity onPress={handleSaveName} style={styles.nameEditBtn}>
-              <Text style={styles.nameEditBtnText}>Save</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setEditingName(false)} style={styles.nameEditBtn}>
-              <Text style={styles.nameEditCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+          <InlineEditRow
+            value={nameDraft}
+            onChangeText={setNameDraft}
+            onSave={handleSaveName}
+            onCancel={() => setEditingName(false)}
+          />
         ) : (
           <TouchableOpacity onPress={handleStartEditName} style={styles.titleRow}>
             <Text style={styles.title}>{currentRoutine.name}</Text>
@@ -330,39 +248,9 @@ export default function RoutineDetailScreen() {
       </ScrollView>
 
       {/* Add Day Modal */}
-      <Modal visible={showAddDay} animationType="slide" transparent>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Training Day</Text>
-
+      <BottomSheetModal visible={showAddDay} title="Add Training Day">
             <Text style={styles.fieldLabel}>Day of Week (optional)</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.dayPicker}>
-                {Object.entries(DAY_LABELS).map(([key, label]) => (
-                  <TouchableOpacity
-                    key={key}
-                    style={[
-                      styles.dayChip,
-                      selectedDay === Number(key) && styles.dayChipSelected,
-                    ]}
-                    onPress={() =>
-                      setSelectedDay((prev) =>
-                        prev === Number(key) ? null : (Number(key) as DayOfWeek),
-                      )
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.dayChipText,
-                        selectedDay === Number(key) && styles.dayChipTextSelected,
-                      ]}
-                    >
-                      {label.slice(0, 3)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
+            <DayOfWeekPicker selected={selectedDay} onChange={setSelectedDay} />
 
             <Input
               label="Label"
@@ -379,10 +267,7 @@ export default function RoutineDetailScreen() {
               />
               <Button title="Add Day" onPress={handleAddDay} />
             </View>
-          </View>
-          <KeyboardDismiss />
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheetModal>
 
       <AddExerciseModal
         visible={showAddExercise}
@@ -424,38 +309,6 @@ const styles = StyleSheet.create({
     height: 18,
     tintColor: colors.textMuted,
   },
-  nameEditRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 20,
-  },
-  nameInput: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    fontSize: 20,
-    fontFamily: fonts.bold,
-    color: colors.text,
-  },
-  nameEditBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  nameEditBtnText: {
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-  },
-  nameEditCancelText: {
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.textMuted,
-  },
   dayCard: {
     marginBottom: 16,
   },
@@ -490,17 +343,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  swipeDeleteAction: {
-    width: 70,
-    backgroundColor: '#cc3333',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  swipeDeleteText: {
-    color: '#fff',
-    fontSize: 18,
-    fontFamily: fonts.bold,
-  },
   exerciseInfo: {
     flex: 1,
   },
@@ -521,37 +363,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     color: colors.textSecondary,
   },
-  addExerciseBtn: {
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    marginTop: 4,
-  },
-  addExerciseText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-  },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: '85%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 20,
-  },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -563,28 +375,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.regular,
     marginBottom: 8,
-  },
-  dayPicker: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  dayChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceLight,
-  },
-  dayChipSelected: {
-    backgroundColor: colors.text,
-  },
-  dayChipText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    textTransform: 'capitalize',
-  },
-  dayChipTextSelected: {
-    color: colors.background,
   },
 });

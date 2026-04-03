@@ -1,9 +1,9 @@
-import React, { useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, LayoutAnimation } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation } from 'react-native';
 import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { Card } from '../ui/Card';
+import { SwipeToDeleteRow } from '../ui/SwipeToDeleteRow';
 import { SetRow } from './SetRow';
 import { weightUnitLabel, formatWeight } from '../../utils/units';
 import { useThemeColors } from '../../hooks/useThemeColors';
@@ -46,10 +46,6 @@ export function ExerciseCard({
   const allDone = rows.length > 0 && rows.every((r) => r.is_completed);
   const templates = entry.sets ?? [];
 
-  const swipeRef = useRef<Swipeable>(null);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const heightAnim = useRef(new Animated.Value(1)).current;
-
   const hasDoneBackground = allDone && setCompletion !== 'transparent';
   const doneTextColor = hasDoneBackground ? '#000000' : undefined;
 
@@ -58,34 +54,6 @@ export function ExerciseCard({
     onToggleCollapse?.();
   };
 
-  const renderRightActions = (progress: Animated.AnimatedInterpolation<number>) => {
-    const translateX = progress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [70, 0],
-      extrapolate: 'clamp',
-    });
-    return (
-      <Animated.View style={[styles.deleteAction, { transform: [{ translateX }] }]}>
-        <Text style={styles.deleteText}>X</Text>
-      </Animated.View>
-    );
-  };
-
-  const handleSwipeOpen = () => {
-    swipeRef.current?.close();
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
-      Animated.timing(heightAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
-    ]).start(() => {
-      onRemove?.();
-    });
-  };
-
-  const maxHeight = heightAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 5000],
-  });
-
   // Reorder mode: minimal collapsed card (no tap-to-expand)
   if (reorderCollapsed) {
     const reorderCardStyle = StyleSheet.flatten(
@@ -93,35 +61,20 @@ export function ExerciseCard({
         ? [styles.cardCollapsed, { backgroundColor: setCompletion }]
         : [styles.cardCollapsed],
     );
-    const reorderHeader = (
-      <View style={styles.headerCollapsed}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
-          <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
-        </View>
-        <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
-          {completedCount}/{rows.length}
-        </Text>
-      </View>
-    );
     return (
-      <Animated.View style={{ opacity: fadeAnim, maxHeight, overflow: 'hidden' }}>
+      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
         <Card style={reorderCardStyle}>
-          {onRemove ? (
-            <Swipeable
-              ref={swipeRef}
-              renderRightActions={renderRightActions}
-              onSwipeableOpen={handleSwipeOpen}
-              rightThreshold={70}
-              overshootRight={false}
-            >
-              {reorderHeader}
-            </Swipeable>
-          ) : (
-            reorderHeader
-          )}
+          <View style={styles.headerCollapsed}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
+              <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
+            </View>
+            <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
+              {completedCount}/{rows.length}
+            </Text>
+          </View>
         </Card>
-      </Animated.View>
+      </SwipeToDeleteRow>
     );
   }
 
@@ -133,38 +86,22 @@ export function ExerciseCard({
         : [styles.cardCollapsed],
     );
 
-    const collapsedHeader = (
-      <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
-        <View style={styles.headerCollapsed}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
-            <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
-          </View>
-          <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
-            {completedCount}/{rows.length}
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
-
     return (
-      <Animated.View style={{ opacity: fadeAnim, maxHeight, overflow: 'hidden' }}>
+      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
         <Card style={collapsedCardStyle}>
-          {onRemove ? (
-            <Swipeable
-              ref={swipeRef}
-              renderRightActions={renderRightActions}
-              onSwipeableOpen={handleSwipeOpen}
-              rightThreshold={70}
-              overshootRight={false}
-            >
-              {collapsedHeader}
-            </Swipeable>
-          ) : (
-            collapsedHeader
-          )}
+          <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
+            <View style={styles.headerCollapsed}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
+                <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
+              </View>
+              <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
+                {completedCount}/{rows.length}
+              </Text>
+            </View>
+          </TouchableOpacity>
         </Card>
-      </Animated.View>
+      </SwipeToDeleteRow>
     );
   }
 
@@ -174,36 +111,20 @@ export function ExerciseCard({
       ? [styles.card, { backgroundColor: setCompletion }]
       : [styles.card],
   );
-  const headerContent = (
-    <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
-      <View style={[styles.header, hasDoneBackground && { backgroundColor: 'transparent' }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
-          <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
-        </View>
-        <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
-          {completedCount}/{rows.length}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
 
-  return (
-    <Animated.View style={{ opacity: fadeAnim, maxHeight, overflow: 'hidden' }}>
-      <Card style={expandedCardStyle}>
-        {onRemove ? (
-          <Swipeable
-            ref={swipeRef}
-            renderRightActions={renderRightActions}
-            onSwipeableOpen={handleSwipeOpen}
-            rightThreshold={70}
-            overshootRight={false}
-          >
-            {headerContent}
-          </Swipeable>
-        ) : (
-          headerContent
-        )}
+  const cardContent = (
+    <Card style={expandedCardStyle}>
+      <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
+        <View style={[styles.header, hasDoneBackground && { backgroundColor: 'transparent' }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
+            <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
+          </View>
+          <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
+            {completedCount}/{rows.length}
+          </Text>
+        </View>
+      </TouchableOpacity>
 
         <View style={[styles.columnHeaders, doneTextColor && { borderBottomColor: '#000000' }]}>
           <View style={styles.setLabelCol}>
@@ -270,8 +191,13 @@ export function ExerciseCard({
         >
           <Text style={[styles.addSetText, doneTextColor && { color: doneTextColor }]}>+ Add Set</Text>
         </TouchableOpacity>
-      </Card>
-    </Animated.View>
+    </Card>
+  );
+
+  return (
+    <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
+      {cardContent}
+    </SwipeToDeleteRow>
   );
 }
 
@@ -313,17 +239,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: fonts.bold,
     color: colors.text,
-  },
-  deleteAction: {
-    width: 70,
-    backgroundColor: '#cc3333',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteText: {
-    color: '#fff',
-    fontSize: 18,
-    fontFamily: fonts.bold,
   },
   columnHeaders: {
     flexDirection: 'row',
