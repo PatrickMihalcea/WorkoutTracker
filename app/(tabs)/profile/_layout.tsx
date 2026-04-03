@@ -1,16 +1,9 @@
 import { Stack } from 'expo-router';
-import { colors, fonts } from '../../../src/constants';
+import { AppStack } from '../../../src/components/ui';
 
 export default function ProfileLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontFamily: fonts.bold },
-        headerBackTitleStyle: { fontSize: 12, fontFamily: fonts.regular },
-      }}
-    >
+    <AppStack>
       <Stack.Screen name="index" options={{ title: 'Profile' }} />
       <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
       <Stack.Screen name="settings" options={{ title: 'Settings' }} />
@@ -21,6 +14,6 @@ export default function ProfileLayout() {
       <Stack.Screen name="units" options={{ title: 'Units' }} />
       <Stack.Screen name="colour-customization" options={{ title: 'Colour Customization' }} />
       <Stack.Screen name="workouts" options={{ title: 'Workouts' }} />
-    </Stack>
+    </AppStack>
   );
 }

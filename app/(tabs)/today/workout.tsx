@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useLayoutEffect } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,21 +11,20 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { useRouter, useNavigation } from 'expo-router';
+import { useRouter } from 'expo-router';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
-import { useAuthStore } from '../../src/stores/auth.store';
-import { useWorkoutStore } from '../../src/stores/workout.store';
-import { useProfileStore } from '../../src/stores/profile.store';
-import { ExerciseCard, RestTimerBar, RestTimerModal } from '../../src/components/workout';
-import { Button } from '../../src/components/ui';
-import { AddExerciseModal, SetsPayloadItem } from '../../src/components/routine/AddExerciseModal';
-import { colors, fonts } from '../../src/constants';
-import { formatElapsed } from '../../src/utils/date';
-import { Exercise, RoutineDayExercise } from '../../src/models';
+import { useAuthStore } from '../../../src/stores/auth.store';
+import { useWorkoutStore } from '../../../src/stores/workout.store';
+import { useProfileStore } from '../../../src/stores/profile.store';
+import { ExerciseCard, RestTimerBar, RestTimerModal } from '../../../src/components/workout';
+import { Button } from '../../../src/components/ui';
+import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
+import { colors, fonts } from '../../../src/constants';
+import { formatElapsed } from '../../../src/utils/date';
+import { Exercise, RoutineDayExercise } from '../../../src/models';
 
 export default function ActiveWorkoutScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
   const { user } = useAuthStore();
   const { profile, updateProfile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
@@ -81,19 +80,6 @@ export default function ActiveWorkoutScreen() {
     ]);
   }, [completeWorkout, weightUnit, router]);
 
-  const parentNav = navigation.getParent();
-  useLayoutEffect(() => {
-    parentNav?.setOptions({
-      headerRight: () => (
-        <TouchableOpacity style={headerStyles.finishBtn} onPress={handleComplete} activeOpacity={0.7}>
-          <Text style={headerStyles.finishBtnText}>Finish</Text>
-        </TouchableOpacity>
-      ),
-    });
-    return () => {
-      parentNav?.setOptions({ headerRight: undefined });
-    };
-  }, [parentNav, handleComplete]);
 
   useEffect(() => {
     if (!session) {
@@ -170,7 +156,7 @@ export default function ActiveWorkoutScreen() {
     try {
       await addExercise(exercise, setsPayload);
       if (user) {
-        const sets = await import('../../src/services').then(
+        const sets = await import('../../../src/services').then(
           (m) => m.sessionService.getLastSessionSets(exercise.id, user.id),
         );
         if (sets.length > 0) {
@@ -227,7 +213,7 @@ export default function ActiveWorkoutScreen() {
 
   const renderReorderItem = useCallback(({ item, drag, isActive }: RenderItemParams<RoutineDayExercise>) => (
     <ScaleDecorator>
-      <Pressable onLongPress={drag} disabled={isActive} delayLongPress={150}>
+      <Pressable onLongPress={drag} disabled={isActive} delayLongPress={400}>
         <ExerciseCard
           entry={item}
           rows={rows[item.id] ?? []}
@@ -248,13 +234,12 @@ export default function ActiveWorkoutScreen() {
 
   const normalFooter = useCallback(() => (
     <View>
-      <TouchableOpacity
-        style={styles.addExerciseBtn}
+      <Button
+        title="+ Add Exercise"
+        variant="dashed"
         onPress={() => setShowAddExercise(true)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.addExerciseText}>+ Add Exercise</Text>
-      </TouchableOpacity>
+        style={{ marginBottom: 12 }}
+      />
       <TouchableOpacity
         style={styles.cancelBtn}
         onPress={handleCancel}
@@ -272,11 +257,20 @@ export default function ActiveWorkoutScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
+          <Text style={styles.backText}>‹ Today</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Workout</Text>
+        <TouchableOpacity style={styles.finishBtn} onPress={handleComplete} activeOpacity={0.7}>
+          <Text style={styles.finishText}>Finish</Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.infoBar}>
         <Text style={styles.elapsedTimer}>{elapsed}</Text>
         <TouchableOpacity onPress={() => setShowTimerSettings(true)} activeOpacity={0.7} style={styles.timerIconBtn}>
           <Image
-            source={require('../../assets/icons/stopwatch.png')}
+            source={require('../../../assets/icons/stopwatch.png')}
             style={styles.timerIcon}
           />
         </TouchableOpacity>
@@ -341,20 +335,6 @@ export default function ActiveWorkoutScreen() {
   );
 }
 
-const headerStyles = StyleSheet.create({
-  finishBtn: {
-    backgroundColor: colors.text,
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  finishBtnText: {
-    color: colors.background,
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-  },
-});
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -394,21 +374,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingBottom: 32,
   },
-  addExerciseBtn: {
-    alignItems: 'center',
-    paddingVertical: 14,
-    marginTop: 4,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderStyle: 'dashed',
-  },
-  addExerciseText: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-  },
   cancelBtn: {
     alignItems: 'center',
     paddingVertical: 12,
@@ -425,5 +390,41 @@ const styles = StyleSheet.create({
     gap: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  backBtn: {
+    paddingVertical: 6,
+    paddingRight: 12,
+  },
+  backText: {
+    color: colors.text,
+    fontSize: 17,
+    fontFamily: fonts.regular,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 17,
+    fontFamily: fonts.bold,
+    color: colors.text,
+  },
+  finishBtn: {
+    backgroundColor: colors.text,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  finishText: {
+    color: colors.background,
+    fontSize: 15,
+    fontFamily: fonts.bold,
   },
 });

@@ -1,5 +1,7 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useAuthStore } from '../../../src/stores/auth.store';
+import { Button } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 
 interface AccountItemProps {
@@ -18,6 +20,14 @@ function AccountItem({ label, onPress }: AccountItemProps) {
 
 export default function AccountScreen() {
   const router = useRouter();
+  const { signOut } = useAuthStore();
+
+  const confirmSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: signOut },
+    ]);
+  };
 
   return (
     <View style={styles.container}>
@@ -35,6 +45,13 @@ export default function AccountScreen() {
           onPress={() => router.push('/(tabs)/profile/change-password')}
         />
       </View>
+
+      <Button
+        title="Sign Out"
+        variant="danger"
+        onPress={confirmSignOut}
+        style={styles.signOut}
+      />
     </View>
   );
 }
@@ -70,5 +87,8 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: fonts.light,
     color: colors.textMuted,
+  },
+  signOut: {
+    marginTop: 24,
   },
 });

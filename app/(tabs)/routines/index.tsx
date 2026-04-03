@@ -104,13 +104,14 @@ export default function RoutineListScreen() {
         contentContainerStyle={styles.list}
         refreshing={refreshing}
         onRefresh={onRefresh}
+        ListFooterComponent={
+          <Button
+            title="+ Create Routine"
+            variant="dashed"
+            onPress={() => router.push('/(tabs)/routines/create')}
+          />
+        }
       />
-      <View style={styles.footer}>
-        <Button
-          title="Create Routine"
-          onPress={() => router.push('/(tabs)/routines/create')}
-        />
-      </View>
     </View>
   );
 }
@@ -158,10 +159,5 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 14,
     fontFamily: fonts.semiBold,
-  },
-  footer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
 });

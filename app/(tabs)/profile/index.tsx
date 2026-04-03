@@ -2,13 +2,13 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image } from 'rea
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { Button, Card } from '../../../src/components/ui';
+import { Card } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import { formatHeight } from '../../../src/utils/units';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, signOut } = useAuthStore();
+  const { user } = useAuthStore();
   const { profile } = useProfileStore();
 
   const displayWeight = () => {
@@ -85,10 +85,6 @@ export default function ProfileScreen() {
           </View>
         </Card>
       </ScrollView>
-
-      <View style={styles.footer}>
-        <Button title="Sign Out" variant="danger" onPress={signOut} />
-      </View>
     </View>
   );
 }
@@ -182,10 +178,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.semiBold,
     color: colors.text,
-  },
-  footer: {
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
 });

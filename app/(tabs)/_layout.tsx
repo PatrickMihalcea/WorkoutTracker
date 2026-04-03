@@ -74,11 +74,12 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
 export default function TabLayout() {
   const segments = useSegments();
   const isAtTabRoot = segments.length <= 2;
+  const isWorkout = segments.includes('workout' as never);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <SwipeableTabs
-        tabBar={(props) => <BottomTabBar {...props} />}
+        tabBar={(props) => (isWorkout ? null : <BottomTabBar {...props} />)}
         tabBarPosition="bottom"
         screenOptions={{
           swipeEnabled: isAtTabRoot,

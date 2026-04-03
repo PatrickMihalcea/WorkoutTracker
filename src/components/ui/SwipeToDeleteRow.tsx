@@ -55,6 +55,8 @@ export function SwipeToDeleteRow({
           onSwipeableOpen={handleSwipeOpen}
           rightThreshold={70}
           overshootRight={false}
+          dragOffsetFromLeftEdge={10000}
+          friction={2}
         >
           {children}
         </Swipeable>

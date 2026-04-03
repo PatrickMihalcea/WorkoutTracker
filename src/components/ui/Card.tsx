@@ -1,14 +1,14 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import { Animated, StyleSheet, ViewStyle } from 'react-native';
 import { colors } from '../../constants';
 
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: ViewStyle | Animated.AnimatedProps<ViewStyle>['style'];
 }
 
 export function Card({ children, style }: CardProps) {
-  return <View style={[styles.card, style]}>{children}</View>;
+  return <Animated.View style={[styles.card, style]}>{children}</Animated.View>;
 }
 
 const styles = StyleSheet.create({

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -30,18 +30,21 @@ import {
   SetsTableEditor,
 } from '../../../../src/components/routine/SetsTableEditor';
 import { AddExerciseModal, SetsPayloadItem } from '../../../../src/components/routine/AddExerciseModal';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
 function SwipeableExerciseRow({
   ex,
   isExpanded,
   onToggle,
   onDelete,
+  onLongPress,
   children,
 }: {
   ex: RoutineDayExercise;
   isExpanded: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onLongPress?: () => void;
   children?: React.ReactNode;
 }) {
   const setsCount = ex.sets?.length ?? ex.target_sets;
@@ -52,7 +55,13 @@ function SwipeableExerciseRow({
 
   return (
     <SwipeToDeleteRow onDelete={onDelete} expandedHeight={500}>
-      <TouchableOpacity style={styles.exerciseRow} onPress={onToggle} activeOpacity={0.7}>
+      <TouchableOpacity
+        style={styles.exerciseRow}
+        onPress={onToggle}
+        onLongPress={onLongPress}
+        delayLongPress={400}
+        activeOpacity={0.7}
+      >
         <View style={styles.exerciseInfo}>
           <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
           <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group} · {ex.exercise?.equipment}</Text>
@@ -76,17 +85,12 @@ function ExerciseSetsEditor({
 }) {
   const initial = setsToTemplateRows(entry.sets ?? [], entry.target_reps, wUnit);
   const [useRepRange, setUseRepRange] = useState(initial.hasRepRange);
-  const [dirty, setDirty] = useState(false);
   const [rows, setRows] = useState<TemplateSetRow[]>(initial.rows);
+  const mountedRef = useRef(false);
 
-  const handleSetRows = (updated: TemplateSetRow[]) => {
-    setRows(updated);
-    setDirty(true);
-  };
-
-  const handleSave = async () => {
-    if (useRepRange && !validateRepRange(rows)) return;
-    const payload = buildSetsPayload(rows, wUnit, useRepRange);
+  const persist = useCallback(async (currentRows: TemplateSetRow[], repRange: boolean) => {
+    if (repRange && !validateRepRange(currentRows)) return;
+    const payload = buildSetsPayload(currentRows, wUnit, repRange);
     try {
       await routineService.updateExerciseSets(entry.id, payload);
       await routineService.updateDayExercise(entry.id, {
@@ -96,27 +100,29 @@ function ExerciseSetsEditor({
         target_sets: payload.length,
         target_reps: payload[0]?.target_reps_min ?? 10,
       });
-      setDirty(false);
       onSave();
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
+    } catch {
+      // silent — transient save failures are acceptable
     }
-  };
+  }, [entry, wUnit, onSave]);
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    persist(rows, useRepRange);
+  }, [rows, useRepRange]);
 
   return (
     <View style={styles.setsEditorContainer}>
       <SetsTableEditor
         rows={rows}
-        setRows={handleSetRows}
+        setRows={setRows}
         repRange={useRepRange}
-        setRepRange={(v) => { setUseRepRange(v); setDirty(true); }}
+        setRepRange={setUseRepRange}
         wUnit={wUnit}
       />
-      {dirty && (
-        <TouchableOpacity style={styles.saveExBtn} onPress={handleSave} activeOpacity={0.7}>
-          <Text style={styles.saveExText}>Save</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
@@ -213,6 +219,19 @@ export default function DayEditorScreen() {
     }
   };
 
+  const handleReorderExercises = async (reordered: RoutineDayExercise[]) => {
+    try {
+      await Promise.all(
+        reordered.map((ex, i) =>
+          routineService.updateDayExercise(ex.id, { sort_order: i })
+        )
+      );
+      refresh();
+    } catch {
+      Alert.alert('Error', 'Could not reorder exercises.');
+    }
+  };
+
   const handleDeleteExercise = (exercise: Exercise) =>
     confirmDeleteExercise(exercise, user?.id ?? '', refresh);
 
@@ -243,17 +262,25 @@ export default function DayEditorScreen() {
 
         <Text style={styles.sectionLabel}>Exercises</Text>
 
-        {day.exercises.map((ex) => (
-          <SwipeableExerciseRow
-            key={ex.id}
-            ex={ex}
-            isExpanded={expandedIds.has(ex.id)}
-            onToggle={() => toggleExpand(ex.id)}
-            onDelete={() => handleRemoveExercise(ex.id)}
-          >
-            <ExerciseSetsEditor entry={ex} wUnit={wUnit} onSave={refresh} />
-          </SwipeableExerciseRow>
-        ))}
+        <DraggableFlatList
+          data={day.exercises}
+          keyExtractor={(item) => item.id}
+          scrollEnabled={false}
+          onDragEnd={({ data }) => handleReorderExercises(data)}
+          renderItem={({ item, drag }: RenderItemParams<RoutineDayExercise>) => (
+            <ScaleDecorator>
+              <SwipeableExerciseRow
+                ex={item}
+                isExpanded={expandedIds.has(item.id)}
+                onToggle={() => toggleExpand(item.id)}
+                onDelete={() => handleRemoveExercise(item.id)}
+                onLongPress={drag}
+              >
+                <ExerciseSetsEditor entry={item} wUnit={wUnit} onSave={refresh} />
+              </SwipeableExerciseRow>
+            </ScaleDecorator>
+          )}
+        />
 
         <AddRowButton label="+ Add Exercise" onPress={() => setShowAddExercise(true)} />
       </ScrollView>
@@ -333,18 +360,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  saveExBtn: {
-    alignSelf: 'flex-end',
-    backgroundColor: colors.text,
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    marginTop: 4,
-  },
-  saveExText: {
-    color: colors.background,
-    fontSize: 13,
-    fontFamily: fonts.bold,
   },
 });

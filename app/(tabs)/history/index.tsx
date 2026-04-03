@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,18 +6,28 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { sessionService } from '../../../src/services';
+import { sessionService, dashboardService } from '../../../src/services';
+import type { DashboardData } from '../../../src/services';
 import { Card, EmptyState } from '../../../src/components/ui';
+import { Dashboard } from '../../../src/components/history/Dashboard';
+import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
+import { useAuthStore } from '../../../src/stores/auth.store';
 import { colors, fonts } from '../../../src/constants';
 import { WorkoutSessionWithRoutine } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 
 export default function HistoryScreen() {
   const router = useRouter();
+  const { view } = useHistoryView();
+  const user = useAuthStore((s) => s.user);
   const [sessions, setSessions] = useState<WorkoutSessionWithRoutine[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const weeksRef = useRef(0);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -28,17 +38,44 @@ export default function HistoryScreen() {
     }
   }, []);
 
+  const loadDashboard = useCallback(async (weeks?: number) => {
+    if (!user?.id) return;
+    const w = weeks ?? weeksRef.current;
+    setDashboardLoading(true);
+    try {
+      const data = await dashboardService.getDashboardData(user.id, w);
+      setDashboardData(data);
+    } catch {
+      // Handle quietly
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [user?.id]);
+
   useFocusEffect(
     useCallback(() => {
-      loadSessions();
-    }, [loadSessions]),
+      if (view === 'dashboard') {
+        loadDashboard();
+      } else {
+        loadSessions();
+      }
+    }, [view, loadSessions, loadDashboard]),
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadSessions();
+    if (view === 'dashboard') {
+      await loadDashboard();
+    } else {
+      await loadSessions();
+    }
     setRefreshing(false);
-  }, [loadSessions]);
+  }, [view, loadSessions, loadDashboard]);
+
+  const handleChangeWeeks = useCallback((weeks: number) => {
+    weeksRef.current = weeks;
+    loadDashboard(weeks);
+  }, [loadDashboard]);
 
   const handleDeleteSession = (item: WorkoutSessionWithRoutine) => {
     Alert.alert(
@@ -61,6 +98,27 @@ export default function HistoryScreen() {
       ],
     );
   };
+
+  if (view === 'dashboard') {
+    if (dashboardLoading && !dashboardData) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.textSecondary} />
+        </View>
+      );
+    }
+    if (dashboardData) {
+      return (
+        <Dashboard
+          data={dashboardData}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+          onChangeWeeks={handleChangeWeeks}
+        />
+      );
+    }
+    return null;
+  }
 
   const renderSession = ({ item }: { item: WorkoutSessionWithRoutine }) => (
     <TouchableOpacity
@@ -116,6 +174,12 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: colors.background,
   },
   list: {

@@ -85,7 +85,7 @@ export function RestTimerBar({ initialSeconds, onDismiss, onLongPress }: RestTim
           <Text style={styles.adjustText}>-15</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => setCollapsed(true)} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => setCollapsed(true)} onLongPress={onLongPress} activeOpacity={0.7}>
           <Text style={styles.countdown}>{formatCountdown(remaining)}</Text>
         </TouchableOpacity>
 

@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation, Animated } from 'react-native';
 import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { Card } from '../ui/Card';
@@ -7,6 +7,15 @@ import { SwipeToDeleteRow } from '../ui/SwipeToDeleteRow';
 import { SetRow } from './SetRow';
 import { weightUnitLabel, formatWeight } from '../../utils/units';
 import { useThemeColors } from '../../hooks/useThemeColors';
+
+const ANIM_DURATION = 500;
+
+const slowLayout: LayoutAnimation.Config = {
+  duration: ANIM_DURATION,
+  update: { type: LayoutAnimation.Types.easeInEaseOut },
+  delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+  create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+};
 
 interface ExerciseCardProps {
   entry: RoutineDayExercise;
@@ -46,24 +55,57 @@ export function ExerciseCard({
   const allDone = rows.length > 0 && rows.every((r) => r.is_completed);
   const templates = entry.sets ?? [];
 
-  const hasDoneBackground = allDone && setCompletion !== 'transparent';
-  const doneTextColor = hasDoneBackground ? '#000000' : undefined;
+  const colorAnim = useRef(new Animated.Value(allDone ? 1 : 0)).current;
+  const prevAllDone = useRef(allDone);
 
+  const canAnimate = setCompletion !== 'transparent';
+
+  // Color fade: only on allDone transitions
+  useEffect(() => {
+    if (allDone === prevAllDone.current) return;
+    prevAllDone.current = allDone;
+
+    if (allDone && canAnimate) {
+      // Done: fade color in + auto-collapse
+      LayoutAnimation.configureNext(slowLayout);
+      onToggleCollapse?.();
+      Animated.timing(colorAnim, {
+        toValue: 1,
+        duration: ANIM_DURATION,
+        useNativeDriver: false,
+      }).start();
+    } else if (!allDone && canAnimate) {
+      // Undone: fade color out
+      Animated.timing(colorAnim, {
+        toValue: 0,
+        duration: ANIM_DURATION,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [allDone]);
+
+  const animatedBg = canAnimate
+    ? colorAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [colors.surface, setCompletion],
+      })
+    : undefined;
+
+  const doneTextColor = (allDone && canAnimate) ? '#000000' : undefined;
+
+  // Collapse/expand: always animate layout, never touch color
   const handleToggle = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    LayoutAnimation.configureNext(slowLayout);
     onToggleCollapse?.();
   };
 
-  // Reorder mode: minimal collapsed card (no tap-to-expand)
   if (reorderCollapsed) {
-    const reorderCardStyle = StyleSheet.flatten(
-      hasDoneBackground
-        ? [styles.cardCollapsed, { backgroundColor: setCompletion }]
-        : [styles.cardCollapsed],
-    );
+    const reorderCardStyle = (allDone && canAnimate)
+      ? [styles.cardCollapsed, { backgroundColor: setCompletion }]
+      : [styles.cardCollapsed];
     return (
       <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
-        <Card style={reorderCardStyle}>
+        <Card style={StyleSheet.flatten(reorderCardStyle)}>
           <View style={styles.headerCollapsed}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
@@ -78,17 +120,15 @@ export function ExerciseCard({
     );
   }
 
-  // User-collapsed mode: tappable header, completion color when all done
   if (isCollapsed) {
-    const collapsedCardStyle = StyleSheet.flatten(
-      hasDoneBackground
-        ? [styles.cardCollapsed, { backgroundColor: setCompletion }]
-        : [styles.cardCollapsed],
-    );
+    const collapsedBg = animatedBg ?? (allDone && canAnimate ? setCompletion : undefined);
+    const collapsedStyle = collapsedBg
+      ? [styles.cardCollapsed, { backgroundColor: collapsedBg }] as any
+      : styles.cardCollapsed;
 
     return (
       <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
-        <Card style={collapsedCardStyle}>
+        <Card style={collapsedStyle}>
           <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
             <View style={styles.headerCollapsed}>
               <View style={{ flex: 1 }}>
@@ -105,17 +145,15 @@ export function ExerciseCard({
     );
   }
 
-  // Expanded mode
-  const expandedCardStyle = StyleSheet.flatten(
-    hasDoneBackground
-      ? [styles.card, { backgroundColor: setCompletion }]
-      : [styles.card],
-  );
+  const expandedBg = animatedBg ?? undefined;
+  const expandedStyle = expandedBg
+    ? [styles.card, { backgroundColor: expandedBg }] as any
+    : styles.card;
 
   const cardContent = (
-    <Card style={expandedCardStyle}>
+    <Card style={expandedStyle}>
       <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
-        <View style={[styles.header, hasDoneBackground && { backgroundColor: 'transparent' }]}>
+        <View style={[styles.header, (allDone && canAnimate) && { backgroundColor: 'transparent' }]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
             <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>

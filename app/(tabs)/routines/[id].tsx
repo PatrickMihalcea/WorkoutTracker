@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  Pressable,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -24,15 +25,18 @@ import {
   Exercise,
 } from '../../../src/models';
 import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
 function SwipeableExerciseRow({
   ex,
   onEdit,
   onDelete,
+  onLongPress,
 }: {
   ex: RoutineDayExercise;
   onEdit: () => void;
   onDelete: () => void;
+  onLongPress?: () => void;
 }) {
   const setsCount = ex.sets?.length ?? ex.target_sets;
   const setsLabel =
@@ -42,7 +46,13 @@ function SwipeableExerciseRow({
 
   return (
     <SwipeToDeleteRow onDelete={onDelete} expandedHeight={80}>
-      <TouchableOpacity style={styles.exerciseRow} onPress={onEdit} activeOpacity={0.7}>
+      <TouchableOpacity
+        style={styles.exerciseRow}
+        onPress={onEdit}
+        onLongPress={onLongPress}
+        delayLongPress={400}
+        activeOpacity={0.7}
+      >
         <View style={styles.exerciseInfo}>
           <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
           <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group} · {ex.exercise?.equipment}</Text>
@@ -181,6 +191,19 @@ export default function RoutineDetailScreen() {
     setEditingName(false);
   };
 
+  const handleReorderExercises = async (reordered: RoutineDayExercise[]) => {
+    try {
+      await Promise.all(
+        reordered.map((ex, i) =>
+          routineService.updateDayExercise(ex.id, { sort_order: i })
+        )
+      );
+      if (id) fetchRoutineDetail(id);
+    } catch {
+      Alert.alert('Error', 'Could not reorder exercises.');
+    }
+  };
+
   const handleOpenExerciseEdit = (entry: RoutineDayExercise, dayId: string) => {
     setEditingEntry(entry);
     setAddExerciseDayId(dayId);
@@ -208,14 +231,22 @@ export default function RoutineDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      {day.exercises.map((ex) => (
-        <SwipeableExerciseRow
-          key={ex.id}
-          ex={ex}
-          onEdit={() => handleOpenExerciseEdit(ex, day.id)}
-          onDelete={() => handleRemoveExercise(ex.id)}
-        />
-      ))}
+      <DraggableFlatList
+        data={day.exercises}
+        keyExtractor={(item) => item.id}
+        scrollEnabled={false}
+        onDragEnd={({ data }) => handleReorderExercises(data)}
+        renderItem={({ item, drag, isActive }: RenderItemParams<RoutineDayExercise>) => (
+          <ScaleDecorator>
+            <SwipeableExerciseRow
+              ex={item}
+              onEdit={() => handleOpenExerciseEdit(item, day.id)}
+              onDelete={() => handleRemoveExercise(item.id)}
+              onLongPress={drag}
+            />
+          </ScaleDecorator>
+        )}
+      />
 
       <AddRowButton label="+ Add Exercise" onPress={() => openAddExercise(day.id)} borderTop />
     </Card>

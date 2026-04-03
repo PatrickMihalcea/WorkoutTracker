@@ -1,17 +1,11 @@
 import { Stack } from 'expo-router';
-import { colors, fonts } from '../../../src/constants';
+import { AppStack } from '../../../src/components/ui';
 
 export default function TodayLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.text,
-        headerTitleStyle: { fontFamily: fonts.bold },
-        headerBackTitleStyle: { fontSize: 12, fontFamily: fonts.regular },
-      }}
-    >
+    <AppStack>
       <Stack.Screen name="index" options={{ title: 'Today' }} />
-    </Stack>
+      <Stack.Screen name="workout" options={{ headerShown: false }} />
+    </AppStack>
   );
 }

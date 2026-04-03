@@ -71,7 +71,7 @@ export default function HomeScreen() {
       Alert.alert('Error', (error as Error).message);
       return;
     }
-    router.push('/workout/active');
+    router.push('/(tabs)/today/workout');
   };
 
   const openChooseModal = async () => {
@@ -268,7 +268,7 @@ export default function HomeScreen() {
                   onPress={async () => {
                     if (!user) return;
                     const ok = await resumeWorkout(user.id);
-                    if (ok) router.push('/workout/active');
+                    if (ok) router.push('/(tabs)/today/workout');
                     else setHasActiveSession(false);
                   }}
                 />

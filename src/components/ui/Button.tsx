@@ -12,7 +12,7 @@ import { colors, fonts } from '../../constants';
 interface ButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'dashed';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   disabled?: boolean;
@@ -51,7 +51,7 @@ export function Button({
     >
       {loading ? (
         <ActivityIndicator
-          color={variant === 'ghost' ? colors.text : colors.background}
+          color={variant === 'ghost' || variant === 'dashed' ? colors.text : colors.background}
           size="small"
         />
       ) : (
@@ -80,9 +80,16 @@ const styles = StyleSheet.create({
   variant_secondary: { backgroundColor: colors.surfaceLight },
   variant_danger: { backgroundColor: colors.surfaceLight, borderWidth: 1, borderColor: colors.border },
   variant_ghost: { backgroundColor: 'transparent' },
+  variant_dashed: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
 
   text: {
     fontFamily: fonts.semiBold,
+    textAlign: 'center',
   },
   text_sm: { fontSize: 14 },
   text_md: { fontSize: 16 },
@@ -92,4 +99,5 @@ const styles = StyleSheet.create({
   text_secondary: { color: colors.text },
   text_danger: { color: colors.text },
   text_ghost: { color: colors.textSecondary },
+  text_dashed: { color: colors.textSecondary },
 });

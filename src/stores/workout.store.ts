@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { LayoutAnimation } from 'react-native';
+
 import { WorkoutSession, WorkoutRow, SetLog, RoutineDayExercise, Exercise } from '../models';
 import { sessionService, workoutRowService, routineService, exerciseService } from '../services';
 
@@ -166,14 +166,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         ),
       },
     }));
-    const updatedRows = get().rows[entryId] ?? [];
-    const allDone = updatedRows.length > 0 && updatedRows.every((r) => r.is_completed);
-    if (allDone) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      set((state) => ({
-        collapsedCards: { ...state.collapsedCards, [entryId]: true },
-      }));
-    }
+  
   },
 
   deleteRow: async (id, entryId, setNumber) => {
