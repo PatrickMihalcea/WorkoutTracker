@@ -36,6 +36,7 @@ export default function ActiveWorkoutScreen() {
     previousSets,
     collapsedCards,
     loadPreviousSets,
+    updateRowLocal,
     updateRow,
     toggleRow,
     deleteRow,
@@ -107,6 +108,10 @@ export default function ActiveWorkoutScreen() {
       setRestTimerKey((k) => k + 1);
     }
   }, [restTimerDefault]);
+
+  const handleUpdateLocal = (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => {
+    updateRowLocal(id, entryId, updates);
+  };
 
   const handleUpdate = async (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => {
     try {
@@ -201,13 +206,14 @@ export default function ActiveWorkoutScreen() {
       isCollapsed={collapsedCards[item.id] ?? false}
       onToggleCollapse={() => toggleCollapse(item.id)}
       onLongPress={() => setReordering(true)}
+      onUpdateRowLocal={handleUpdateLocal}
       onUpdateRow={handleUpdate}
       onToggleRow={handleToggle}
       onDeleteRow={handleDelete}
       onAddRow={handleAdd}
       onRemove={() => handleRemoveExercise(item.id)}
     />
-  ), [rows, previousSets, weightUnit, collapsedCards, toggleCollapse, handleUpdate, handleToggle, handleDelete, handleAdd, handleRemoveExercise]);
+  ), [rows, previousSets, weightUnit, collapsedCards, toggleCollapse, handleUpdateLocal, handleUpdate, handleToggle, handleDelete, handleAdd, handleRemoveExercise]);
 
   const noop = useCallback(() => {}, []);
 

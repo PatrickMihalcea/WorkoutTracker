@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation, Animated } from 'react-native';
+import type { LayoutAnimationConfig } from 'react-native';
 import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { Card } from '../ui/Card';
@@ -10,7 +11,7 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 
 const ANIM_DURATION = 500;
 
-const slowLayout: LayoutAnimation.Config = {
+const slowLayout: LayoutAnimationConfig = {
   duration: ANIM_DURATION,
   update: { type: LayoutAnimation.Types.easeInEaseOut },
   delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
@@ -22,6 +23,7 @@ interface ExerciseCardProps {
   rows: WorkoutRow[];
   previousSets: SetLog[];
   weightUnit: WeightUnit;
+  onUpdateRowLocal?: (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => void;
   onUpdateRow: (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => void;
   onToggleRow: (id: string, entryId: string) => void;
   onDeleteRow: (id: string, entryId: string, setNumber: number) => void;
@@ -38,6 +40,7 @@ export function ExerciseCard({
   rows,
   previousSets,
   weightUnit,
+  onUpdateRowLocal,
   onUpdateRow,
   onToggleRow,
   onDeleteRow,
@@ -215,6 +218,7 @@ export function ExerciseCard({
               suggestedWeight={suggestedWeight}
               suggestedReps={suggestedReps}
               completionColor={setCompletion}
+              onUpdateRowLocal={(updates) => onUpdateRowLocal?.(row.id, entry.id, updates)}
               onUpdateRow={(updates) => onUpdateRow(row.id, entry.id, updates)}
               onToggle={() => onToggleRow(row.id, entry.id)}
               onSwipeDelete={() => onDeleteRow(row.id, entry.id, row.set_number)}

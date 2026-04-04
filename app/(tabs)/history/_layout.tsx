@@ -2,10 +2,7 @@ import React from 'react';
 import { Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { AppStack } from '../../../src/components/ui';
-import {
-  HistoryViewProvider,
-  useHistoryView,
-} from '../../../src/components/history/HistoryViewContext';
+import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
 import { colors, fonts } from '../../../src/constants';
 
 function HeaderDropdown() {
@@ -35,11 +32,7 @@ function InnerLayout() {
 }
 
 export default function HistoryLayout() {
-  return (
-    <HistoryViewProvider>
-      <InnerLayout />
-    </HistoryViewProvider>
-  );
+  return <InnerLayout />;
 }
 
 const styles = StyleSheet.create({

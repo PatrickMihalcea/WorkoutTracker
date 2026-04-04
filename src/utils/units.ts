@@ -1,8 +1,8 @@
 import { WeightUnit, HeightUnit, DistanceUnit } from '../models/profile';
 
-const KG_TO_LBS = 2.20462;
-const CM_TO_IN = 0.393701;
-const KM_TO_MI = 0.621371;
+const KG_TO_LBS = 2.205;
+const CM_TO_IN = 0.3937;
+const KM_TO_MI = 0.6214;
 
 export function kgToLbs(kg: number): number {
   return Math.round(kg * KG_TO_LBS * 10) / 10;

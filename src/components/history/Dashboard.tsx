@@ -4,13 +4,15 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  Modal,
   StyleSheet,
   RefreshControl,
   Dimensions,
 } from 'react-native';
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
 import { DashboardData, ExerciseProgression } from '../../services';
-import { Card } from '../ui';
+import { Card, ExercisePickerModal } from '../ui';
+import { Exercise } from '../../models';
 import { colors, fonts, spacing } from '../../constants';
 
 function cloneData<T>(arr: T[]): T[] {
@@ -25,12 +27,24 @@ interface DashboardProps {
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const CHART_WIDTH = SCREEN_WIDTH - 80;
+const CHART_WIDTH = SCREEN_WIDTH - 120;
+
 const TIME_RANGES = [
   { label: '4W', value: 4 },
   { label: '8W', value: 8 },
-  { label: '12W', value: 12 },
+  { label: '3M', value: 12 },
+  { label: '6M', value: 26 },
+  { label: '1Y', value: 52 },
+  { label: '2Y', value: 104 },
   { label: 'All', value: 0 },
+];
+
+type SpotlightMetric = 'weight' | 'volume' | 'reps' | '1rm';
+const METRIC_OPTIONS: { key: SpotlightMetric; label: string }[] = [
+  { key: 'weight', label: 'Weight' },
+  { key: 'volume', label: 'Volume' },
+  { key: 'reps', label: 'Reps' },
+  { key: '1rm', label: '1RM' },
 ];
 
 const TOOLTIP_STYLE: Record<string, unknown> = {
@@ -43,6 +57,47 @@ const TOOLTIP_STYLE: Record<string, unknown> = {
   alignItems: 'center',
 };
 
+const X_LABEL_SHIFT = 20;
+const X_LABEL_LEFT_OFFSET = -18;
+const X_LABEL_WIDTH = 60;
+const LABEL_EXTRA_HEIGHT = 60;
+
+const X_LABEL_STYLE = {
+  color: colors.textMuted,
+  fontSize: 9,
+  fontFamily: fonts.light,
+  textAlign: 'right' as const,
+  width: X_LABEL_WIDTH,
+  transform: [{ rotate: '-75deg' }],
+  overflow: 'visible' as const,
+};
+
+const TIME_AXIS_PROPS = {
+  width: CHART_WIDTH,
+  height: 150,
+  noOfSections: 4,
+  yAxisTextStyle: { color: colors.textMuted, fontSize: 8, fontFamily: fonts.light },
+  xAxisLabelTextStyle: X_LABEL_STYLE,
+  labelsExtraHeight: LABEL_EXTRA_HEIGHT,
+  xAxisLabelsVerticalShift: X_LABEL_SHIFT,
+  yAxisColor: 'transparent' as const,
+  xAxisColor: colors.border,
+  hideRules: true,
+};
+
+const TIME_BAR_PROPS = {
+  ...TIME_AXIS_PROPS,
+  xAxisLabelTextStyle: { ...X_LABEL_STYLE, marginLeft: X_LABEL_LEFT_OFFSET },
+};
+
+const TIME_LINE_PROPS = {
+  ...TIME_AXIS_PROPS,
+  spacing: X_LABEL_WIDTH,
+  thickness: 2,
+  areaChart: true,
+  curved: true,
+};
+
 function formatVolume(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
@@ -52,6 +107,8 @@ function formatVolume(v: number): string {
 export function Dashboard({ data, onRefresh, refreshing, onChangeWeeks }: DashboardProps) {
   const [selectedRange, setSelectedRange] = useState(0);
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [spotlightMetric, setSpotlightMetric] = useState<SpotlightMetric>('weight');
 
   const hasData =
     data.weeklyFrequency.length > 0 ||
@@ -80,6 +137,10 @@ export function Dashboard({ data, onRefresh, refreshing, onChangeWeeks }: Dashbo
     onChangeWeeks?.(weeks);
   };
 
+  const handleExerciseSelect = (exercise: Exercise) => {
+    setSelectedExerciseId(exercise.id);
+  };
+
   return (
     <ScrollView
       style={styles.container}
@@ -96,26 +157,42 @@ export function Dashboard({ data, onRefresh, refreshing, onChangeWeeks }: Dashbo
       }
     >
       <HeroStatsRow stats={data.summaryStats} />
-      <TimeRangePicker selected={selectedRange} onChange={handleRangeChange} />
+      <TimeRangeDropdown selected={selectedRange} onChange={handleRangeChange} />
       <ContributionGrid workoutDays={data.workoutDays} streakWeeks={data.weeklyStreak} />
       <WorkoutFrequencySection data={data.weeklyFrequency} />
       <VolumeSection data={data.volumeOverTime} />
       {activeExercise && (
         <ExerciseSpotlightSection
-          progressions={data.exerciseProgressions}
           active={activeExercise}
-          onSelect={setSelectedExerciseId}
+          metric={spotlightMetric}
+          onMetricChange={setSpotlightMetric}
+          onPickExercise={() => setShowExercisePicker(true)}
         />
       )}
-      <MuscleGroupSection data={data.muscleGroupSplit} />
+      <MuscleGroupSection
+        data={data.muscleGroupSplit}
+        exerciseBreakdown={data.muscleGroupExercises}
+      />
       <PersonalRecordsSection data={data.personalRecords} />
       <DurationTrendSection data={data.durationTrend} />
+
+      <ExercisePickerModal
+        visible={showExercisePicker}
+        onClose={() => setShowExercisePicker(false)}
+        onSelect={handleExerciseSelect}
+        selectedExerciseId={selectedExerciseId}
+      />
     </ScrollView>
   );
 }
 
-function SectionTitle({ title }: { title: string }) {
-  return <Text style={styles.sectionTitle}>{title}</Text>;
+function SectionTitle({ title, rightElement }: { title: string; rightElement?: React.ReactNode }) {
+  return (
+    <View style={styles.sectionTitleRow}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {rightElement}
+    </View>
+  );
 }
 
 /* ── Hero Stats ── */
@@ -145,31 +222,62 @@ function HeroStatsRow({ stats }: { stats: DashboardData['summaryStats'] }) {
   );
 }
 
-/* ── Time Range Picker ── */
+/* ── Time Range Dropdown ── */
 
-function TimeRangePicker({
+function TimeRangeDropdown({
   selected,
   onChange,
 }: {
   selected: number;
   onChange: (v: number) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const currentLabel = TIME_RANGES.find((r) => r.value === selected)?.label ?? 'All';
+
   return (
-    <View style={styles.rangeRow}>
-      {TIME_RANGES.map((r) => (
+    <View style={styles.dropdownContainer}>
+      <TouchableOpacity
+        style={styles.dropdownTrigger}
+        onPress={() => setOpen(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.dropdownTriggerText}>{currentLabel}</Text>
+        <Text style={styles.dropdownChevron}>▾</Text>
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade">
         <TouchableOpacity
-          key={r.value}
-          style={[styles.rangeChip, selected === r.value && styles.rangeChipActive]}
-          onPress={() => onChange(r.value)}
-          activeOpacity={0.7}
+          style={styles.dropdownOverlay}
+          activeOpacity={1}
+          onPress={() => setOpen(false)}
         >
-          <Text
-            style={[styles.rangeChipText, selected === r.value && styles.rangeChipTextActive]}
-          >
-            {r.label}
-          </Text>
+          <View style={styles.dropdownMenu}>
+            {TIME_RANGES.map((r) => (
+              <TouchableOpacity
+                key={r.value}
+                style={[
+                  styles.dropdownItem,
+                  selected === r.value && styles.dropdownItemActive,
+                ]}
+                onPress={() => {
+                  onChange(r.value);
+                  setOpen(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.dropdownItemText,
+                    selected === r.value && styles.dropdownItemTextActive,
+                  ]}
+                >
+                  {r.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </TouchableOpacity>
-      ))}
+      </Modal>
     </View>
   );
 }
@@ -264,29 +372,26 @@ function WorkoutFrequencySection({
 
   const barData = data.map((d) => ({
     value: d.value,
-    label: d.label.replace(' ', '\n'),
+    label: d.label,
     frontColor: '#4ECDC4',
   }));
 
   return (
     <Card style={styles.card}>
       <SectionTitle title="Workout Frequency" />
-      <Text style={styles.chartSubtitle}>Workouts per week</Text>
+      <Text style={styles.chartSubtitle}>Workouts per period</Text>
       <View style={styles.chartContainer}>
         <BarChart
+          {...TIME_BAR_PROPS}
           data={cloneData(barData)}
-          width={CHART_WIDTH}
-          height={150}
           barWidth={18}
           spacing={12}
-          noOfSections={4}
           barBorderRadius={4}
-          yAxisTextStyle={styles.chartAxisLabel}
-          xAxisLabelTextStyle={styles.chartAxisLabel}
-          yAxisColor="transparent"
-          xAxisColor={colors.border}
-          hideRules
-          isAnimated
+          renderTooltip={(item: { value: number }) => (
+            <View style={TOOLTIP_STYLE}>
+              <Text style={styles.tooltipText}>{item.value} workouts</Text>
+            </View>
+          )}
         />
       </View>
     </Card>
@@ -300,7 +405,7 @@ function VolumeSection({ data }: { data: DashboardData['volumeOverTime'] }) {
 
   const lineData = data.map((d) => ({
     value: d.value,
-    label: data.length > 10 ? '' : d.label.replace(' ', '\n'),
+    label: d.label,
   }));
 
   return (
@@ -309,24 +414,13 @@ function VolumeSection({ data }: { data: DashboardData['volumeOverTime'] }) {
       <Text style={styles.chartSubtitle}>Weight x reps per session</Text>
       <View style={styles.chartContainer}>
         <LineChart
+          {...TIME_LINE_PROPS}
           data={cloneData(lineData)}
-          width={CHART_WIDTH}
-          height={150}
           color="#FF6B6B"
-          thickness={2}
-          noOfSections={4}
-          areaChart
           startFillColor="rgba(255,107,107,0.3)"
           endFillColor="rgba(255,107,107,0.01)"
-          yAxisTextStyle={styles.chartAxisLabel}
-          xAxisLabelTextStyle={styles.chartAxisLabel}
-          yAxisColor="transparent"
-          xAxisColor={colors.border}
-          hideRules
           hideDataPoints={data.length > 12}
           dataPointsColor="#FF6B6B"
-          curved
-          isAnimated
           pointerConfig={{
             pointerStripColor: 'rgba(255,255,255,0.15)',
             pointerStripWidth: 1,
@@ -335,6 +429,7 @@ function VolumeSection({ data }: { data: DashboardData['volumeOverTime'] }) {
             pointerLabelWidth: 120,
             pointerLabelHeight: 40,
             activatePointersOnLongPress: true,
+            autoAdjustPointerLabelPosition: true,
             pointerLabelComponent: (items: { value: number }[]) => (
               <View style={TOOLTIP_STYLE}>
                 <Text style={styles.tooltipText}>{formatVolume(items[0]?.value ?? 0)} vol</Text>
@@ -350,83 +445,100 @@ function VolumeSection({ data }: { data: DashboardData['volumeOverTime'] }) {
 /* ── Exercise Spotlight ── */
 
 function ExerciseSpotlightSection({
-  progressions,
   active,
-  onSelect,
+  metric,
+  onMetricChange,
+  onPickExercise,
 }: {
-  progressions: ExerciseProgression[];
   active: ExerciseProgression;
-  onSelect: (id: string) => void;
+  metric: SpotlightMetric;
+  onMetricChange: (m: SpotlightMetric) => void;
+  onPickExercise: () => void;
 }) {
-  const lineData = active.points.map((p) => ({
+  const pointsMap: Record<SpotlightMetric, { label: string; value: number }[]> = {
+    weight: active.weightPoints,
+    volume: active.volumePoints,
+    reps: active.repsPoints,
+    '1rm': active.oneRMPoints,
+  };
+  const points = pointsMap[metric] ?? active.weightPoints;
+
+  const lineData = points.map((p) => ({
     value: p.value,
-    label: active.points.length > 10 ? '' : p.label.replace(' ', '\n'),
+    label: p.label,
   }));
+
+  const subtitleMap: Record<SpotlightMetric, string> = {
+    weight: 'Max weight per session',
+    volume: 'Total volume per session',
+    reps: 'Total reps per session',
+    '1rm': 'Estimated 1RM per session',
+  };
+
+  const tooltipSuffix: Record<SpotlightMetric, string> = {
+    weight: ' lbs',
+    volume: ' vol',
+    reps: ' reps',
+    '1rm': ' 1RM',
+  };
 
   return (
     <Card style={styles.card}>
       <SectionTitle title="Exercise Spotlight" />
-      <Text style={styles.chartSubtitle}>Max weight per session</Text>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.exerciseChipScroll}
-        contentContainerStyle={styles.exerciseChipRow}
+      <TouchableOpacity
+        style={styles.exerciseSelectBtn}
+        onPress={onPickExercise}
+        activeOpacity={0.7}
       >
-        {progressions.map((ex) => (
+        <Text style={styles.exerciseSelectText}>{active.exerciseName}</Text>
+        <Text style={styles.exerciseSelectArrow}>▾</Text>
+      </TouchableOpacity>
+
+      <View style={styles.metricRow}>
+        {METRIC_OPTIONS.map((opt) => (
           <TouchableOpacity
-            key={ex.exerciseId}
-            style={[
-              styles.exerciseChip,
-              ex.exerciseId === active.exerciseId && styles.exerciseChipActive,
-            ]}
-            onPress={() => onSelect(ex.exerciseId)}
+            key={opt.key}
+            style={[styles.metricChip, metric === opt.key && styles.metricChipActive]}
+            onPress={() => onMetricChange(opt.key)}
             activeOpacity={0.7}
           >
             <Text
-              style={[
-                styles.exerciseChipText,
-                ex.exerciseId === active.exerciseId && styles.exerciseChipTextActive,
-              ]}
-              numberOfLines={1}
+              style={[styles.metricChipText, metric === opt.key && styles.metricChipTextActive]}
             >
-              {ex.exerciseName}
+              {opt.label}
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
+
+      <Text style={styles.chartSubtitle}>{subtitleMap[metric]}</Text>
 
       <View style={styles.chartContainer}>
         <LineChart
+          {...TIME_LINE_PROPS}
           data={cloneData(lineData)}
-          width={CHART_WIDTH}
-          height={150}
           color="#FFEAA7"
-          thickness={2}
-          noOfSections={4}
-          areaChart
           startFillColor="rgba(255,234,167,0.25)"
           endFillColor="rgba(255,234,167,0.01)"
-          yAxisTextStyle={styles.chartAxisLabel}
-          xAxisLabelTextStyle={styles.chartAxisLabel}
-          yAxisColor="transparent"
-          xAxisColor={colors.border}
-          hideRules
           dataPointsColor="#FFEAA7"
-          curved
-          isAnimated
           pointerConfig={{
             pointerStripColor: 'rgba(255,255,255,0.15)',
             pointerStripWidth: 1,
             pointerColor: '#FFEAA7',
             radius: 5,
-            pointerLabelWidth: 100,
+            pointerLabelWidth: 120,
             pointerLabelHeight: 40,
             activatePointersOnLongPress: true,
+            autoAdjustPointerLabelPosition: true,
             pointerLabelComponent: (items: { value: number }[]) => (
               <View style={TOOLTIP_STYLE}>
-                <Text style={styles.tooltipText}>{items[0]?.value ?? 0} lbs</Text>
+                <Text style={styles.tooltipText}>
+                  {metric === 'volume'
+                    ? formatVolume(items[0]?.value ?? 0)
+                    : (items[0]?.value ?? 0)}
+                  {tooltipSuffix[metric]}
+                </Text>
               </View>
             ),
           }}
@@ -440,17 +552,76 @@ function ExerciseSpotlightSection({
 
 function MuscleGroupSection({
   data,
+  exerciseBreakdown,
 }: {
   data: DashboardData['muscleGroupSplit'];
+  exerciseBreakdown: DashboardData['muscleGroupExercises'];
 }) {
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+
   if (data.length === 0) return null;
 
-  const pieData = data.map((d) => ({
+  const drillData = selectedGroup ? exerciseBreakdown[selectedGroup] ?? [] : [];
+
+  if (selectedGroup && drillData.length > 0) {
+    const drillPieData = drillData.map((d) => ({
+      value: d.value,
+      color: d.color,
+      text: `${d.value}%`,
+      textColor: '#fff',
+      textSize: 10,
+    }));
+
+    return (
+      <Card style={styles.card}>
+        <SectionTitle
+          title={selectedGroup}
+          rightElement={
+            <TouchableOpacity onPress={() => setSelectedGroup(null)} activeOpacity={0.7}>
+              <Text style={styles.drillBackText}>← Back</Text>
+            </TouchableOpacity>
+          }
+        />
+        <Text style={styles.chartSubtitle}>% of sets by exercise</Text>
+        <View style={styles.pieContainer}>
+          <PieChart
+            data={cloneData(drillPieData)}
+            donut
+            radius={80}
+            innerRadius={50}
+            innerCircleColor={colors.surface}
+            centerLabelComponent={() => (
+              <TouchableOpacity onPress={() => setSelectedGroup(null)}>
+                <Text style={styles.pieCenter}>
+                  {drillData.length}
+                  {'\n'}
+                  exercises
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+        <View style={styles.legendContainer}>
+          {drillData.map((d, i) => (
+            <View key={i} style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: d.color }]} />
+              <Text style={styles.legendText}>
+                {d.label} ({d.value}%)
+              </Text>
+            </View>
+          ))}
+        </View>
+      </Card>
+    );
+  }
+
+  const pieData = data.map((d, idx) => ({
     value: d.value,
     color: d.color,
     text: `${d.value}%`,
     textColor: '#fff',
     textSize: 10,
+    onPress: () => setSelectedGroup(d.label),
   }));
 
   return (
@@ -475,12 +646,17 @@ function MuscleGroupSection({
       </View>
       <View style={styles.legendContainer}>
         {data.slice(0, 8).map((d, i) => (
-          <View key={i} style={styles.legendItem}>
+          <TouchableOpacity
+            key={i}
+            style={styles.legendItem}
+            onPress={() => setSelectedGroup(d.label)}
+            activeOpacity={0.7}
+          >
             <View style={[styles.legendDot, { backgroundColor: d.color }]} />
             <Text style={styles.legendText}>
               {d.label} ({d.value}%)
             </Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
     </Card>
@@ -528,32 +704,21 @@ function DurationTrendSection({
 
   const lineData = data.map((d) => ({
     value: d.value,
-    label: d.label.replace(' ', '\n'),
+    label: d.label,
   }));
 
   return (
     <Card style={styles.card}>
       <SectionTitle title="Workout Duration" />
-      <Text style={styles.chartSubtitle}>Avg minutes per week</Text>
+      <Text style={styles.chartSubtitle}>Avg minutes per period</Text>
       <View style={styles.chartContainer}>
         <LineChart
+          {...TIME_LINE_PROPS}
           data={cloneData(lineData)}
-          width={CHART_WIDTH}
-          height={150}
           color="#45B7D1"
-          thickness={2}
-          noOfSections={4}
-          areaChart
           startFillColor="rgba(69,183,209,0.3)"
           endFillColor="rgba(69,183,209,0.01)"
-          yAxisTextStyle={styles.chartAxisLabel}
-          xAxisLabelTextStyle={styles.chartAxisLabel}
-          yAxisColor="transparent"
-          xAxisColor={colors.border}
-          hideRules
           dataPointsColor="#45B7D1"
-          curved
-          isAnimated
           pointerConfig={{
             pointerStripColor: 'rgba(255,255,255,0.15)',
             pointerStripWidth: 1,
@@ -562,6 +727,7 @@ function DurationTrendSection({
             pointerLabelWidth: 100,
             pointerLabelHeight: 40,
             activatePointersOnLongPress: true,
+            autoAdjustPointerLabelPosition: true,
             pointerLabelComponent: (items: { value: number }[]) => (
               <View style={TOOLTIP_STYLE}>
                 <Text style={styles.tooltipText}>{items[0]?.value ?? 0} min</Text>
@@ -609,11 +775,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   sectionTitle: {
     fontSize: 16,
     fontFamily: fonts.bold,
     color: colors.text,
     marginBottom: 4,
+    textTransform: 'capitalize',
   },
   chartSubtitle: {
     fontSize: 12,
@@ -623,12 +795,6 @@ const styles = StyleSheet.create({
   },
   chartContainer: {
     alignItems: 'center',
-    overflow: 'hidden',
-  },
-  chartAxisLabel: {
-    color: colors.textMuted,
-    fontSize: 9,
-    fontFamily: fonts.light,
   },
   tooltipText: {
     fontSize: 12,
@@ -636,7 +802,6 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
 
-  // Hero stats
   heroGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -666,31 +831,61 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Time range picker
-  rangeRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+  // Dropdown
+  dropdownContainer: {
     marginBottom: spacing.md,
+    alignItems: 'flex-start',
   },
-  rangeChip: {
-    flex: 1,
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  dropdownTriggerText: {
+    fontSize: 14,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginRight: 6,
+  },
+  dropdownChevron: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  dropdownOverlay: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  rangeChipActive: {
+  dropdownMenu: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    minWidth: 180,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  dropdownItemActive: {
     backgroundColor: colors.text,
-    borderColor: colors.text,
   },
-  rangeChipText: {
-    fontSize: 13,
+  dropdownItemText: {
+    fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
+    textAlign: 'center',
   },
-  rangeChipTextActive: {
+  dropdownItemTextActive: {
     color: colors.background,
   },
 
@@ -742,32 +937,51 @@ const styles = StyleSheet.create({
   },
 
   // Exercise spotlight
-  exerciseChipScroll: {
-    marginBottom: spacing.md,
-    maxHeight: 36,
+  exerciseSelectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 10,
+    alignSelf: 'flex-start',
   },
-  exerciseChipRow: {
-    gap: spacing.xs,
-    paddingRight: spacing.md,
+  exerciseSelectText: {
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+    marginRight: 6,
   },
-  exerciseChip: {
+  exerciseSelectArrow: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  metricChip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 5,
+    borderRadius: 14,
     backgroundColor: colors.surfaceLight,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  exerciseChipActive: {
+  metricChipActive: {
     backgroundColor: '#FFEAA7',
     borderColor: '#FFEAA7',
   },
-  exerciseChipText: {
+  metricChipText: {
     fontSize: 12,
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
   },
-  exerciseChipTextActive: {
+  metricChipTextActive: {
     color: '#000',
   },
 
@@ -802,6 +1016,11 @@ const styles = StyleSheet.create({
   legendText: {
     fontSize: 12,
     fontFamily: fonts.regular,
+    color: colors.textSecondary,
+  },
+  drillBackText: {
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
     color: colors.textSecondary,
   },
 

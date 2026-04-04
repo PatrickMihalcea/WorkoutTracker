@@ -12,6 +12,7 @@ interface SetRowProps {
   suggestedWeight?: string;
   suggestedReps?: string;
   completionColor?: string;
+  onUpdateRowLocal: (updates: { weight?: string; reps?: string; rir?: string }) => void;
   onUpdateRow: (updates: { weight?: string; reps?: string; rir?: string }) => void;
   onToggle: () => void;
   onSwipeDelete: () => void;
@@ -24,46 +25,54 @@ export function SetRow({
   suggestedWeight,
   suggestedReps,
   completionColor,
+  onUpdateRowLocal,
   onUpdateRow,
   onToggle,
   onSwipeDelete,
 }: SetRowProps) {
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
 
-  const [weight, setWeight] = useState(row.weight);
-  const [reps, setReps] = useState(row.reps);
   const [rir, setRir] = useState(row.rir);
 
   const suggestedRepsValue = suggestedReps?.includes('-')
     ? suggestedReps.split('-')[1]
     : suggestedReps;
 
+  const handleWeightChange = (v: string) => {
+    onUpdateRowLocal({ weight: v });
+  };
+  const handleRepsChange = (v: string) => {
+    onUpdateRowLocal({ reps: v });
+  };
+
+  const handleWeightBlur = () => {
+    onUpdateRow({ weight: row.weight });
+  };
+  const handleRepsBlur = () => {
+    onUpdateRow({ reps: row.reps });
+  };
+  const handleRirBlur = () => {
+    if (rir !== row.rir) {
+      onUpdateRow({ rir });
+      onUpdateRowLocal({ rir });
+    }
+    if (rir && !row.is_completed) {
+      markDone();
+    }
+  };
+
   const markDone = () => {
-    const finalWeight = weight || suggestedWeight || '0';
-    const finalReps = reps || suggestedRepsValue || '0';
+    const finalWeight = row.weight || suggestedWeight || '0';
+    const finalReps = row.reps || suggestedRepsValue || '0';
     const pendingUpdates: { weight?: string; reps?: string; rir?: string } = {};
     if (finalWeight !== row.weight) pendingUpdates.weight = finalWeight;
     if (finalReps !== row.reps) pendingUpdates.reps = finalReps;
     if (rir !== row.rir) pendingUpdates.rir = rir;
     if (Object.keys(pendingUpdates).length > 0) {
+      onUpdateRowLocal(pendingUpdates);
       onUpdateRow(pendingUpdates);
     }
-    setWeight(finalWeight);
-    setReps(finalReps);
     onToggle();
-  };
-
-  const handleWeightBlur = () => {
-    if (weight !== row.weight) onUpdateRow({ weight });
-  };
-  const handleRepsBlur = () => {
-    if (reps !== row.reps) onUpdateRow({ reps });
-  };
-  const handleRirBlur = () => {
-    if (rir !== row.rir) onUpdateRow({ rir });
-    if (rir && !row.is_completed) {
-      markDone();
-    }
   };
 
   const handleToggle = () => {
@@ -107,8 +116,8 @@ export function SetRow({
 
           <TextInput
             style={[styles.input, styles.weightInput]}
-            value={weight}
-            onChangeText={setWeight}
+            value={row.weight}
+            onChangeText={handleWeightChange}
             onBlur={handleWeightBlur}
             placeholder={suggestedWeight ?? '0'}
             placeholderTextColor={colors.textMuted}
@@ -118,8 +127,8 @@ export function SetRow({
 
           <TextInput
             style={styles.input}
-            value={reps}
-            onChangeText={setReps}
+            value={row.reps}
+            onChangeText={handleRepsChange}
             onBlur={handleRepsBlur}
             placeholder={suggestedReps ?? '0'}
             placeholderTextColor={colors.textMuted}

@@ -9,6 +9,7 @@ interface ChipPickerProps<T extends string | number> {
   /** When true, tapping the active chip deselects it. Default: true */
   allowDeselect?: boolean;
   style?: ViewStyle;
+  keyboardPersistTaps?: boolean;
 }
 
 export function ChipPicker<T extends string | number>({
@@ -17,9 +18,16 @@ export function ChipPicker<T extends string | number>({
   onChange,
   allowDeselect = true,
   style,
+  keyboardPersistTaps = false,
 }: ChipPickerProps<T>) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.scroll, style]}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[styles.scroll, style]}
+      keyboardShouldPersistTaps={keyboardPersistTaps ? 'always' : undefined}
+      keyboardDismissMode={keyboardPersistTaps ? 'none' : undefined}
+    >
       <View style={styles.row}>
         {items.map((item) => {
           const isSelected = selected === item.value;
@@ -66,6 +74,7 @@ export function DayOfWeekPicker({ selected, onChange, style }: DayOfWeekPickerPr
 
 const styles = StyleSheet.create({
   scroll: {
+    flexGrow: 0,
     marginBottom: 16,
   },
   row: {

@@ -31,6 +31,7 @@ interface WorkoutState {
 
   startWorkout: (userId: string, routineDayId: string, exercises: RoutineDayExercise[]) => Promise<void>;
   resumeWorkout: (userId: string) => Promise<boolean>;
+  updateRowLocal: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir'>>) => void;
   updateRow: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir'>>) => Promise<void>;
   toggleRow: (id: string, entryId: string) => Promise<void>;
   deleteRow: (id: string, entryId: string, setNumber: number) => Promise<void>;
@@ -139,6 +140,17 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     } finally {
       set({ loading: false });
     }
+  },
+
+  updateRowLocal: (id, entryId, updates) => {
+    set((state) => ({
+      rows: {
+        ...state.rows,
+        [entryId]: (state.rows[entryId] ?? []).map((r) =>
+          r.id === id ? { ...r, ...updates } : r,
+        ),
+      },
+    }));
   },
 
   updateRow: async (id, entryId, updates) => {

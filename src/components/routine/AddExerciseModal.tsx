@@ -2,14 +2,13 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
   Alert,
 } from 'react-native';
 import { useAuthStore } from '../../stores/auth.store';
 import { exerciseService } from '../../services';
-import { Button, Input, ChipPicker, BottomSheetModal } from '../ui';
+import { Button, Input, ChipPicker, BottomSheetModal, ExercisePickerModal } from '../ui';
 import { colors, fonts } from '../../constants';
 import {
   Exercise,
@@ -54,7 +53,7 @@ export function AddExerciseModal({
   const { user } = useAuthStore();
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
@@ -68,7 +67,8 @@ export function AddExerciseModal({
     if (visible) {
       loadExercises();
       if (editingEntry) {
-        setSelectedExerciseId(editingEntry.exercise_id);
+        const ex = editingEntry.exercise ?? null;
+        setSelectedExercise(ex);
         const { rows, hasRepRange } = setsToTemplateRows(
           editingEntry.sets ?? [],
           editingEntry.target_reps,
@@ -77,7 +77,7 @@ export function AddExerciseModal({
         setTemplateSets(rows);
         setUseRepRange(hasRepRange);
       } else {
-        setSelectedExerciseId(null);
+        setSelectedExercise(null);
         setTemplateSets([defaultSetRow()]);
         setUseRepRange(false);
       }
@@ -94,7 +94,7 @@ export function AddExerciseModal({
   };
 
   const resetAndClose = () => {
-    setSelectedExerciseId(null);
+    setSelectedExercise(null);
     setShowExercisePicker(false);
     setShowCreateExercise(false);
     setTemplateSets([defaultSetRow()]);
@@ -103,18 +103,16 @@ export function AddExerciseModal({
     onClose();
   };
 
-  const handleSelectExercise = (exerciseId: string) => {
-    setSelectedExerciseId(exerciseId);
+  const handleSelectExercise = (exercise: Exercise) => {
+    setSelectedExercise(exercise);
     setShowExercisePicker(false);
   };
 
   const handleConfirm = () => {
-    if (!selectedExerciseId) return;
+    if (!selectedExercise) return;
     if (useRepRange && !validateRepRange(templateSets)) return;
     const setsPayload = buildSetsPayload(templateSets, weightUnit, useRepRange);
-    const exercise = exercises.find((e) => e.id === selectedExerciseId);
-    if (!exercise) return;
-    onConfirm(exercise, setsPayload);
+    onConfirm(selectedExercise, setsPayload);
     resetAndClose();
   };
 
@@ -143,7 +141,7 @@ export function AddExerciseModal({
       setNewExerciseName('');
       setShowCreateExercise(false);
       setExercises((prev) => [...prev, exercise]);
-      setSelectedExerciseId(exercise.id);
+      setSelectedExercise(exercise);
       setShowExercisePicker(false);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
@@ -153,135 +151,118 @@ export function AddExerciseModal({
   return (
     <BottomSheetModal
       visible={visible}
-      title={showExercisePicker ? 'Select Exercise' : showCreateExercise ? 'Create New Exercise' : (editingEntry ? 'Edit Exercise' : 'Add Exercise')}
+      title={showCreateExercise ? 'Create New Exercise' : (editingEntry ? 'Edit Exercise' : 'Add Exercise')}
+      fullHeight
     >
-          {!showExercisePicker && !showCreateExercise && (
-            <>
+      {!showCreateExercise && (
+        <>
+          <View style={styles.formBody}>
+            <Text style={styles.fieldLabel}>Exercise</Text>
+            <TouchableOpacity
+              style={styles.exercisePickerRow}
+              onPress={() => setShowExercisePicker(true)}
+            >
+              <Text style={selectedExercise ? styles.exercisePickerText : styles.exercisePickerPlaceholder}>
+                {selectedExercise?.name ?? 'Select Exercise...'}
+              </Text>
+              <Text style={styles.exercisePickerArrow}>&#x25B8;</Text>
+            </TouchableOpacity>
 
-              <Text style={styles.fieldLabel}>Exercise</Text>
-              <TouchableOpacity
-                style={styles.exercisePickerRow}
-                onPress={() => setShowExercisePicker(true)}
-              >
-                <Text style={selectedExerciseId ? styles.exercisePickerText : styles.exercisePickerPlaceholder}>
-                  {selectedExerciseId
-                    ? exercises.find((e) => e.id === selectedExerciseId)?.name ?? 'Select Exercise...'
-                    : 'Select Exercise...'}
-                </Text>
-                <Text style={styles.exercisePickerArrow}>▸</Text>
-              </TouchableOpacity>
+            <SetsTableEditor
+              rows={templateSets}
+              setRows={setTemplateSets}
+              repRange={useRepRange}
+              setRepRange={setUseRepRange}
+              wUnit={weightUnit}
+            />
+          </View>
 
-              <SetsTableEditor
-                rows={templateSets}
-                setRows={setTemplateSets}
-                repRange={useRepRange}
-                setRepRange={setUseRepRange}
-                wUnit={weightUnit}
-              />
+          <View style={styles.actionButtons}>
+            <Button
+              title={editingEntry ? 'Save' : 'Add'}
+              onPress={handleConfirm}
+              disabled={!selectedExercise}
+              style={styles.addConfirmBtn}
+            />
+            <Button
+              title="Close"
+              variant="ghost"
+              onPress={resetAndClose}
+            />
+          </View>
+        </>
+      )}
 
+      {showCreateExercise && (
+        <>
+          <View style={styles.formBody}>
+            <Input
+              label="Exercise Name"
+              value={newExerciseName}
+              onChangeText={setNewExerciseName}
+              placeholder="e.g. Bench Press"
+            />
+
+            <Text style={styles.fieldLabel}>Muscle Group</Text>
+            <ChipPicker
+              items={Object.values(MuscleGroup).map((mg) => ({ key: mg, label: mg, value: mg }))}
+              selected={newExerciseMuscle}
+              onChange={(v) => setNewExerciseMuscle(v as MuscleGroup)}
+              allowDeselect={false}
+            />
+
+            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Equipment</Text>
+            <ChipPicker
+              items={Object.values(Equipment).map((eq) => ({ key: eq, label: eq, value: eq }))}
+              selected={newExerciseEquipment}
+              onChange={(v) => setNewExerciseEquipment(v as Equipment)}
+              allowDeselect={false}
+            />
+          </View>
+
+          <View style={styles.actionButtons}>
+            <View style={styles.createExActions}>
               <Button
-                title={editingEntry ? 'Save' : 'Add'}
-                onPress={handleConfirm}
-                disabled={!selectedExerciseId}
-                style={styles.addConfirmBtn}
-              />
-
-              <Button
-                title="Close"
+                title="Cancel"
                 variant="ghost"
-                onPress={resetAndClose}
-                style={styles.closeBtn}
+                onPress={() => {
+                  setShowCreateExercise(false);
+                  setNewExerciseName('');
+                }}
+                style={styles.createExCancelBtn}
               />
-            </>
-          )}
-
-          {showExercisePicker && !showCreateExercise && (
-            <>
-              <ScrollView style={styles.exerciseList}>
-                {exercises.map((ex) => (
-                  <TouchableOpacity
-                    key={ex.id}
-                    style={[
-                      styles.exercisePickItem,
-                      selectedExerciseId === ex.id && styles.exercisePickItemSelected,
-                    ]}
-                    onPress={() => handleSelectExercise(ex.id)}
-                    onLongPress={onDeleteExercise ? () => onDeleteExercise(ex) : undefined}
-                  >
-                    <Text style={styles.exercisePickName}>{ex.name}</Text>
-                    <Text style={styles.exercisePickMeta}>
-                      {ex.muscle_group} · {ex.equipment}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
               <Button
-                title="+ Create New Exercise"
-                variant="secondary"
-                onPress={() => setShowCreateExercise(true)}
-                style={styles.createExBtn}
+                title="Save Exercise"
+                onPress={handleCreateExercise}
+                style={styles.createExSaveBtn}
               />
+            </View>
+          </View>
+        </>
+      )}
 
-              <Button
-                title="Back"
-                variant="ghost"
-                onPress={() => setShowExercisePicker(false)}
-                style={styles.closeBtn}
-              />
-            </>
-          )}
-
-          {showCreateExercise && (
-            <>
-              <View style={styles.createExForm}>
-                <Input
-                  label="Exercise Name"
-                  value={newExerciseName}
-                  onChangeText={setNewExerciseName}
-                  placeholder="e.g. Bench Press"
-                />
-
-                <Text style={styles.fieldLabel}>Muscle Group</Text>
-                <ChipPicker
-                  items={Object.values(MuscleGroup).map((mg) => ({ key: mg, label: mg, value: mg }))}
-                  selected={newExerciseMuscle}
-                  onChange={(v) => setNewExerciseMuscle(v as MuscleGroup)}
-                  allowDeselect={false}
-                />
-
-                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Equipment</Text>
-                <ChipPicker
-                  items={Object.values(Equipment).map((eq) => ({ key: eq, label: eq, value: eq }))}
-                  selected={newExerciseEquipment}
-                  onChange={(v) => setNewExerciseEquipment(v as Equipment)}
-                  allowDeselect={false}
-                />
-
-                <View style={styles.createExActions}>
-                  <Button
-                    title="Cancel"
-                    variant="ghost"
-                    onPress={() => {
-                      setShowCreateExercise(false);
-                      setNewExerciseName('');
-                    }}
-                    style={styles.createExCancelBtn}
-                  />
-                  <Button
-                    title="Save Exercise"
-                    onPress={handleCreateExercise}
-                    style={styles.createExSaveBtn}
-                  />
-                </View>
-              </View>
-            </>
-          )}
+      <ExercisePickerModal
+        visible={showExercisePicker}
+        onClose={() => setShowExercisePicker(false)}
+        onSelect={handleSelectExercise}
+        onDeleteExercise={onDeleteExercise}
+        onCreateNew={() => {
+          setShowExercisePicker(false);
+          setShowCreateExercise(true);
+        }}
+        selectedExerciseId={selectedExercise?.id}
+      />
     </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
+  formBody: {
+    flex: 1,
+  },
+  actionButtons: {
+    paddingBottom: 20,
+  },
   fieldLabel: {
     color: colors.textSecondary,
     fontSize: 14,
@@ -320,47 +301,9 @@ const styles = StyleSheet.create({
   addConfirmBtn: {
     marginBottom: 8,
   },
-  closeBtn: {
-    marginTop: 4,
-    marginBottom: 20,
-  },
-  exerciseList: {
-    maxHeight: 200,
-    marginBottom: 12,
-  },
-  exercisePickItem: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  exercisePickItemSelected: {
-    backgroundColor: colors.surfaceLight,
-  },
-  exercisePickName: {
-    fontSize: 16,
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-  },
-  exercisePickMeta: {
-    fontSize: 12,
-    fontFamily: fonts.light,
-    color: colors.textMuted,
-    marginTop: 2,
-    textTransform: 'capitalize',
-  },
-  createExBtn: {
-    marginBottom: 12,
-  },
-  createExForm: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 16,
-    marginBottom: 12,
-  },
   createExActions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 12,
   },
   createExCancelBtn: {
     flex: 1,

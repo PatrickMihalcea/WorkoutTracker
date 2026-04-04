@@ -20,6 +20,7 @@ interface BottomSheetModalProps {
   title?: string;
   children: React.ReactNode;
   scrollable?: boolean;
+  fullHeight?: boolean;
 }
 
 export function BottomSheetModal({
@@ -27,6 +28,7 @@ export function BottomSheetModal({
   title,
   children,
   scrollable = false,
+  fullHeight = false,
 }: BottomSheetModalProps) {
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const sheetTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -52,21 +54,28 @@ export function BottomSheetModal({
   const Body = scrollable ? ScrollView : View;
   const bodyProps = scrollable ? { keyboardShouldPersistTaps: 'handled' as const } : {};
 
+  const Wrapper = fullHeight ? View : KeyboardAvoidingView;
+  const wrapperProps = fullHeight
+    ? { style: styles.wrapper }
+    : { style: styles.wrapper, behavior: Platform.OS === 'ios' ? ('padding' as const) : undefined };
+
   return (
     <Modal visible={modalVisible} animationType="none" transparent>
-      <KeyboardAvoidingView
-        style={styles.wrapper}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <Wrapper {...wrapperProps}>
         <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
-        <Animated.View style={[styles.sheetWrapper, { transform: [{ translateY: sheetTranslateY }] }]}>
-          <Body style={styles.sheet} {...bodyProps}>
+        <Animated.View
+          style={[
+            fullHeight ? styles.sheetWrapperFull : styles.sheetWrapper,
+            { transform: [{ translateY: sheetTranslateY }] },
+          ]}
+        >
+          <Body style={[styles.sheet, fullHeight && styles.sheetFull]} {...bodyProps}>
             {title ? <Text style={styles.title}>{title}</Text> : null}
             {children}
           </Body>
         </Animated.View>
         <KeyboardDismiss />
-      </KeyboardAvoidingView>
+      </Wrapper>
     </Modal>
   );
 }
@@ -83,12 +92,20 @@ const styles = StyleSheet.create({
   sheetWrapper: {
     maxHeight: '85%',
   },
+  sheetWrapperFull: {
+    flex: 1,
+    marginTop: 48,
+  },
   sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
     maxHeight: '100%',
+  },
+  sheetFull: {
+    flex: 1,
+    maxHeight: undefined,
   },
   title: {
     fontSize: 20,

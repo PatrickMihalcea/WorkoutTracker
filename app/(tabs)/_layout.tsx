@@ -3,6 +3,7 @@ import { createMaterialTopTabNavigator, type MaterialTopTabBarProps } from '@rea
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '../../src/constants';
+import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
 
 const { Navigator } = createMaterialTopTabNavigator();
 const SwipeableTabs = withLayoutContext(Navigator);
@@ -71,10 +72,12 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
   );
 }
 
-export default function TabLayout() {
+function TabLayoutInner() {
   const segments = useSegments();
+  const { view } = useHistoryView();
   const isAtTabRoot = segments.length <= 2;
   const isWorkout = segments.includes('workout' as never);
+  const isHistoryDashboard = segments[1] === 'history' && view === 'dashboard';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -82,7 +85,7 @@ export default function TabLayout() {
         tabBar={(props) => (isWorkout ? null : <BottomTabBar {...props} />)}
         tabBarPosition="bottom"
         screenOptions={{
-          swipeEnabled: isAtTabRoot,
+          swipeEnabled: isAtTabRoot && !isHistoryDashboard,
           lazy: true,
           lazyPreloadDistance: 1,
           animationEnabled: true,
@@ -106,6 +109,14 @@ export default function TabLayout() {
       />
       </SwipeableTabs>
     </SafeAreaView>
+  );
+}
+
+export default function TabLayout() {
+  return (
+    <HistoryViewProvider>
+      <TabLayoutInner />
+    </HistoryViewProvider>
   );
 }
 
