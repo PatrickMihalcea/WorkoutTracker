@@ -259,8 +259,7 @@ function slotToXLabel(slotIdx: number, totalSlots: number, nowMs: number, mode: 
   if (mode === 'M') {
     const ts = nowMs - (totalSlots - 1 - slotIdx) * msPerDay;
     const d = new Date(ts);
-    const day = d.getUTCDate();
-    if (day === 1 || day % 7 === 1) return String(day);
+    if (d.getUTCDay() === 1) return String(d.getUTCDate());
     return '';
   }
   const ts = nowMs - (totalSlots - 1 - slotIdx) * msPerDay;
@@ -739,6 +738,7 @@ function SimpleScrollableChart({
   );
 
   const handleScrollEnd = useCallback(() => {
+    if (!flingActiveRef.current) flingPageIdx.current = -1;
     const ox = scrollOffsetRef.current;
     const startSlot = Math.max(0, Math.floor(ox / slotWidth));
     const endSlot = Math.min(slots - 1, startSlot + vp - 1);
@@ -750,7 +750,16 @@ function SimpleScrollableChart({
   }, [data, slotIndices, slots, slotWidth, vp, yMinStep]);
 
   const MOVE_THRESHOLD = 10;
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastTouchXRef = useRef(0);
+  const flingActiveRef = useRef(false);
+  const flingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flingPageIdx = useRef(-1);
+  const [snapInterval, setSnapInterval] = useState(slotWidth);
+
+  useEffect(() => {
+    if (!flingActiveRef.current) setSnapInterval(slotWidth);
+  }, [slotWidth]);
 
   const findNearestBar = useCallback(
     (pageX: number) => {
@@ -796,7 +805,8 @@ function SimpleScrollableChart({
   const handleTouchStart = useCallback(
     (e: GestureResponderEvent) => {
       const { pageX, pageY } = e.nativeEvent;
-      touchStartRef.current = { x: pageX, y: pageY };
+      touchStartRef.current = { x: pageX, y: pageY, time: Date.now() };
+      lastTouchXRef.current = pageX;
       longPressTimerRef.current = setTimeout(() => {
         if (touchStartRef.current) activateTooltipMode(pageX);
       }, LONG_PRESS_MS);
@@ -807,6 +817,7 @@ function SimpleScrollableChart({
   const handleTouchMove = useCallback(
     (e: GestureResponderEvent) => {
       const { pageX, pageY } = e.nativeEvent;
+      lastTouchXRef.current = pageX;
 
       if (pointerActiveRef.current) {
         showTooltipAt(pageX);
@@ -819,24 +830,116 @@ function SimpleScrollableChart({
         if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
-          touchStartRef.current = null;
         }
       }
     },
     [pointerActiveRef, showTooltipAt],
   );
 
-  const handleTouchEnd = useCallback(() => {
-    touchStartRef.current = null;
-    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
-    if (pointerActiveRef.current) {
-      pointerActiveRef.current = false;
-      onChartTouchEnd();
-      setActiveTooltip(null);
-      tooltipWidthRef.current = 0;
-      setTooltipReady(false);
+  const pageBoundarySlots = useMemo(() => {
+    const boundaries: number[] = [];
+    const msPerDay = 86400000;
+    for (let s = 0; s < slots; s++) {
+      if (mode === 'W') {
+        const ts = now - (slots - 1 - s) * msPerDay;
+        const d = new Date(ts);
+        if (d.getUTCDay() === 1) boundaries.push(s);
+      } else if (mode === 'M') {
+        const ts = now - (slots - 1 - s) * msPerDay;
+        const d = new Date(ts);
+        if (d.getUTCDate() === 1) boundaries.push(s);
+      } else if (mode === '6M') {
+        const ts = now - (slots - 1 - s) * 7 * msPerDay;
+        const d = new Date(ts);
+        const m = d.getUTCMonth();
+        const prevTs = now - (slots - s) * 7 * msPerDay;
+        const prev = new Date(prevTs);
+        if (prev.getUTCMonth() !== m && (m === 0 || m === 6)) boundaries.push(s);
+      } else {
+        const end = new Date(now);
+        const d = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - (slots - 1 - s), 1));
+        if (d.getUTCMonth() === 0) boundaries.push(s);
+      }
     }
-  }, [pointerActiveRef, onChartTouchEnd]);
+    if (boundaries.length === 0 || boundaries[0] !== 0) boundaries.unshift(0);
+    return boundaries;
+  }, [slots, now, mode]);
+
+  const handleFling = useCallback(
+    (dx: number, pages: number) => {
+      if (pageBoundarySlots.length === 0) return;
+      const ox = scrollOffsetRef.current;
+      const currentStartSlot = Math.round(ox / slotWidth);
+
+      let baseIdx = -1;
+      if (dx < 0) {
+        for (let i = 0; i < pageBoundarySlots.length; i++) {
+          if (pageBoundarySlots[i] > currentStartSlot + 1) { baseIdx = i; break; }
+        }
+        if (baseIdx < 0) baseIdx = pageBoundarySlots.length - 1;
+        baseIdx = Math.min(pageBoundarySlots.length - 1, baseIdx + pages - 1);
+      } else {
+        for (let i = pageBoundarySlots.length - 1; i >= 0; i--) {
+          if (pageBoundarySlots[i] < currentStartSlot - 1) { baseIdx = i; break; }
+        }
+        if (baseIdx < 0) baseIdx = 0;
+        baseIdx = Math.max(0, baseIdx - (pages - 1));
+      }
+
+      const targetSlot = pageBoundarySlots[baseIdx];
+      const targetX = Math.max(0, Math.min(totalContentWidth - chartWidth, targetSlot * slotWidth));
+
+      flingActiveRef.current = true;
+      setSnapInterval(0);
+      scrollRef.current?.scrollTo({ x: targetX, animated: true });
+      scrollOffsetRef.current = targetX;
+      updateHeaderForOffset(targetX);
+
+      const startSlot = Math.max(0, Math.floor(targetX / slotWidth));
+      const endSlot = Math.min(slots - 1, startSlot + vp - 1);
+      const visible = data.filter((_, i) => {
+        const s = slotIndices[i];
+        return s >= startSlot && s <= endSlot;
+      });
+      if (visible.length > 0) setYAxis(computeYAxisInfo(visible, yMinStep));
+
+      if (flingTimerRef.current) clearTimeout(flingTimerRef.current);
+      flingTimerRef.current = setTimeout(() => {
+        flingActiveRef.current = false;
+        setSnapInterval(slotWidth);
+        scrollRef.current?.scrollTo({ x: targetX, animated: false });
+      }, 400);
+    },
+    [pageBoundarySlots, slotWidth, totalContentWidth, chartWidth, updateHeaderForOffset, slots, vp, data, slotIndices, yMinStep],
+  );
+
+  const handleTouchEnd = useCallback(
+    (e: GestureResponderEvent) => {
+      const start = touchStartRef.current;
+      touchStartRef.current = null;
+      if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+      if (pointerActiveRef.current) {
+        pointerActiveRef.current = false;
+        onChartTouchEnd();
+        setActiveTooltip(null);
+        tooltipWidthRef.current = 0;
+        setTooltipReady(false);
+        return;
+      }
+
+      if (start) {
+        const endX = e.nativeEvent?.pageX ?? lastTouchXRef.current;
+        const dx = endX - start.x;
+        const absDx = Math.abs(dx);
+        const dt = Date.now() - start.time;
+        if (absDx > 30 && dt < 300) {
+          const pages = absDx >= 90 ? 2 : 1;
+          handleFling(dx, pages);
+        }
+      }
+    },
+    [pointerActiveRef, onChartTouchEnd, handleFling],
+  );
 
   const labelInterval = xLabelInterval(mode);
 
@@ -848,6 +951,52 @@ function SimpleScrollableChart({
     }
     return labels;
   }, [slots, labelInterval, slotWidth, now, mode]);
+
+  const verticalGridLines = useMemo(() => {
+    const lines: number[] = [];
+    const msPerDay = 86400000;
+    for (let s = 0; s < slots; s++) {
+      if (mode === 'W') {
+        lines.push(s * slotWidth);
+      } else if (mode === 'M') {
+        const ts = now - (slots - 1 - s) * msPerDay;
+        const d = new Date(ts);
+        if (d.getUTCDay() === 1) lines.push(s * slotWidth);
+      } else if (mode === '6M') {
+        const ts = now - (slots - 1 - s) * 7 * msPerDay;
+        const d = new Date(ts);
+        const prevTs = now - (slots - s) * 7 * msPerDay;
+        const prev = new Date(prevTs);
+        if (prev.getUTCMonth() !== d.getUTCMonth()) lines.push(s * slotWidth);
+      } else {
+        lines.push(s * slotWidth);
+      }
+    }
+    return lines;
+  }, [slots, slotWidth, now, mode]);
+
+  const horizontalGridLines = useMemo(() => {
+    const lines: number[] = [];
+    for (let i = 1; i <= yAxis.sections; i++) {
+      lines.push(CHART_HEIGHT - (i / yAxis.sections) * CHART_HEIGHT);
+    }
+    return lines;
+  }, [yAxis.sections]);
+
+  const pageBoundaryXSet = useMemo(
+    () => new Set(pageBoundarySlots.map((s) => s * slotWidth)),
+    [pageBoundarySlots, slotWidth],
+  );
+
+  const pageBoundaryLines = useMemo(
+    () => pageBoundarySlots.map((s) => s * slotWidth),
+    [pageBoundarySlots, slotWidth],
+  );
+
+  const filteredVerticalGridLines = useMemo(
+    () => verticalGridLines.filter((x) => !pageBoundaryXSet.has(x)),
+    [verticalGridLines, pageBoundaryXSet],
+  );
 
   const bars = useMemo(() => {
     if (yAxis.maxValue <= 0) return [];
@@ -908,7 +1057,7 @@ function SimpleScrollableChart({
             scrollEventThrottle={16}
             onMomentumScrollEnd={handleScrollEnd}
             onScrollEndDrag={handleScrollEnd}
-            snapToInterval={slotWidth}
+            snapToInterval={snapInterval || undefined}
             decelerationRate="fast"
             scrollEnabled={scrollEnabled}
             onLayout={handleChartLayout}
@@ -923,6 +1072,27 @@ function SimpleScrollableChart({
                 x1={0} y1={CHART_HEIGHT} x2={totalContentWidth} y2={CHART_HEIGHT}
                 stroke={colors.border} strokeWidth={1}
               />
+              {horizontalGridLines.map((y, i) => (
+                <Line
+                  key={`hg-${i}`}
+                  x1={0} y1={y} x2={totalContentWidth} y2={y}
+                  stroke={colors.border} strokeWidth={0.8} strokeDasharray="3 3" opacity={0.7}
+                />
+              ))}
+              {filteredVerticalGridLines.map((x, i) => (
+                <Line
+                  key={`vg-${i}`}
+                  x1={x} y1={0} x2={x} y2={CHART_HEIGHT}
+                  stroke={colors.border} strokeWidth={0.8} strokeDasharray="3 3" opacity={0.7}
+                />
+              ))}
+              {pageBoundaryLines.map((x, i) => (
+                <Line
+                  key={`pb-${i}`}
+                  x1={x} y1={0} x2={x} y2={CHART_HEIGHT}
+                  stroke={colors.border} strokeWidth={1} opacity={0.9}
+                />
+              ))}
               {bars.map((b) => (
                 <Rect
                   key={b.key}
