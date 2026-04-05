@@ -26,7 +26,7 @@ function cloneData<T extends Record<string, unknown>>(arr: T[]): T[] {
   return arr.map((item) => ({ ...item }));
 }
 
-export type GranularityMode = 'W' | 'M' | '6M' | 'Y';
+export type GranularityMode = 'W' | 'M' | '3M' | '6M' | 'Y';
 
 interface Dashboard2Props {
   data: DashboardData;
@@ -51,6 +51,7 @@ const TIME_RANGES = [
 const GRANULARITY_MODES: { key: GranularityMode; label: string }[] = [
   { key: 'W', label: 'W' },
   { key: 'M', label: 'M' },
+  { key: '3M', label: '3M' },
   { key: '6M', label: '6M' },
   { key: 'Y', label: 'Y' },
 ];
@@ -58,6 +59,7 @@ const GRANULARITY_MODES: { key: GranularityMode; label: string }[] = [
 function viewportPoints(mode: GranularityMode): number {
   if (mode === 'W') return 7;
   if (mode === 'M') return 31;
+  if (mode === '3M') return 13;
   if (mode === '6M') return 26;
   return 12;
 }
@@ -93,7 +95,7 @@ function formatKeyDate(key: string, mode: GranularityMode): string {
   if (mode === 'Y') {
     return `${MONTH_NAMES[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
   }
-  if (mode === '6M') {
+  if (mode === '6M' || mode === '3M') {
     const dt = new Date(key + 'T00:00:00Z');
     const endDt = new Date(dt);
     endDt.setUTCDate(endDt.getUTCDate() + 6);
@@ -173,6 +175,7 @@ function computeYAxisInfo(data: TimeSeriesPoint[], minStep: number = 1): YAxisIn
   for (let i = 0; i < data.length; i++) {
     if (data[i].value > maxVal) maxVal = data[i].value;
   }
+  maxVal *= 1.1;
 
   let step: number;
   let sections: number;
@@ -201,13 +204,13 @@ function computeYAxisInfo(data: TimeSeriesPoint[], minStep: number = 1): YAxisIn
 function totalSlotsForRange(weeks: number, mode: GranularityMode): number {
   if (weeks === 0) {
     if (mode === 'Y') return 10 * 12;
-    if (mode === '6M') return 10 * 52;
+    if (mode === '6M' || mode === '3M') return 10 * 52;
     if (mode === 'M') return 10 * 365;
     return 10 * 365;
   }
   const days = weeks * 7;
   if (mode === 'Y') return Math.ceil(days / 30);
-  if (mode === '6M') return Math.ceil(days / 7);
+  if (mode === '6M' || mode === '3M') return Math.ceil(days / 7);
   return days;
 }
 
@@ -221,7 +224,7 @@ function slotIndexForPoint(point: TimeSeriesPoint, rangeEndMs: number, totalSlot
       (endDate.getUTCMonth() - ptDate.getUTCMonth());
     return totalSlots - 1 - monthDiff;
   }
-  if (mode === '6M') {
+  if (mode === '6M' || mode === '3M') {
     const daysDiff = Math.round((rangeEndMs - point.date) / msPerDay);
     const weeksDiff = Math.round(daysDiff / 7);
     return totalSlots - 1 - weeksDiff;
@@ -247,6 +250,16 @@ function slotToXLabel(slotIdx: number, totalSlots: number, nowMs: number, mode: 
     const end = new Date(nowMs);
     const d = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - (totalSlots - 1 - slotIdx), 1));
     return MONTH_INITIALS[d.getUTCMonth()];
+  }
+  if (mode === '3M') {
+    const ts = nowMs - (totalSlots - 1 - slotIdx) * 7 * msPerDay;
+    const d = new Date(ts);
+    const prevTs = nowMs - (totalSlots - slotIdx) * 7 * msPerDay;
+    const prev = new Date(prevTs);
+    if (slotIdx === 0 || prev.getUTCMonth() !== d.getUTCMonth()) {
+      return MONTH_NAMES[d.getUTCMonth()];
+    }
+    return '';
   }
   if (mode === '6M') {
     const ts = nowMs - (totalSlots - 1 - slotIdx) * 7 * msPerDay;
@@ -633,7 +646,7 @@ function SimpleScrollableChart({
         const end = new Date(now);
         const d = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - (slots - 1 - slotIdx), 1));
         ts = d.getTime();
-      } else if (mode === '6M') {
+      } else if (mode === '6M' || mode === '3M') {
         ts = now - (slots - 1 - slotIdx) * 7 * msPerDay;
       } else {
         ts = now - (slots - 1 - slotIdx) * msPerDay;
@@ -644,13 +657,44 @@ function SimpleScrollableChart({
     [now, slots, mode],
   );
 
+  const slotToDate = useCallback(
+    (slotIdx: number): Date => {
+      const msPerDay = 86400000;
+      if (mode === 'Y') {
+        const end = new Date(now);
+        return new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - (slots - 1 - slotIdx), 1));
+      } else if (mode === '6M' || mode === '3M') {
+        return new Date(now - (slots - 1 - slotIdx) * 7 * msPerDay);
+      }
+      return new Date(now - (slots - 1 - slotIdx) * msPerDay);
+    },
+    [now, slots, mode],
+  );
+
   const updateHeaderForOffset = useCallback(
     (ox: number) => {
-      const startSlot = Math.max(0, Math.min(slots - 1, Math.floor(ox / slotWidth)));
-      const endSlot = Math.min(slots - 1, startSlot + vp - 1);
-      setDateRange(`${slotToDateStr(startSlot)} – ${slotToDateStr(endSlot)}`);
+      const startSlot = Math.max(0, Math.min(slots - 1, Math.round(ox / slotWidth)));
+      const visibleSlots = Math.floor(chartWidth / slotWidth);
+      const endSlot = Math.min(slots - 1, startSlot + visibleSlots - 1);
+
+      const startDate = slotToDate(startSlot);
+      const endDate = slotToDate(endSlot);
+
+      const sDay = startDate.getUTCDate();
+      const sMonth = startDate.getUTCMonth();
+      const sYear = startDate.getUTCFullYear();
+      const eDay = endDate.getUTCDate();
+      const eMonth = endDate.getUTCMonth();
+      const eYear = endDate.getUTCFullYear();
+
+      const lastDayOfMonth = new Date(Date.UTC(sYear, sMonth + 1, 0)).getUTCDate();
+      if (sDay === 1 && eDay === lastDayOfMonth && sMonth === eMonth && sYear === eYear) {
+        setDateRange(`${MONTH_NAMES[sMonth]} ${sYear}`);
+      } else {
+        setDateRange(`${slotToDateStr(startSlot)} – ${slotToDateStr(endSlot)}`);
+      }
     },
-    [slots, slotWidth, vp, slotToDateStr],
+    [slots, slotWidth, chartWidth, slotToDate, slotToDateStr],
   );
 
   const handleChartLayout = useCallback((e: LayoutChangeEvent) => {
@@ -848,6 +892,12 @@ function SimpleScrollableChart({
         const ts = now - (slots - 1 - s) * msPerDay;
         const d = new Date(ts);
         if (d.getUTCDate() === 1) boundaries.push(s);
+      } else if (mode === '3M') {
+        const ts = now - (slots - 1 - s) * 7 * msPerDay;
+        const d = new Date(ts);
+        const prevTs = now - (slots - s) * 7 * msPerDay;
+        const prev = new Date(prevTs);
+        if (prev.getUTCMonth() !== d.getUTCMonth()) boundaries.push(s);
       } else if (mode === '6M') {
         const ts = now - (slots - 1 - s) * 7 * msPerDay;
         const d = new Date(ts);
@@ -932,7 +982,7 @@ function SimpleScrollableChart({
         const dx = endX - start.x;
         const absDx = Math.abs(dx);
         const dt = Date.now() - start.time;
-        if (absDx > 30 && dt < 300) {
+        if (absDx > 30 && dt < 200) {
           const pages = absDx >= 90 ? 2 : 1;
           handleFling(dx, pages);
         }
@@ -962,6 +1012,12 @@ function SimpleScrollableChart({
         const ts = now - (slots - 1 - s) * msPerDay;
         const d = new Date(ts);
         if (d.getUTCDay() === 1) lines.push(s * slotWidth);
+      } else if (mode === '3M') {
+        const ts = now - (slots - 1 - s) * 7 * msPerDay;
+        const d = new Date(ts);
+        const prevTs = now - (slots - s) * 7 * msPerDay;
+        const prev = new Date(prevTs);
+        if (prev.getUTCMonth() !== d.getUTCMonth()) lines.push(s * slotWidth);
       } else if (mode === '6M') {
         const ts = now - (slots - 1 - s) * 7 * msPerDay;
         const d = new Date(ts);

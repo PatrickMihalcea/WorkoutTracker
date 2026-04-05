@@ -21,7 +21,7 @@ import { formatDate, formatTime, formatDuration } from '../../../src/utils/date'
 
 function granularityModeToBackend(mode: GranularityMode): Granularity {
   if (mode === 'W' || mode === 'M') return 'day';
-  if (mode === '6M') return 'week';
+  if (mode === '6M' || mode === '3M') return 'week';
   return 'month';
 }
 
