@@ -5,5 +5,5 @@ export { routineService } from './routine.service';
 export { sessionService } from './session.service';
 export { profileService } from './profile.service';
 export { workoutRowService } from './workoutRow.service';
-export { dashboardService } from './dashboard.service';
-export type { DashboardData, PRRecord, SummaryStats, ExerciseProgression, Granularity } from './dashboard.service';
+export { dashboardService, EARLIEST_DATE } from './dashboard.service';
+export type { DashboardData, PRRecord, SummaryStats, ExerciseProgression, Granularity, TimeSeriesPoint } from './dashboard.service';

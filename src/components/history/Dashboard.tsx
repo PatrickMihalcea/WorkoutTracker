@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,26 +8,35 @@ import {
   StyleSheet,
   RefreshControl,
   Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+  GestureResponderEvent,
+  LayoutChangeEvent,
+  Animated,
 } from 'react-native';
-import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
-import { DashboardData, ExerciseProgression } from '../../services';
+import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
+import { BlurView } from 'expo-blur';
+import { PieChart } from 'react-native-gifted-charts';
+import { DashboardData, ExerciseProgression, TimeSeriesPoint } from '../../services';
 import { Card, ExercisePickerModal } from '../ui';
 import { Exercise } from '../../models';
 import { colors, fonts, spacing } from '../../constants';
 
-function cloneData<T>(arr: T[]): T[] {
-  return JSON.parse(JSON.stringify(arr));
+function cloneData<T extends Record<string, unknown>>(arr: T[]): T[] {
+  return arr.map((item) => ({ ...item }));
 }
 
-interface DashboardProps {
+export type GranularityMode = 'W' | 'M' | '6M' | 'Y';
+
+interface Dashboard2Props {
   data: DashboardData;
   onRefresh?: () => void;
   refreshing?: boolean;
   onChangeWeeks?: (weeks: number) => void;
+  onChangeGranularityMode?: (mode: GranularityMode) => void;
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const CHART_WIDTH = SCREEN_WIDTH - 120;
 
 const TIME_RANGES = [
   { label: '4W', value: 4 },
@@ -39,6 +48,33 @@ const TIME_RANGES = [
   { label: 'All', value: 0 },
 ];
 
+const GRANULARITY_MODES: { key: GranularityMode; label: string }[] = [
+  { key: 'W', label: 'W' },
+  { key: 'M', label: 'M' },
+  { key: '6M', label: '6M' },
+  { key: 'Y', label: 'Y' },
+];
+
+function viewportPoints(mode: GranularityMode): number {
+  if (mode === 'W') return 7;
+  if (mode === 'M') return 31;
+  if (mode === '6M') return 26;
+  return 12;
+}
+
+interface ChartInteractionProps {
+  mode: GranularityMode;
+  weeks: number;
+  scrollEnabled: boolean;
+  onChartTouchStart: () => void;
+  onChartTouchEnd: () => void;
+  pointerActiveRef: React.MutableRefObject<boolean>;
+}
+
+interface ChartSectionProps extends ChartInteractionProps {
+  data: TimeSeriesPoint[];
+}
+
 type SpotlightMetric = 'weight' | 'volume' | 'reps' | '1rm';
 const METRIC_OPTIONS: { key: SpotlightMetric; label: string }[] = [
   { key: 'weight', label: 'Weight' },
@@ -47,56 +83,32 @@ const METRIC_OPTIONS: { key: SpotlightMetric; label: string }[] = [
   { key: '1rm', label: '1RM' },
 ];
 
-const TOOLTIP_STYLE: Record<string, unknown> = {
-  backgroundColor: colors.surface,
-  borderRadius: 8,
-  borderWidth: 1,
-  borderColor: colors.border,
-  paddingHorizontal: 10,
-  paddingVertical: 6,
-  alignItems: 'center',
-};
+const LONG_PRESS_MS = 500;
 
-const X_LABEL_SHIFT = 20;
-const X_LABEL_LEFT_OFFSET = -18;
-const X_LABEL_WIDTH = 60;
-const LABEL_EXTRA_HEIGHT = 60;
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_INITIALS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+const DAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-const X_LABEL_STYLE = {
-  color: colors.textMuted,
-  fontSize: 9,
-  fontFamily: fonts.light,
-  textAlign: 'right' as const,
-  width: X_LABEL_WIDTH,
-  transform: [{ rotate: '-75deg' }],
-  overflow: 'visible' as const,
-};
-
-const TIME_AXIS_PROPS = {
-  width: CHART_WIDTH,
-  height: 150,
-  noOfSections: 4,
-  yAxisTextStyle: { color: colors.textMuted, fontSize: 8, fontFamily: fonts.light },
-  xAxisLabelTextStyle: X_LABEL_STYLE,
-  labelsExtraHeight: LABEL_EXTRA_HEIGHT,
-  xAxisLabelsVerticalShift: X_LABEL_SHIFT,
-  yAxisColor: 'transparent' as const,
-  xAxisColor: colors.border,
-  hideRules: true,
-};
-
-const TIME_BAR_PROPS = {
-  ...TIME_AXIS_PROPS,
-  xAxisLabelTextStyle: { ...X_LABEL_STYLE, marginLeft: X_LABEL_LEFT_OFFSET },
-};
-
-const TIME_LINE_PROPS = {
-  ...TIME_AXIS_PROPS,
-  spacing: X_LABEL_WIDTH,
-  thickness: 2,
-  areaChart: true,
-  curved: true,
-};
+function formatKeyDate(key: string, mode: GranularityMode): string {
+  if (mode === 'Y') {
+    return `${MONTH_NAMES[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
+  }
+  if (mode === '6M') {
+    const dt = new Date(key + 'T00:00:00Z');
+    const endDt = new Date(dt);
+    endDt.setUTCDate(endDt.getUTCDate() + 6);
+    const sM = MONTH_NAMES[dt.getUTCMonth()];
+    const eM = MONTH_NAMES[endDt.getUTCMonth()];
+    if (dt.getUTCFullYear() === endDt.getUTCFullYear()) {
+      if (sM === eM) return `${sM} ${dt.getUTCDate()} – ${endDt.getUTCDate()}, ${dt.getUTCFullYear()}`;
+      return `${sM} ${dt.getUTCDate()} – ${eM} ${endDt.getUTCDate()}, ${dt.getUTCFullYear()}`;
+    }
+    return `${sM} ${dt.getUTCDate()}, ${dt.getUTCFullYear()} – ${eM} ${endDt.getUTCDate()}, ${endDt.getUTCFullYear()}`;
+  }
+  const m = Number(key.slice(5, 7)) - 1;
+  const d = Number(key.slice(8));
+  return `${MONTH_NAMES[m]} ${d}`;
+}
 
 function formatVolume(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
@@ -104,15 +116,189 @@ function formatVolume(v: number): string {
   return String(v);
 }
 
-export function Dashboard({ data, onRefresh, refreshing, onChangeWeeks }: DashboardProps) {
-  const [selectedRange, setSelectedRange] = useState(0);
+function computePointSpacing(mode: GranularityMode, chartWidth: number): number {
+  return chartWidth / viewportPoints(mode);
+}
+
+function formatDateRange(points: TimeSeriesPoint[], firstIdx: number, lastIdx: number, mode: GranularityMode): string {
+  if (points.length === 0) return '';
+  const clampFirst = Math.max(0, Math.min(firstIdx, points.length - 1));
+  const clampLast = Math.max(0, Math.min(lastIdx, points.length - 1));
+  const startDate = new Date(points[clampFirst].date);
+  const endDate = new Date(points[clampLast].date);
+
+  if (mode === 'W') {
+    const sMonth = MONTH_NAMES[startDate.getUTCMonth()];
+    const eMonth = MONTH_NAMES[endDate.getUTCMonth()];
+    if (sMonth === eMonth && startDate.getUTCFullYear() === endDate.getUTCFullYear()) {
+      return `${sMonth} ${startDate.getUTCDate()} – ${endDate.getUTCDate()}, ${startDate.getUTCFullYear()}`;
+    }
+    if (startDate.getUTCFullYear() === endDate.getUTCFullYear()) {
+      return `${sMonth} ${startDate.getUTCDate()} – ${eMonth} ${endDate.getUTCDate()}, ${startDate.getUTCFullYear()}`;
+    }
+    return `${sMonth} ${startDate.getUTCDate()}, ${startDate.getUTCFullYear()} – ${eMonth} ${endDate.getUTCDate()}, ${endDate.getUTCFullYear()}`;
+  }
+
+  if (mode === 'M') {
+    const sMonth = MONTH_NAMES[startDate.getUTCMonth()];
+    const eMonth = MONTH_NAMES[endDate.getUTCMonth()];
+    if (startDate.getUTCFullYear() === endDate.getUTCFullYear()) {
+      return `${sMonth} ${startDate.getUTCDate()} – ${eMonth} ${endDate.getUTCDate()}, ${startDate.getUTCFullYear()}`;
+    }
+    return `${sMonth} ${startDate.getUTCDate()}, ${startDate.getUTCFullYear()} – ${eMonth} ${endDate.getUTCDate()}, ${endDate.getUTCFullYear()}`;
+  }
+
+  const sMonth = MONTH_NAMES[startDate.getUTCMonth()];
+  const eMonth = MONTH_NAMES[endDate.getUTCMonth()];
+  if (startDate.getUTCFullYear() === endDate.getUTCFullYear()) {
+    return `${sMonth} – ${eMonth} ${endDate.getUTCFullYear()}`;
+  }
+  return `${sMonth} ${startDate.getUTCFullYear()} – ${eMonth} ${endDate.getUTCFullYear()}`;
+}
+
+interface YAxisInfo {
+  labels: string[];
+  sections: number;
+  maxValue: number;
+  yAxisWidth: number;
+}
+
+function formatYValue(val: number): string {
+  if (val >= 1000) return `${(val / 1000).toFixed(1)}K`;
+  return String(val);
+}
+
+function computeYAxisInfo(data: TimeSeriesPoint[], minStep: number = 1): YAxisInfo {
+  let maxVal = 0;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i].value > maxVal) maxVal = data[i].value;
+  }
+
+  let step: number;
+  let sections: number;
+
+  if (maxVal <= 0) {
+    step = minStep;
+    sections = 2;
+  } else {
+    step = Math.max(minStep, Math.ceil(maxVal / 4 / minStep) * minStep);
+    sections = Math.max(2, Math.min(4, Math.ceil(maxVal / step)));
+  }
+
+  const labels: string[] = [];
+  let longestLen = 1;
+  for (let i = 0; i <= sections; i++) {
+    const lbl = formatYValue(step * i);
+    labels.push(lbl);
+    if (lbl.length > longestLen) longestLen = lbl.length;
+  }
+
+  const yAxisWidth = Math.max(16, longestLen * 7 + 4);
+
+  return { labels, sections, maxValue: step * sections, yAxisWidth };
+}
+
+function totalSlotsForRange(weeks: number, mode: GranularityMode): number {
+  if (weeks === 0) {
+    if (mode === 'Y') return 10 * 12;
+    if (mode === '6M') return 10 * 52;
+    if (mode === 'M') return 10 * 365;
+    return 10 * 365;
+  }
+  const days = weeks * 7;
+  if (mode === 'Y') return Math.ceil(days / 30);
+  if (mode === '6M') return Math.ceil(days / 7);
+  return days;
+}
+
+function slotIndexForPoint(point: TimeSeriesPoint, rangeEndMs: number, totalSlots: number, mode: GranularityMode): number {
+  const msPerDay = 86400000;
+  if (mode === 'Y') {
+    const endDate = new Date(rangeEndMs);
+    const ptDate = new Date(point.date);
+    const monthDiff =
+      (endDate.getUTCFullYear() - ptDate.getUTCFullYear()) * 12 +
+      (endDate.getUTCMonth() - ptDate.getUTCMonth());
+    return totalSlots - 1 - monthDiff;
+  }
+  if (mode === '6M') {
+    const daysDiff = Math.round((rangeEndMs - point.date) / msPerDay);
+    const weeksDiff = Math.round(daysDiff / 7);
+    return totalSlots - 1 - weeksDiff;
+  }
+  const daysDiff = Math.round((rangeEndMs - point.date) / msPerDay);
+  return totalSlots - 1 - daysDiff;
+}
+
+const CHART_HEIGHT = 150;
+const X_LABEL_HEIGHT = 20;
+const SVG_HEIGHT = CHART_HEIGHT + X_LABEL_HEIGHT;
+
+function xLabelInterval(mode: GranularityMode): number {
+  if (mode === 'W') return 1;
+  if (mode === 'M') return 1;
+  if (mode === '6M') return 1;
+  return 1;
+}
+
+function slotToXLabel(slotIdx: number, totalSlots: number, nowMs: number, mode: GranularityMode): string {
+  const msPerDay = 86400000;
+  if (mode === 'Y') {
+    const end = new Date(nowMs);
+    const d = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - (totalSlots - 1 - slotIdx), 1));
+    return MONTH_INITIALS[d.getUTCMonth()];
+  }
+  if (mode === '6M') {
+    const ts = nowMs - (totalSlots - 1 - slotIdx) * 7 * msPerDay;
+    const d = new Date(ts);
+    const prevTs = nowMs - (totalSlots - slotIdx) * 7 * msPerDay;
+    const prev = new Date(prevTs);
+    if (prev.getUTCMonth() !== d.getUTCMonth()) return MONTH_NAMES[d.getUTCMonth()];
+    return '';
+  }
+  if (mode === 'M') {
+    const ts = nowMs - (totalSlots - 1 - slotIdx) * msPerDay;
+    const d = new Date(ts);
+    const day = d.getUTCDate();
+    if (day === 1 || day % 7 === 1) return String(day);
+    return '';
+  }
+  const ts = nowMs - (totalSlots - 1 - slotIdx) * msPerDay;
+  const d = new Date(ts);
+  return DAY_INITIALS[d.getUTCDay()];
+}
+
+/* ── Main Dashboard2 ── */
+
+export function Dashboard({
+  data,
+  onRefresh,
+  refreshing,
+  onChangeWeeks,
+  onChangeGranularityMode,
+}: Dashboard2Props) {
+  const [selectedRange, setSelectedRange] = useState(12);
+  const [granularityMode, setGranularityMode] = useState<GranularityMode>('W');
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [spotlightMetric, setSpotlightMetric] = useState<SpotlightMetric>('weight');
 
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const pointerActiveRef = useRef(false);
+
+  const onChartTouchStart = useCallback(() => {
+    pointerActiveRef.current = true;
+    setScrollEnabled(false);
+  }, []);
+
+  const onChartTouchEnd = useCallback(() => {
+    pointerActiveRef.current = false;
+    setScrollEnabled(true);
+  }, []);
+
   const hasData =
-    data.weeklyFrequency.length > 0 ||
-    data.volumeOverTime.length > 0 ||
+    data.frequency.length > 0 ||
+    data.volume.length > 0 ||
     data.muscleGroupSplit.length > 0;
 
   const activeExercise = useMemo(() => {
@@ -135,56 +321,112 @@ export function Dashboard({ data, onRefresh, refreshing, onChangeWeeks }: Dashbo
   const handleRangeChange = (weeks: number) => {
     setSelectedRange(weeks);
     onChangeWeeks?.(weeks);
+    if (weeks === 0 && granularityMode === 'W') {
+      setGranularityMode('M');
+      onChangeGranularityMode?.('M');
+    }
+  };
+
+  const handleGranularityChange = (mode: GranularityMode) => {
+    setGranularityMode(mode);
+    onChangeGranularityMode?.(mode);
   };
 
   const handleExerciseSelect = (exercise: Exercise) => {
     setSelectedExerciseId(exercise.id);
   };
 
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        onRefresh ? (
-          <RefreshControl
-            refreshing={refreshing ?? false}
-            onRefresh={onRefresh}
-            tintColor={colors.textSecondary}
-          />
-        ) : undefined
-      }
-    >
-      <HeroStatsRow stats={data.summaryStats} />
-      <TimeRangeDropdown selected={selectedRange} onChange={handleRangeChange} />
-      <ContributionGrid workoutDays={data.workoutDays} streakWeeks={data.weeklyStreak} />
-      <WorkoutFrequencySection data={data.weeklyFrequency} />
-      <VolumeSection data={data.volumeOverTime} />
-      {activeExercise && (
-        <ExerciseSpotlightSection
-          active={activeExercise}
-          metric={spotlightMetric}
-          onMetricChange={setSpotlightMetric}
-          onPickExercise={() => setShowExercisePicker(true)}
-        />
-      )}
-      <MuscleGroupSection
-        data={data.muscleGroupSplit}
-        exerciseBreakdown={data.muscleGroupExercises}
-      />
-      <PersonalRecordsSection data={data.personalRecords} />
-      <DurationTrendSection data={data.durationTrend} />
+  const interactionProps: ChartInteractionProps = {
+    mode: granularityMode,
+    weeks: selectedRange,
+    scrollEnabled,
+    onChartTouchStart,
+    onChartTouchEnd,
+    pointerActiveRef,
+  };
 
-      <ExercisePickerModal
-        visible={showExercisePicker}
-        onClose={() => setShowExercisePicker(false)}
-        onSelect={handleExerciseSelect}
-        selectedExerciseId={selectedExerciseId}
-      />
-    </ScrollView>
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const filterAnim = useRef(new Animated.Value(1)).current;
+  const FILTER_BAR_HEIGHT = 40;
+
+  const toggleFilters = useCallback(() => {
+    const toValue = filtersOpen ? 0 : 1;
+    setFiltersOpen(!filtersOpen);
+    Animated.timing(filterAnim, {
+      toValue,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [filtersOpen, filterAnim]);
+
+  const filterBarHeight = filterAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, FILTER_BAR_HEIGHT],
+  });
+
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: FILTER_BAR_HEIGHT + spacing.xs }]}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={scrollEnabled}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={refreshing ?? false}
+              onRefresh={onRefresh}
+              tintColor={colors.textSecondary}
+            />
+          ) : undefined
+        }
+      >
+        <HeroStatsRow stats={data.summaryStats} />
+        <ContributionGrid workoutDays={data.workoutDays} streakWeeks={data.weeklyStreak} />
+        <WorkoutFrequencySection data={data.frequency} {...interactionProps} />
+        <VolumeSection data={data.volume} {...interactionProps} />
+        {activeExercise && (
+          <ExerciseSpotlightSection
+            active={activeExercise}
+            metric={spotlightMetric}
+            onMetricChange={setSpotlightMetric}
+            onPickExercise={() => setShowExercisePicker(true)}
+            {...interactionProps}
+          />
+        )}
+        <MuscleGroupSection
+          data={data.muscleGroupSplit}
+          exerciseBreakdown={data.muscleGroupExercises}
+        />
+        <PersonalRecordsSection data={data.personalRecords} />
+        <DurationTrendSection data={data.duration} {...interactionProps} />
+
+        <ExercisePickerModal
+          visible={showExercisePicker}
+          onClose={() => setShowExercisePicker(false)}
+          onSelect={handleExerciseSelect}
+          selectedExerciseId={selectedExerciseId}
+        />
+      </ScrollView>
+      <Animated.View style={[styles.filterBarOuter, { height: filterBarHeight }]}>
+        <BlurView intensity={60} tint="dark" style={styles.filterBar}>
+          <TimeRangeDropdown selected={selectedRange} onChange={handleRangeChange} />
+          <GranularityPicker selected={granularityMode} onChange={handleGranularityChange} isAll={selectedRange === 0} />
+        </BlurView>
+      </Animated.View>
+      <TouchableOpacity
+        onPress={toggleFilters}
+        style={styles.chevronBox}
+        activeOpacity={0.7}
+      >
+        <BlurView intensity={60} tint="dark" style={styles.chevronBlur}>
+          <Text style={styles.chevronText}>{filtersOpen ? '▴' : '▾'}</Text>
+        </BlurView>
+      </TouchableOpacity>
+    </View>
   );
 }
+
+/* ── Section Title ── */
 
 function SectionTitle({ title, rightElement }: { title: string; rightElement?: React.ReactNode }) {
   return (
@@ -235,7 +477,7 @@ function TimeRangeDropdown({
   const currentLabel = TIME_RANGES.find((r) => r.value === selected)?.label ?? 'All';
 
   return (
-    <View style={styles.dropdownContainer}>
+    <View>
       <TouchableOpacity
         style={styles.dropdownTrigger}
         onPress={() => setOpen(true)}
@@ -282,7 +524,445 @@ function TimeRangeDropdown({
   );
 }
 
-/* ── Contribution Grid (streak calendar) ── */
+/* ── Granularity Picker ── */
+
+function GranularityPicker({
+  selected,
+  onChange,
+  isAll,
+}: {
+  selected: GranularityMode;
+  onChange: (m: GranularityMode) => void;
+  isAll?: boolean;
+}) {
+  const modes = isAll ? GRANULARITY_MODES.filter((m) => m.key !== 'W') : GRANULARITY_MODES;
+  return (
+    <View style={styles.granularityRow}>
+      {modes.map((m) => (
+        <TouchableOpacity
+          key={m.key}
+          style={[styles.granularityChip, selected === m.key && styles.granularityChipActive]}
+          onPress={() => onChange(m.key)}
+          activeOpacity={0.7}
+        >
+          <Text
+            style={[styles.granularityChipText, selected === m.key && styles.granularityChipTextActive]}
+          >
+            {m.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+/* ── Simple Scrollable Chart (SVG-based, no windowing) ── */
+
+function SimpleScrollableChart({
+  data,
+  mode,
+  weeks,
+  title,
+  subtitle,
+  headerContent,
+  frontColor,
+  scrollEnabled = true,
+  onChartTouchStart,
+  onChartTouchEnd,
+  pointerActiveRef,
+  formatTooltipValue,
+  minYStep,
+}: {
+  data: TimeSeriesPoint[];
+  mode: GranularityMode;
+  weeks: number;
+  title: string;
+  subtitle: string;
+  headerContent?: React.ReactNode;
+  frontColor: string;
+  scrollEnabled?: boolean;
+  onChartTouchStart: () => void;
+  onChartTouchEnd: () => void;
+  pointerActiveRef: React.MutableRefObject<boolean>;
+  formatTooltipValue: (value: number) => string;
+  minYStep?: number;
+}) {
+  const vp = viewportPoints(mode);
+  const yMinStep = minYStep ?? 1;
+  const slots = totalSlotsForRange(weeks, mode);
+
+  const [yAxis, setYAxis] = useState<YAxisInfo>(() =>
+    computeYAxisInfo(data.slice(Math.max(0, data.length - vp)), yMinStep),
+  );
+  const [dateRange, setDateRange] = useState('');
+  const [activeTooltip, setActiveTooltip] = useState<{ date: string; value: string; slotX: number } | null>(null);
+  const tooltipWidthRef = useRef(0);
+  const [tooltipReady, setTooltipReady] = useState(false);
+  const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
+
+  const fixedYAxisWidth = 40;
+  const estimatedWidth = SCREEN_WIDTH - 2 * spacing.sm - fixedYAxisWidth;
+  const chartWidth = measuredWidth ?? estimatedWidth;
+  const slotWidth = computePointSpacing(mode, chartWidth);
+  const barWidth = Math.max(4, slotWidth - 4);
+  const totalContentWidth = slots * slotWidth;
+
+  const scrollOffsetRef = useRef(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const rightmostKeyRef = useRef<string | null>(null);
+  const prevDataRef = useRef(data);
+  const prevModeRef = useRef(mode);
+  const mountedRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const now = useMemo(() => {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    return d.getTime();
+  }, []);
+
+  const slotIndices = useMemo(
+    () => data.map((pt) => slotIndexForPoint(pt, now, slots, mode)),
+    [data, now, slots, mode],
+  );
+
+  const slotToDateStr = useCallback(
+    (slotIdx: number): string => {
+      const msPerDay = 86400000;
+      let ts: number;
+      if (mode === 'Y') {
+        const end = new Date(now);
+        const d = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - (slots - 1 - slotIdx), 1));
+        ts = d.getTime();
+      } else if (mode === '6M') {
+        ts = now - (slots - 1 - slotIdx) * 7 * msPerDay;
+      } else {
+        ts = now - (slots - 1 - slotIdx) * msPerDay;
+      }
+      const d = new Date(ts);
+      return `${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+    },
+    [now, slots, mode],
+  );
+
+  const updateHeaderForOffset = useCallback(
+    (ox: number) => {
+      const startSlot = Math.max(0, Math.min(slots - 1, Math.floor(ox / slotWidth)));
+      const endSlot = Math.min(slots - 1, startSlot + vp - 1);
+      setDateRange(`${slotToDateStr(startSlot)} – ${slotToDateStr(endSlot)}`);
+    },
+    [slots, slotWidth, vp, slotToDateStr],
+  );
+
+  const handleChartLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    setMeasuredWidth((prev) => {
+      if (prev !== null && Math.abs(prev - w) < 1) return prev;
+      return w;
+    });
+  }, []);
+
+  const scrollToPresent = useCallback(() => {
+    const scrollX = Math.max(0, totalContentWidth - chartWidth);
+    scrollOffsetRef.current = scrollX;
+    scrollRef.current?.scrollTo({ x: scrollX, animated: false });
+    updateHeaderForOffset(scrollX);
+    const startSlot = Math.max(0, Math.floor(scrollX / slotWidth));
+    const endSlot = Math.min(slots - 1, startSlot + vp - 1);
+    const visible = data.filter((_, i) => {
+      const s = slotIndices[i];
+      return s >= startSlot && s <= endSlot;
+    });
+    if (visible.length > 0) setYAxis(computeYAxisInfo(visible, yMinStep));
+  }, [totalContentWidth, chartWidth, updateHeaderForOffset, slotWidth, slots, vp, data, slotIndices, yMinStep]);
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      scrollToPresent();
+      return;
+    }
+    const dataChanged = data !== prevDataRef.current;
+    const modeChanged = mode !== prevModeRef.current;
+    prevDataRef.current = data;
+    prevModeRef.current = mode;
+
+    if (!dataChanged && !modeChanged) return;
+
+    const anchor = rightmostKeyRef.current;
+    let scrollX: number;
+    if (anchor && data.length > 0) {
+      const found = data.findIndex((d) => d.key >= anchor);
+      const anchorIdx = found !== -1 ? found : data.length - 1;
+      const anchorSlot = slotIndices[anchorIdx] ?? (slots - 1);
+      scrollX = Math.max(0, (anchorSlot - vp + 1) * slotWidth);
+    } else {
+      scrollX = Math.max(0, totalContentWidth - chartWidth);
+    }
+
+    scrollOffsetRef.current = scrollX;
+    scrollRef.current?.scrollTo({ x: scrollX, animated: false });
+    updateHeaderForOffset(scrollX);
+
+    const startSlot = Math.max(0, Math.floor(scrollX / slotWidth));
+    const endSlot = Math.min(slots - 1, startSlot + vp - 1);
+    const visible = data.filter((_, i) => {
+      const s = slotIndices[i];
+      return s >= startSlot && s <= endSlot;
+    });
+    if (visible.length > 0) setYAxis(computeYAxisInfo(visible, yMinStep));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, mode]);
+
+  useEffect(() => {
+    if (measuredWidth !== null && mountedRef.current) {
+      scrollToPresent();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measuredWidth]);
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const ox = e.nativeEvent.contentOffset.x;
+      scrollOffsetRef.current = ox;
+      const endSlot = Math.min(slots - 1, Math.floor(ox / slotWidth) + vp - 1);
+      if (data.length > 0) {
+        let nearestIdx = data.length - 1;
+        for (let i = data.length - 1; i >= 0; i--) {
+          if (slotIndices[i] <= endSlot) { nearestIdx = i; break; }
+        }
+        rightmostKeyRef.current = data[nearestIdx]?.key ?? null;
+      }
+      updateHeaderForOffset(ox);
+    },
+    [data, slotIndices, slots, slotWidth, vp, updateHeaderForOffset],
+  );
+
+  const handleScrollEnd = useCallback(() => {
+    const ox = scrollOffsetRef.current;
+    const startSlot = Math.max(0, Math.floor(ox / slotWidth));
+    const endSlot = Math.min(slots - 1, startSlot + vp - 1);
+    const visible = data.filter((_, i) => {
+      const s = slotIndices[i];
+      return s >= startSlot && s <= endSlot;
+    });
+    if (visible.length > 0) setYAxis(computeYAxisInfo(visible, yMinStep));
+  }, [data, slotIndices, slots, slotWidth, vp, yMinStep]);
+
+  const MOVE_THRESHOLD = 10;
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const findNearestBar = useCallback(
+    (pageX: number) => {
+      const ox = scrollOffsetRef.current;
+      const touchSlot = Math.round((ox + pageX - spacing.sm - fixedYAxisWidth) / slotWidth);
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < slotIndices.length; i++) {
+        const dist = Math.abs(slotIndices[i] - touchSlot);
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+      }
+      if (bestIdx >= 0 && bestDist <= 2) return bestIdx;
+      return -1;
+    },
+    [slotIndices, slotWidth, fixedYAxisWidth],
+  );
+
+  const showTooltipAt = useCallback(
+    (pageX: number) => {
+      const idx = findNearestBar(pageX);
+      if (idx >= 0) {
+        const pt = data[idx];
+        const si = slotIndices[idx];
+        setActiveTooltip({
+          date: formatKeyDate(pt.key, mode),
+          value: formatTooltipValue(pt.value),
+          slotX: si * slotWidth + slotWidth / 2,
+        });
+      }
+    },
+    [findNearestBar, data, slotIndices, slotWidth, mode, formatTooltipValue],
+  );
+
+  const activateTooltipMode = useCallback(
+    (pageX: number) => {
+      pointerActiveRef.current = true;
+      onChartTouchStart();
+      showTooltipAt(pageX);
+    },
+    [pointerActiveRef, onChartTouchStart, showTooltipAt],
+  );
+
+  const handleTouchStart = useCallback(
+    (e: GestureResponderEvent) => {
+      const { pageX, pageY } = e.nativeEvent;
+      touchStartRef.current = { x: pageX, y: pageY };
+      longPressTimerRef.current = setTimeout(() => {
+        if (touchStartRef.current) activateTooltipMode(pageX);
+      }, LONG_PRESS_MS);
+    },
+    [activateTooltipMode],
+  );
+
+  const handleTouchMove = useCallback(
+    (e: GestureResponderEvent) => {
+      const { pageX, pageY } = e.nativeEvent;
+
+      if (pointerActiveRef.current) {
+        showTooltipAt(pageX);
+        return;
+      }
+
+      if (touchStartRef.current && longPressTimerRef.current) {
+        const dx = Math.abs(pageX - touchStartRef.current.x);
+        const dy = Math.abs(pageY - touchStartRef.current.y);
+        if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+          touchStartRef.current = null;
+        }
+      }
+    },
+    [pointerActiveRef, showTooltipAt],
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    touchStartRef.current = null;
+    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+    if (pointerActiveRef.current) {
+      pointerActiveRef.current = false;
+      onChartTouchEnd();
+      setActiveTooltip(null);
+      tooltipWidthRef.current = 0;
+      setTooltipReady(false);
+    }
+  }, [pointerActiveRef, onChartTouchEnd]);
+
+  const labelInterval = xLabelInterval(mode);
+
+  const xLabels = useMemo(() => {
+    const labels: { x: number; text: string }[] = [];
+    for (let s = 0; s < slots; s += labelInterval) {
+      const text = slotToXLabel(s, slots, now, mode);
+      if (text) labels.push({ x: s * slotWidth + slotWidth / 2, text });
+    }
+    return labels;
+  }, [slots, labelInterval, slotWidth, now, mode]);
+
+  const bars = useMemo(() => {
+    if (yAxis.maxValue <= 0) return [];
+    return data.map((pt, i) => {
+      const si = slotIndices[i];
+      const barH = Math.max(0, (pt.value / yAxis.maxValue) * CHART_HEIGHT);
+      const x = si * slotWidth + (slotWidth - barWidth) / 2;
+      return { x, y: CHART_HEIGHT - barH, width: barWidth, height: barH, key: pt.key };
+    });
+  }, [data, slotIndices, slotWidth, barWidth, yAxis.maxValue]);
+
+  return (
+    <View style={styles.chartSection}>
+      <SectionTitle title={title} />
+      {headerContent}
+      <View style={styles.chartHeaderArea}>
+        <View style={{ opacity: (activeTooltip && tooltipReady) ? 0 : 1 }}>
+          <Text style={styles.dateRangeText}>{dateRange}</Text>
+          <Text style={styles.chartSubtitle}>{subtitle}</Text>
+        </View>
+        {activeTooltip && (() => {
+          const tw = tooltipWidthRef.current;
+          const screenX = activeTooltip.slotX - scrollOffsetRef.current + fixedYAxisWidth;
+          const sectionWidth = chartWidth + fixedYAxisWidth;
+          const clampedLeft = tw > 0
+            ? Math.max(0, Math.min(sectionWidth - tw, screenX - tw / 2))
+            : 0;
+          return (
+            <View
+              style={[styles.tooltipBubble, { left: clampedLeft, opacity: tooltipReady ? 1 : 0 }]}
+              onLayout={(e) => {
+                const w = e.nativeEvent.layout.width;
+                if (Math.abs(w - tooltipWidthRef.current) > 1) {
+                  tooltipWidthRef.current = w;
+                  setTooltipReady(true);
+                } else if (!tooltipReady) {
+                  setTooltipReady(true);
+                }
+              }}
+            >
+              <Text style={styles.tooltipValue} numberOfLines={1}>{activeTooltip.value}</Text>
+              <Text style={styles.tooltipDate} numberOfLines={1}>{activeTooltip.date}</Text>
+            </View>
+          );
+        })()}
+      </View>
+      <View style={styles.chartRow}>
+          <View style={[styles.yAxisColumn, { width: fixedYAxisWidth, height: CHART_HEIGHT }]}>
+            {[...yAxis.labels].reverse().map((label, i) => (
+              <Text key={i} style={styles.yAxisLabel}>{label}</Text>
+            ))}
+          </View>
+          <ScrollView
+            ref={scrollRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            onMomentumScrollEnd={handleScrollEnd}
+            onScrollEndDrag={handleScrollEnd}
+            snapToInterval={slotWidth}
+            decelerationRate="fast"
+            scrollEnabled={scrollEnabled}
+            onLayout={handleChartLayout}
+            style={styles.chartScroll}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
+          >
+            <Svg width={totalContentWidth} height={SVG_HEIGHT}>
+              <Line
+                x1={0} y1={CHART_HEIGHT} x2={totalContentWidth} y2={CHART_HEIGHT}
+                stroke={colors.border} strokeWidth={1}
+              />
+              {bars.map((b) => (
+                <Rect
+                  key={b.key}
+                  x={b.x}
+                  y={b.y}
+                  width={b.width}
+                  height={b.height}
+                  fill={frontColor}
+                  rx={3}
+                  ry={3}
+                />
+              ))}
+              {activeTooltip && (
+                <Line
+                  x1={activeTooltip.slotX} y1={0}
+                  x2={activeTooltip.slotX} y2={CHART_HEIGHT}
+                  stroke={colors.border} strokeWidth={1}
+                />
+              )}
+              {xLabels.map((lbl, i) => (
+                <SvgText
+                  key={i}
+                  x={lbl.x}
+                  y={CHART_HEIGHT + 14}
+                  fontSize={10}
+                  fill={colors.textMuted}
+                  textAnchor="middle"
+                  fontFamily={fonts.regular}
+                >
+                  {lbl.text}
+                </SvgText>
+              ))}
+            </Svg>
+          </ScrollView>
+        </View>
+    </View>
+  );
+}
+
+/* ── Contribution Grid ── */
 
 function ContributionGrid({
   workoutDays,
@@ -363,110 +1043,96 @@ function ContributionGrid({
 
 /* ── Workout Frequency ── */
 
-function WorkoutFrequencySection({
+const WorkoutFrequencySection = React.memo(function WorkoutFrequencySection({
   data,
-}: {
-  data: DashboardData['weeklyFrequency'];
-}) {
+  mode,
+  weeks,
+  scrollEnabled,
+  onChartTouchStart,
+  onChartTouchEnd,
+  pointerActiveRef,
+}: ChartSectionProps) {
   if (data.length === 0) return null;
 
-  const barData = data.map((d) => ({
-    value: d.value,
-    label: d.label,
-    frontColor: '#4ECDC4',
-  }));
+  const fmtTooltip = useCallback((v: number) => `${v} workouts`, []);
 
   return (
-    <Card style={styles.card}>
-      <SectionTitle title="Workout Frequency" />
-      <Text style={styles.chartSubtitle}>Workouts per period</Text>
-      <View style={styles.chartContainer}>
-        <BarChart
-          {...TIME_BAR_PROPS}
-          data={cloneData(barData)}
-          barWidth={18}
-          spacing={12}
-          barBorderRadius={4}
-          renderTooltip={(item: { value: number }) => (
-            <View style={TOOLTIP_STYLE}>
-              <Text style={styles.tooltipText}>{item.value} workouts</Text>
-            </View>
-          )}
-        />
-      </View>
-    </Card>
+    <SimpleScrollableChart
+      data={data}
+      mode={mode}
+      weeks={weeks}
+      title="Workout Frequency"
+      subtitle="Workouts per period"
+      frontColor="#4ECDC4"
+      scrollEnabled={scrollEnabled}
+      onChartTouchStart={onChartTouchStart}
+      onChartTouchEnd={onChartTouchEnd}
+      pointerActiveRef={pointerActiveRef}
+      formatTooltipValue={fmtTooltip}
+      minYStep={1}
+    />
   );
-}
+});
 
 /* ── Volume Over Time ── */
 
-function VolumeSection({ data }: { data: DashboardData['volumeOverTime'] }) {
+const VolumeSection = React.memo(function VolumeSection({
+  data,
+  mode,
+  weeks,
+  scrollEnabled,
+  onChartTouchStart,
+  onChartTouchEnd,
+  pointerActiveRef,
+}: ChartSectionProps) {
   if (data.length === 0) return null;
 
-  const lineData = data.map((d) => ({
-    value: d.value,
-    label: d.label,
-  }));
+  const fmtTooltip = useCallback((v: number) => `${formatVolume(v)} vol`, []);
 
   return (
-    <Card style={styles.card}>
-      <SectionTitle title="Total Volume" />
-      <Text style={styles.chartSubtitle}>Weight x reps per session</Text>
-      <View style={styles.chartContainer}>
-        <LineChart
-          {...TIME_LINE_PROPS}
-          data={cloneData(lineData)}
-          color="#FF6B6B"
-          startFillColor="rgba(255,107,107,0.3)"
-          endFillColor="rgba(255,107,107,0.01)"
-          hideDataPoints={data.length > 12}
-          dataPointsColor="#FF6B6B"
-          pointerConfig={{
-            pointerStripColor: 'rgba(255,255,255,0.15)',
-            pointerStripWidth: 1,
-            pointerColor: '#FF6B6B',
-            radius: 5,
-            pointerLabelWidth: 120,
-            pointerLabelHeight: 40,
-            activatePointersOnLongPress: true,
-            autoAdjustPointerLabelPosition: true,
-            pointerLabelComponent: (items: { value: number }[]) => (
-              <View style={TOOLTIP_STYLE}>
-                <Text style={styles.tooltipText}>{formatVolume(items[0]?.value ?? 0)} vol</Text>
-              </View>
-            ),
-          }}
-        />
-      </View>
-    </Card>
+    <SimpleScrollableChart
+      data={data}
+      mode={mode}
+      weeks={weeks}
+      title="Total Volume"
+      subtitle="Weight x reps per period"
+      frontColor="#FF6B6B"
+      scrollEnabled={scrollEnabled}
+      onChartTouchStart={onChartTouchStart}
+      onChartTouchEnd={onChartTouchEnd}
+      pointerActiveRef={pointerActiveRef}
+      formatTooltipValue={fmtTooltip}
+      minYStep={500}
+    />
   );
-}
+});
 
 /* ── Exercise Spotlight ── */
 
-function ExerciseSpotlightSection({
+const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
   active,
   metric,
   onMetricChange,
   onPickExercise,
-}: {
+  mode,
+  weeks,
+  scrollEnabled,
+  onChartTouchStart,
+  onChartTouchEnd,
+  pointerActiveRef,
+}: ChartInteractionProps & {
   active: ExerciseProgression;
   metric: SpotlightMetric;
   onMetricChange: (m: SpotlightMetric) => void;
   onPickExercise: () => void;
 }) {
-  const pointsMap: Record<SpotlightMetric, { label: string; value: number }[]> = {
+  const pointsMap: Record<SpotlightMetric, TimeSeriesPoint[]> = {
     weight: active.weightPoints,
     volume: active.volumePoints,
     reps: active.repsPoints,
     '1rm': active.oneRMPoints,
   };
   const points = pointsMap[metric] ?? active.weightPoints;
-
-  const lineData = points.map((p) => ({
-    value: p.value,
-    label: p.label,
-  }));
 
   const subtitleMap: Record<SpotlightMetric, string> = {
     weight: 'Max weight per session',
@@ -482,10 +1148,23 @@ function ExerciseSpotlightSection({
     '1rm': ' 1RM',
   };
 
-  return (
-    <Card style={styles.card}>
-      <SectionTitle title="Exercise Spotlight" />
+  const minStepMap: Record<SpotlightMetric, number> = {
+    weight: 10,
+    volume: 500,
+    reps: 2,
+    '1rm': 10,
+  };
 
+  const fmtTooltip = useCallback(
+    (v: number) => {
+      const val = metric === 'volume' ? formatVolume(v) : String(v);
+      return val + tooltipSuffix[metric];
+    },
+    [metric, tooltipSuffix],
+  );
+
+  const header = (
+    <>
       <TouchableOpacity
         style={styles.exerciseSelectBtn}
         onPress={onPickExercise}
@@ -494,7 +1173,6 @@ function ExerciseSpotlightSection({
         <Text style={styles.exerciseSelectText}>{active.exerciseName}</Text>
         <Text style={styles.exerciseSelectArrow}>▾</Text>
       </TouchableOpacity>
-
       <View style={styles.metricRow}>
         {METRIC_OPTIONS.map((opt) => (
           <TouchableOpacity
@@ -511,42 +1189,27 @@ function ExerciseSpotlightSection({
           </TouchableOpacity>
         ))}
       </View>
-
-      <Text style={styles.chartSubtitle}>{subtitleMap[metric]}</Text>
-
-      <View style={styles.chartContainer}>
-        <LineChart
-          {...TIME_LINE_PROPS}
-          data={cloneData(lineData)}
-          color="#FFEAA7"
-          startFillColor="rgba(255,234,167,0.25)"
-          endFillColor="rgba(255,234,167,0.01)"
-          dataPointsColor="#FFEAA7"
-          pointerConfig={{
-            pointerStripColor: 'rgba(255,255,255,0.15)',
-            pointerStripWidth: 1,
-            pointerColor: '#FFEAA7',
-            radius: 5,
-            pointerLabelWidth: 120,
-            pointerLabelHeight: 40,
-            activatePointersOnLongPress: true,
-            autoAdjustPointerLabelPosition: true,
-            pointerLabelComponent: (items: { value: number }[]) => (
-              <View style={TOOLTIP_STYLE}>
-                <Text style={styles.tooltipText}>
-                  {metric === 'volume'
-                    ? formatVolume(items[0]?.value ?? 0)
-                    : (items[0]?.value ?? 0)}
-                  {tooltipSuffix[metric]}
-                </Text>
-              </View>
-            ),
-          }}
-        />
-      </View>
-    </Card>
+    </>
   );
-}
+
+  return (
+    <SimpleScrollableChart
+      data={points}
+      mode={mode}
+      weeks={weeks}
+      title="Exercise Spotlight"
+      subtitle={subtitleMap[metric]}
+      headerContent={header}
+      frontColor="#FFEAA7"
+      scrollEnabled={scrollEnabled}
+      onChartTouchStart={onChartTouchStart}
+      onChartTouchEnd={onChartTouchEnd}
+      pointerActiveRef={pointerActiveRef}
+      formatTooltipValue={fmtTooltip}
+      minYStep={minStepMap[metric]}
+    />
+  );
+});
 
 /* ── Muscle Group Split ── */
 
@@ -615,7 +1278,7 @@ function MuscleGroupSection({
     );
   }
 
-  const pieData = data.map((d, idx) => ({
+  const pieData = data.map((d) => ({
     value: d.value,
     color: d.color,
     text: `${d.value}%`,
@@ -695,50 +1358,36 @@ function PersonalRecordsSection({
 
 /* ── Duration Trend ── */
 
-function DurationTrendSection({
+const DurationTrendSection = React.memo(function DurationTrendSection({
   data,
-}: {
-  data: DashboardData['durationTrend'];
-}) {
+  mode,
+  weeks,
+  scrollEnabled,
+  onChartTouchStart,
+  onChartTouchEnd,
+  pointerActiveRef,
+}: ChartSectionProps) {
   if (data.length === 0) return null;
 
-  const lineData = data.map((d) => ({
-    value: d.value,
-    label: d.label,
-  }));
+  const fmtTooltip = useCallback((v: number) => `${v} min`, []);
 
   return (
-    <Card style={styles.card}>
-      <SectionTitle title="Workout Duration" />
-      <Text style={styles.chartSubtitle}>Avg minutes per period</Text>
-      <View style={styles.chartContainer}>
-        <LineChart
-          {...TIME_LINE_PROPS}
-          data={cloneData(lineData)}
-          color="#45B7D1"
-          startFillColor="rgba(69,183,209,0.3)"
-          endFillColor="rgba(69,183,209,0.01)"
-          dataPointsColor="#45B7D1"
-          pointerConfig={{
-            pointerStripColor: 'rgba(255,255,255,0.15)',
-            pointerStripWidth: 1,
-            pointerColor: '#45B7D1',
-            radius: 5,
-            pointerLabelWidth: 100,
-            pointerLabelHeight: 40,
-            activatePointersOnLongPress: true,
-            autoAdjustPointerLabelPosition: true,
-            pointerLabelComponent: (items: { value: number }[]) => (
-              <View style={TOOLTIP_STYLE}>
-                <Text style={styles.tooltipText}>{items[0]?.value ?? 0} min</Text>
-              </View>
-            ),
-          }}
-        />
-      </View>
-    </Card>
+    <SimpleScrollableChart
+      data={data}
+      mode={mode}
+      weeks={weeks}
+      title="Workout Duration"
+      subtitle="Avg minutes per period"
+      frontColor="#45B7D1"
+      scrollEnabled={scrollEnabled}
+      onChartTouchStart={onChartTouchStart}
+      onChartTouchEnd={onChartTouchEnd}
+      pointerActiveRef={pointerActiveRef}
+      formatTooltipValue={fmtTooltip}
+      minYStep={10}
+    />
   );
-}
+});
 
 /* ── Styles ── */
 
@@ -748,7 +1397,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xl * 2,
   },
   emptyContainer: {
@@ -775,6 +1425,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
+  chartSection: {
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+  },
   sectionTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -787,19 +1441,75 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     textTransform: 'capitalize',
   },
+  chartHeaderArea: {
+    minHeight: 34,
+    marginBottom: spacing.xs,
+    position: 'relative',
+  },
+  dateRangeText: {
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
   chartSubtitle: {
     fontSize: 12,
     fontFamily: fonts.regular,
     color: colors.textMuted,
-    marginBottom: spacing.md,
   },
-  chartContainer: {
+  tooltipBubble: {
+    position: 'absolute',
+    top: 0,
     alignItems: 'center',
+    paddingVertical: 2,
   },
-  tooltipText: {
-    fontSize: 12,
+  tooltipValue: {
+    fontSize: 14,
     fontFamily: fonts.bold,
     color: colors.text,
+  },
+  tooltipDate: {
+    fontSize: 10,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+  },
+
+  filterBarOuter: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 9,
+    overflow: 'hidden',
+  },
+  filterBar: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: spacing.sm,
+  },
+  chevronBox: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    zIndex: 10,
+    height: 40,
+    overflow: 'hidden',
+    borderBottomLeftRadius: 8,
+    borderLeftWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+  },
+  chevronBlur: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  chevronText: {
+    color: colors.textMuted,
+    fontSize: 12,
   },
 
   heroGrid: {
@@ -831,11 +1541,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Dropdown
-  dropdownContainer: {
-    marginBottom: spacing.md,
-    alignItems: 'flex-start',
-  },
   dropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -889,7 +1594,52 @@ const styles = StyleSheet.create({
     color: colors.background,
   },
 
-  // Contribution grid
+  granularityRow: {
+    flexDirection: 'row',
+    gap: 0,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  granularityChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  granularityChipActive: {
+    backgroundColor: colors.text,
+  },
+  granularityChipText: {
+    fontSize: 13,
+    fontFamily: fonts.bold,
+    color: colors.textMuted,
+  },
+  granularityChipTextActive: {
+    color: colors.background,
+  },
+
+  chartRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginLeft: -4,
+  },
+  yAxisColumn: {
+    justifyContent: 'space-between',
+    paddingBottom: 22,
+    paddingTop: 2,
+  },
+  yAxisLabel: {
+    fontSize: 10,
+    fontFamily: fonts.light,
+    color: colors.textMuted,
+    textAlign: 'right',
+    paddingRight: 2,
+  },
+  chartScroll: {
+    flex: 1,
+  },
+
   streakHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -936,7 +1686,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#4ECDC4',
   },
 
-  // Exercise spotlight
   exerciseSelectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -985,10 +1734,12 @@ const styles = StyleSheet.create({
     color: '#000',
   },
 
-  // Pie chart
   pieContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.md,
     marginBottom: spacing.md,
+    paddingLeft: spacing.md,
   },
   pieCenter: {
     fontSize: 14,
@@ -1024,7 +1775,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
 
-  // PR cards
   prRow: {
     flexDirection: 'row',
     alignItems: 'center',

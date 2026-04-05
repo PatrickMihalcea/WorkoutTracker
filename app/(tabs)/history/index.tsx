@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,24 +10,35 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { sessionService, dashboardService } from '../../../src/services';
-import type { DashboardData } from '../../../src/services';
+import type { DashboardData, Granularity } from '../../../src/services';
 import { Card, EmptyState } from '../../../src/components/ui';
-import { Dashboard } from '../../../src/components/history/Dashboard';
+import { Dashboard, GranularityMode } from '../../../src/components/history/Dashboard';
 import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { colors, fonts } from '../../../src/constants';
 import { WorkoutSessionWithRoutine } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 
+function granularityModeToBackend(mode: GranularityMode): Granularity {
+  if (mode === 'W' || mode === 'M') return 'day';
+  if (mode === '6M') return 'week';
+  return 'month';
+}
+
 export default function HistoryScreen() {
   const router = useRouter();
   const { view } = useHistoryView();
   const user = useAuthStore((s) => s.user);
+
   const [sessions, setSessions] = useState<WorkoutSessionWithRoutine[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
-  const weeksRef = useRef(0);
+  const [weeks, setWeeks] = useState(12);
+  const [granularity, setGranularity] = useState<GranularityMode>('W');
+
+  const userId = user?.id ?? '';
 
   const loadSessions = useCallback(async () => {
     try {
@@ -38,44 +49,60 @@ export default function HistoryScreen() {
     }
   }, []);
 
-  const loadDashboard = useCallback(async (weeks?: number) => {
-    if (!user?.id) return;
-    const w = weeks ?? weeksRef.current;
+  const loadDashboard = useCallback(async (w: number, gMode: GranularityMode) => {
+    if (!userId) return;
     setDashboardLoading(true);
     try {
-      const data = await dashboardService.getDashboardData(user.id, w);
+      const g = granularityModeToBackend(gMode);
+      const data = await dashboardService.getDashboardData(userId, w, g);
       setDashboardData(data);
     } catch {
       // Handle quietly
     } finally {
       setDashboardLoading(false);
     }
-  }, [user?.id]);
+  }, [userId]);
 
   useFocusEffect(
     useCallback(() => {
       if (view === 'dashboard') {
-        loadDashboard();
+        loadDashboard(weeks, granularity);
       } else {
         loadSessions();
       }
-    }, [view, loadSessions, loadDashboard]),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [view, weeks, loadSessions, loadDashboard]),
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    if (view === 'dashboard') {
-      await loadDashboard();
-    } else {
-      await loadSessions();
+    try {
+      if (view === 'dashboard') {
+        await loadDashboard(weeks, granularity);
+      } else {
+        await loadSessions();
+      }
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
-  }, [view, loadSessions, loadDashboard]);
+  }, [view, weeks, granularity, loadSessions, loadDashboard]);
 
-  const handleChangeWeeks = useCallback((weeks: number) => {
-    weeksRef.current = weeks;
-    loadDashboard(weeks);
-  }, [loadDashboard]);
+  const handleChangeWeeks = useCallback((w: number) => {
+    setWeeks(w);
+  }, []);
+
+  const handleChangeGranularity = useCallback((mode: GranularityMode) => {
+    setGranularity(mode);
+  }, []);
+
+  const prevGranRef = useRef(granularity);
+  useEffect(() => {
+    if (prevGranRef.current !== granularity) {
+      prevGranRef.current = granularity;
+      loadDashboard(weeks, granularity);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [granularity]);
 
   const handleDeleteSession = (item: WorkoutSessionWithRoutine) => {
     Alert.alert(
@@ -114,6 +141,7 @@ export default function HistoryScreen() {
           onRefresh={onRefresh}
           refreshing={refreshing}
           onChangeWeeks={handleChangeWeeks}
+          onChangeGranularityMode={handleChangeGranularity}
         />
       );
     }

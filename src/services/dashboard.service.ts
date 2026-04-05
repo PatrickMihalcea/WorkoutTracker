@@ -15,30 +15,55 @@ export interface SummaryStats {
   avgDuration: number;
 }
 
+export type Granularity = 'day' | 'week' | 'month';
+
+export interface TimeSeriesPoint {
+  key: string;
+  label: string;
+  value: number;
+  date: number;
+}
+
 export interface ExerciseProgression {
   exerciseId: string;
   exerciseName: string;
-  weightPoints: { label: string; value: number }[];
-  volumePoints: { label: string; value: number }[];
-  repsPoints: { label: string; value: number }[];
-  oneRMPoints: { label: string; value: number }[];
+  weightPoints: TimeSeriesPoint[];
+  volumePoints: TimeSeriesPoint[];
+  repsPoints: TimeSeriesPoint[];
+  oneRMPoints: TimeSeriesPoint[];
 }
-
-export type Granularity = 'week' | 'month';
 
 export interface DashboardData {
   summaryStats: SummaryStats;
   granularity: Granularity;
-  weeklyFrequency: { label: string; value: number }[];
-  volumeOverTime: { label: string; value: number; date: Date }[];
+  frequency: TimeSeriesPoint[];
+  volume: TimeSeriesPoint[];
   muscleGroupSplit: { label: string; value: number; color: string }[];
   muscleGroupExercises: Record<string, { label: string; value: number; color: string }[]>;
   personalRecords: PRRecord[];
-  durationTrend: { label: string; value: number; date: Date }[];
+  duration: TimeSeriesPoint[];
   weeklyStreak: { weekLabel: string; completed: boolean }[];
   workoutDays: string[];
   exerciseProgressions: ExerciseProgression[];
 }
+
+export interface SummaryData {
+  summaryStats: SummaryStats;
+  muscleGroupSplit: { label: string; value: number; color: string }[];
+  muscleGroupExercises: Record<string, { label: string; value: number; color: string }[]>;
+  personalRecords: PRRecord[];
+  weeklyStreak: { weekLabel: string; completed: boolean }[];
+  workoutDays: string[];
+}
+
+export interface TimeSeriesWindowData {
+  frequency: TimeSeriesPoint[];
+  volume: TimeSeriesPoint[];
+  duration: TimeSeriesPoint[];
+  exerciseProgressions: ExerciseProgression[];
+}
+
+export const EARLIEST_DATE = '2016-01-01';
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
   [MuscleGroup.Chest]: '#FF6B6B',
@@ -66,14 +91,14 @@ function getWeekKey(date: Date): string {
   const d = new Date(date);
   d.setUTCHours(0, 0, 0, 0);
   const dayOfWeek = d.getUTCDay();
-  const diff = d.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-  d.setUTCDate(diff);
-  return d.toISOString().split('T')[0];
+  d.setUTCDate(d.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+  return getDayKey(d);
 }
 
 function getMonthKey(date: Date): string {
   const d = new Date(date);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  const m = d.getUTCMonth() + 1;
+  return `${d.getUTCFullYear()}-${m < 10 ? '0' : ''}${m}`;
 }
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -90,30 +115,186 @@ function formatWeekLabel(weekKey: string): string {
   return `${sMonth} ${start.getUTCDate()}-${eMonth} ${end.getUTCDate()}`;
 }
 
-function formatMonthLabel(monthKey: string): string {
-  const [, month] = monthKey.split('-').map(Number);
-  return MONTH_NAMES[month - 1];
-}
-
 function getDayKey(date: Date): string {
-  return date.toISOString().split('T')[0];
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth() + 1;
+  const d = date.getUTCDate();
+  return `${y}-${m < 10 ? '0' : ''}${m}-${d < 10 ? '0' : ''}${d}`;
 }
 
-function resolveGranularity(weeks: number): Granularity {
-  return weeks >= 26 || weeks === 0 ? 'month' : 'week';
+function getBucketKey(date: Date, granularity: Granularity): string {
+  if (granularity === 'day') return getDayKey(date);
+  if (granularity === 'month') return getMonthKey(date);
+  return getWeekKey(date);
 }
 
-function maxPeriods(weeks: number, granularity: Granularity): number {
-  if (weeks === 0) return 52;
-  if (granularity === 'month') return Math.ceil(weeks / 4) + 1;
-  return weeks + 2;
+function generateSkeleton(granularity: Granularity, weeks: number): TimeSeriesPoint[] {
+  const now = new Date();
+  now.setUTCHours(0, 0, 0, 0);
+  const points: TimeSeriesPoint[] = [];
+
+  const totalDays = weeks > 0 ? weeks * 7 : 365 * 10;
+  const start = new Date(now);
+  start.setUTCDate(start.getUTCDate() - totalDays);
+
+  if (granularity === 'day') {
+    const cursor = new Date(start);
+    const endTime = now.getTime();
+    while (cursor.getTime() <= endTime) {
+      points.push({
+        key: getDayKey(cursor),
+        label: String(cursor.getUTCDate()),
+        value: 0,
+        date: cursor.getTime(),
+      });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  } else if (granularity === 'week') {
+    const cursor = new Date(start);
+    const dow = cursor.getUTCDay();
+    cursor.setUTCDate(cursor.getUTCDate() - dow + (dow === 0 ? -6 : 1));
+    const endTime = now.getTime();
+    while (cursor.getTime() <= endTime) {
+      const key = getDayKey(cursor);
+      const endDate = new Date(cursor);
+      endDate.setUTCDate(endDate.getUTCDate() + 6);
+      const sMonth = MONTH_NAMES[cursor.getUTCMonth()];
+      const eMonth = MONTH_NAMES[endDate.getUTCMonth()];
+      const label = sMonth === eMonth
+        ? `${sMonth} ${cursor.getUTCDate()}-${endDate.getUTCDate()}`
+        : `${sMonth} ${cursor.getUTCDate()}-${eMonth} ${endDate.getUTCDate()}`;
+      points.push({ key, label, value: 0, date: cursor.getTime() });
+      cursor.setUTCDate(cursor.getUTCDate() + 7);
+    }
+  } else {
+    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+    const endYear = now.getUTCFullYear();
+    const endMo = now.getUTCMonth();
+    while (cursor.getUTCFullYear() < endYear || (cursor.getUTCFullYear() === endYear && cursor.getUTCMonth() <= endMo)) {
+      const mo = cursor.getUTCMonth();
+      points.push({
+        key: `${cursor.getUTCFullYear()}-${mo < 9 ? '0' : ''}${mo + 1}`,
+        label: MONTH_NAMES[mo],
+        value: 0,
+        date: cursor.getTime(),
+      });
+      cursor.setUTCMonth(mo + 1);
+    }
+  }
+  return points;
 }
+
+function generateSkeletonForRange(granularity: Granularity, rangeStart: Date, rangeEnd: Date): TimeSeriesPoint[] {
+  const points: TimeSeriesPoint[] = [];
+  const start = new Date(rangeStart);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(rangeEnd);
+  end.setUTCHours(0, 0, 0, 0);
+
+  if (granularity === 'day') {
+    const cursor = new Date(start);
+    while (cursor.getTime() <= end.getTime()) {
+      points.push({
+        key: getDayKey(cursor),
+        label: String(cursor.getUTCDate()),
+        value: 0,
+        date: cursor.getTime(),
+      });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  } else if (granularity === 'week') {
+    const cursor = new Date(start);
+    const dow = cursor.getUTCDay();
+    cursor.setUTCDate(cursor.getUTCDate() - dow + (dow === 0 ? -6 : 1));
+    while (cursor.getTime() <= end.getTime()) {
+      const key = getDayKey(cursor);
+      const weekEnd = new Date(cursor);
+      weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+      const sMonth = MONTH_NAMES[cursor.getUTCMonth()];
+      const eMonth = MONTH_NAMES[weekEnd.getUTCMonth()];
+      const label = sMonth === eMonth
+        ? `${sMonth} ${cursor.getUTCDate()}-${weekEnd.getUTCDate()}`
+        : `${sMonth} ${cursor.getUTCDate()}-${eMonth} ${weekEnd.getUTCDate()}`;
+      points.push({ key, label, value: 0, date: cursor.getTime() });
+      cursor.setUTCDate(cursor.getUTCDate() + 7);
+    }
+  } else {
+    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+    const endYear = end.getUTCFullYear();
+    const endMo = end.getUTCMonth();
+    while (cursor.getUTCFullYear() < endYear || (cursor.getUTCFullYear() === endYear && cursor.getUTCMonth() <= endMo)) {
+      const mo = cursor.getUTCMonth();
+      points.push({
+        key: `${cursor.getUTCFullYear()}-${mo < 9 ? '0' : ''}${mo + 1}`,
+        label: MONTH_NAMES[mo],
+        value: 0,
+        date: cursor.getTime(),
+      });
+      cursor.setUTCMonth(mo + 1);
+    }
+  }
+  return points;
+}
+
+function stampValues(skeleton: TimeSeriesPoint[], dataMap: Map<string, number>): TimeSeriesPoint[] {
+  if (dataMap.size === 0) return skeleton;
+  return skeleton.map((pt) => {
+    const val = dataMap.get(pt.key);
+    return val !== undefined ? { ...pt, value: val } : pt;
+  });
+}
+
+function stampValuesAvg(skeleton: TimeSeriesPoint[], dataMap: Map<string, { total: number; count: number }>): TimeSeriesPoint[] {
+  if (dataMap.size === 0) return skeleton;
+  return skeleton.map((pt) => {
+    const entry = dataMap.get(pt.key);
+    return entry ? { ...pt, value: Math.round(entry.total / entry.count) } : pt;
+  });
+}
+
+function keyToLabel(key: string, granularity: Granularity): string {
+  if (granularity === 'day') return String(Number(key.slice(8)));
+  if (granularity === 'month') return MONTH_NAMES[Number(key.slice(5, 7)) - 1];
+  return formatWeekLabel(key);
+}
+
+function keyToDate(key: string, granularity: Granularity): number {
+  if (granularity === 'month') {
+    const [y, m] = key.split('-').map(Number);
+    return Date.UTC(y, m - 1, 1);
+  }
+  return new Date(key + 'T00:00:00Z').getTime();
+}
+
+function mapToPoints(dataMap: Map<string, number>, granularity: Granularity): TimeSeriesPoint[] {
+  return [...dataMap.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, value]) => ({
+      key,
+      label: keyToLabel(key, granularity),
+      value,
+      date: keyToDate(key, granularity),
+    }));
+}
+
+function mapToPointsAvg(dataMap: Map<string, { total: number; count: number }>, granularity: Granularity): TimeSeriesPoint[] {
+  return [...dataMap.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, entry]) => ({
+      key,
+      label: keyToLabel(key, granularity),
+      value: Math.round(entry.total / entry.count),
+      date: keyToDate(key, granularity),
+    }));
+}
+
+const SESSION_SELECT = 'id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group))';
 
 export const dashboardService = {
-  async getDashboardData(userId: string, weeks: number = 0): Promise<DashboardData> {
+  async getDashboardData(userId: string, weeks: number = 0, granularity: Granularity = 'week'): Promise<DashboardData> {
     let query = supabase
       .from('workout_sessions')
-      .select('id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group))')
+      .select(SESSION_SELECT)
       .eq('user_id', userId)
       .eq('status', 'completed')
       .order('started_at', { ascending: true });
@@ -127,46 +308,105 @@ export const dashboardService = {
     const { data: sessions, error } = await query;
 
     if (error) throw error;
-    if (!sessions || sessions.length === 0) return emptyDashboard();
+    if (!sessions || sessions.length === 0) return emptyDashboard(granularity);
 
-    const granularity = resolveGranularity(weeks);
-    const limit = maxPeriods(weeks, granularity);
+    const skeleton = weeks > 0 ? generateSkeleton(granularity, weeks) : null;
 
     return {
       summaryStats: computeSummaryStats(sessions),
       granularity,
-      weeklyFrequency: granularity === 'month'
-        ? computeMonthlyFrequency(sessions, limit)
-        : computeWeeklyFrequency(sessions, limit),
-      volumeOverTime: granularity === 'month'
-        ? computeMonthlyVolume(sessions, limit)
-        : computeVolumeOverTime(sessions, limit),
+      frequency: computeFrequency(sessions, granularity, skeleton),
+      volume: computeVolume(sessions, granularity, skeleton),
       muscleGroupSplit: computeMuscleGroupSplit(sessions),
       muscleGroupExercises: computeMuscleGroupExercises(sessions),
       personalRecords: computePersonalRecords(sessions),
-      durationTrend: granularity === 'month'
-        ? computeMonthlyDuration(sessions, limit)
-        : computeDurationTrend(sessions, limit),
+      duration: computeDuration(sessions, granularity, skeleton),
       weeklyStreak: computeWeeklyStreak(sessions),
       workoutDays: computeWorkoutDays(sessions),
-      exerciseProgressions: computeExerciseProgressions(sessions, granularity, limit),
+      exerciseProgressions: computeExerciseProgressions(sessions, granularity, skeleton),
+    };
+  },
+
+  async getSummaryData(userId: string): Promise<SummaryData> {
+    const { data: sessions, error } = await supabase
+      .from('workout_sessions')
+      .select(SESSION_SELECT)
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .order('started_at', { ascending: true });
+
+    if (error) throw error;
+    if (!sessions || sessions.length === 0) return emptySummary();
+
+    return {
+      summaryStats: computeSummaryStats(sessions),
+      muscleGroupSplit: computeMuscleGroupSplit(sessions),
+      muscleGroupExercises: computeMuscleGroupExercises(sessions),
+      personalRecords: computePersonalRecords(sessions),
+      weeklyStreak: computeWeeklyStreak(sessions),
+      workoutDays: computeWorkoutDays(sessions),
+    };
+  },
+
+  async getTimeSeriesWindow(
+    userId: string,
+    granularity: Granularity,
+    startDate: string,
+    endDate: string,
+  ): Promise<TimeSeriesWindowData> {
+    const clampedStart = startDate < EARLIEST_DATE ? EARLIEST_DATE : startDate;
+
+    const { data: sessions, error } = await supabase
+      .from('workout_sessions')
+      .select(SESSION_SELECT)
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .gte('started_at', clampedStart)
+      .lte('started_at', endDate)
+      .order('started_at', { ascending: true });
+
+    if (error) throw error;
+
+    const skeleton = generateSkeletonForRange(
+      granularity,
+      new Date(clampedStart),
+      new Date(endDate),
+    );
+    const safeSessions = sessions ?? [];
+
+    return {
+      frequency: computeFrequency(safeSessions, granularity, skeleton),
+      volume: computeVolume(safeSessions, granularity, skeleton),
+      duration: computeDuration(safeSessions, granularity, skeleton),
+      exerciseProgressions: computeExerciseProgressions(safeSessions, granularity, skeleton),
     };
   },
 };
 
-function emptyDashboard(): DashboardData {
+function emptyDashboard(granularity: Granularity = 'week'): DashboardData {
   return {
     summaryStats: { totalWorkouts: 0, currentStreak: 0, totalVolume: 0, avgDuration: 0 },
-    granularity: 'week',
-    weeklyFrequency: [],
-    volumeOverTime: [],
+    granularity,
+    frequency: [],
+    volume: [],
     muscleGroupSplit: [],
     muscleGroupExercises: {},
     personalRecords: [],
-    durationTrend: [],
+    duration: [],
     weeklyStreak: [],
     workoutDays: [],
     exerciseProgressions: [],
+  };
+}
+
+function emptySummary(): SummaryData {
+  return {
+    summaryStats: { totalWorkouts: 0, currentStreak: 0, totalVolume: 0, avgDuration: 0 },
+    muscleGroupSplit: [],
+    muscleGroupExercises: {},
+    personalRecords: [],
+    weeklyStreak: [],
+    workoutDays: [],
   };
 }
 
@@ -218,72 +458,23 @@ function computeSummaryStats(sessions: RawSession[]): SummaryStats {
   };
 }
 
-function computeWeeklyFrequency(sessions: RawSession[], limit: number) {
-  const weekMap = new Map<string, number>();
+function computeFrequency(sessions: RawSession[], granularity: Granularity, skeleton: TimeSeriesPoint[] | null): TimeSeriesPoint[] {
+  const map = new Map<string, number>();
   for (const s of sessions) {
-    const week = getWeekKey(new Date(s.started_at));
-    weekMap.set(week, (weekMap.get(week) ?? 0) + 1);
+    const key = getBucketKey(new Date(s.started_at), granularity);
+    map.set(key, (map.get(key) ?? 0) + 1);
   }
-  return [...weekMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-limit)
-    .map(([week, count]) => ({ label: formatWeekLabel(week), value: count }));
+  return skeleton ? stampValues(skeleton, map) : mapToPoints(map, granularity);
 }
 
-function computeMonthlyFrequency(sessions: RawSession[], limit: number) {
-  const monthMap = new Map<string, number>();
-  for (const s of sessions) {
-    const month = getMonthKey(new Date(s.started_at));
-    monthMap.set(month, (monthMap.get(month) ?? 0) + 1);
-  }
-  return [...monthMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-limit)
-    .map(([month, count]) => ({ label: formatMonthLabel(month), value: count }));
-}
-
-function computeVolumeOverTime(sessions: RawSession[], limit: number) {
-  const weekMap = new Map<string, { total: number; date: Date }>();
+function computeVolume(sessions: RawSession[], granularity: Granularity, skeleton: TimeSeriesPoint[] | null): TimeSeriesPoint[] {
+  const map = new Map<string, number>();
   for (const s of sessions) {
     const vol = s.sets.reduce((sum, set) => sum + set.weight * set.reps_performed, 0);
-    const weekKey = getWeekKey(new Date(s.started_at));
-    const entry = weekMap.get(weekKey);
-    if (entry) {
-      entry.total += vol;
-    } else {
-      weekMap.set(weekKey, { total: vol, date: new Date(s.started_at) });
-    }
+    const key = getBucketKey(new Date(s.started_at), granularity);
+    map.set(key, (map.get(key) ?? 0) + vol);
   }
-  return [...weekMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-limit)
-    .map(([week, { total, date }]) => ({
-      label: formatWeekLabel(week),
-      value: Math.round(total),
-      date,
-    }));
-}
-
-function computeMonthlyVolume(sessions: RawSession[], limit: number) {
-  const monthMap = new Map<string, { total: number; date: Date }>();
-  for (const s of sessions) {
-    const vol = s.sets.reduce((sum, set) => sum + set.weight * set.reps_performed, 0);
-    const monthKey = getMonthKey(new Date(s.started_at));
-    const entry = monthMap.get(monthKey);
-    if (entry) {
-      entry.total += vol;
-    } else {
-      monthMap.set(monthKey, { total: vol, date: new Date(s.started_at) });
-    }
-  }
-  return [...monthMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-limit)
-    .map(([month, { total, date }]) => ({
-      label: formatMonthLabel(month),
-      value: Math.round(total),
-      date,
-    }));
+  return skeleton ? stampValues(skeleton, map) : mapToPoints(map, granularity);
 }
 
 function computeMuscleGroupSplit(sessions: RawSession[]) {
@@ -352,48 +543,19 @@ function computePersonalRecords(sessions: RawSession[]): PRRecord[] {
   return [...prMap.values()].sort((a, b) => b.weight - a.weight).slice(0, 5);
 }
 
-function computeDurationTrend(sessions: RawSession[], limit: number) {
-  const weekMap = new Map<string, { total: number; count: number }>();
+function computeDuration(sessions: RawSession[], granularity: Granularity, skeleton: TimeSeriesPoint[] | null): TimeSeriesPoint[] {
+  const map = new Map<string, { total: number; count: number }>();
   for (const s of sessions) {
     if (!s.completed_at) continue;
     const mins = (new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()) / 60000;
     if (mins <= 0 || mins > 300) continue;
-    const week = getWeekKey(new Date(s.started_at));
-    const entry = weekMap.get(week) ?? { total: 0, count: 0 };
+    const key = getBucketKey(new Date(s.started_at), granularity);
+    const entry = map.get(key) ?? { total: 0, count: 0 };
     entry.total += mins;
     entry.count += 1;
-    weekMap.set(week, entry);
+    map.set(key, entry);
   }
-  return [...weekMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-limit)
-    .map(([week, { total, count }]) => ({
-      label: formatWeekLabel(week),
-      value: Math.round(total / count),
-      date: new Date(week),
-    }));
-}
-
-function computeMonthlyDuration(sessions: RawSession[], limit: number) {
-  const monthMap = new Map<string, { total: number; count: number; date: Date }>();
-  for (const s of sessions) {
-    if (!s.completed_at) continue;
-    const mins = (new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()) / 60000;
-    if (mins <= 0 || mins > 300) continue;
-    const monthKey = getMonthKey(new Date(s.started_at));
-    const entry = monthMap.get(monthKey) ?? { total: 0, count: 0, date: new Date(s.started_at) };
-    entry.total += mins;
-    entry.count += 1;
-    monthMap.set(monthKey, entry);
-  }
-  return [...monthMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-limit)
-    .map(([, { total, count, date }]) => ({
-      label: formatMonthLabel(getMonthKey(date)),
-      value: Math.round(total / count),
-      date,
-    }));
+  return skeleton ? stampValuesAvg(skeleton, map) : mapToPointsAvg(map, granularity);
 }
 
 function computeWeeklyStreak(sessions: RawSession[]) {
@@ -417,13 +579,7 @@ function computeWorkoutDays(sessions: RawSession[]): string[] {
   return [...days].sort();
 }
 
-function computeExerciseProgressions(sessions: RawSession[], granularity: Granularity, limit: number): ExerciseProgression[] {
-  const useMonth = granularity === 'month';
-  const getBucketKey = useMonth
-    ? (date: Date) => getMonthKey(date)
-    : (date: Date) => getWeekKey(date);
-  const formatBucket = useMonth ? formatMonthLabel : formatWeekLabel;
-
+function computeExerciseProgressions(sessions: RawSession[], granularity: Granularity, skeleton: TimeSeriesPoint[] | null): ExerciseProgression[] {
   const exerciseMap = new Map<string, {
     name: string;
     weight: Map<string, number>;
@@ -433,7 +589,7 @@ function computeExerciseProgressions(sessions: RawSession[], granularity: Granul
   }>();
 
   for (const s of sessions) {
-    const bucketKey = getBucketKey(new Date(s.started_at));
+    const key = getBucketKey(new Date(s.started_at), granularity);
 
     for (const set of s.sets) {
       if (!set.exercise || set.weight <= 0) continue;
@@ -449,45 +605,38 @@ function computeExerciseProgressions(sessions: RawSession[], granularity: Granul
       }
       const entry = exerciseMap.get(id)!;
 
-      const existingWeight = entry.weight.get(bucketKey) ?? 0;
+      const existingWeight = entry.weight.get(key) ?? 0;
       if (set.weight > existingWeight) {
-        entry.weight.set(bucketKey, set.weight);
+        entry.weight.set(key, set.weight);
       }
 
-      const existingVol = entry.volume.get(bucketKey) ?? 0;
-      entry.volume.set(bucketKey, existingVol + set.weight * set.reps_performed);
+      const existingVol = entry.volume.get(key) ?? 0;
+      entry.volume.set(key, existingVol + set.weight * set.reps_performed);
 
-      const existingReps = entry.reps.get(bucketKey) ?? 0;
-      entry.reps.set(bucketKey, existingReps + set.reps_performed);
+      const existingReps = entry.reps.get(key) ?? 0;
+      entry.reps.set(key, existingReps + set.reps_performed);
 
       const effectiveReps = set.reps_performed + (set.rir ?? 0);
       const estimated1RM = Math.round(set.weight * (1 + effectiveReps / 30));
-      const existing1RM = entry.oneRM.get(bucketKey) ?? 0;
+      const existing1RM = entry.oneRM.get(key) ?? 0;
       if (estimated1RM > existing1RM) {
-        entry.oneRM.set(bucketKey, estimated1RM);
+        entry.oneRM.set(key, estimated1RM);
       }
     }
   }
 
-  function mapToPoints(m: Map<string, number>): { label: string; value: number }[] {
-    return [...m.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-limit)
-      .map(([key, val]) => ({
-        label: formatBucket(key),
-        value: Math.round(val),
-      }));
-  }
+  const stamp = (map: Map<string, number>) =>
+    skeleton ? stampValues(skeleton, map) : mapToPoints(map, granularity);
 
   return [...exerciseMap.entries()]
     .filter(([, v]) => v.weight.size >= 2)
     .map(([exerciseId, data]) => ({
       exerciseId,
       exerciseName: data.name,
-      weightPoints: mapToPoints(data.weight),
-      volumePoints: mapToPoints(data.volume),
-      repsPoints: mapToPoints(data.reps),
-      oneRMPoints: mapToPoints(data.oneRM),
+      weightPoints: stamp(data.weight),
+      volumePoints: stamp(data.volume),
+      repsPoints: stamp(data.reps),
+      oneRMPoints: stamp(data.oneRM),
     }))
     .sort((a, b) => {
       const maxA = Math.max(...a.weightPoints.map((p) => p.value));
