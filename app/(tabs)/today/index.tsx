@@ -5,6 +5,7 @@ import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useWorkoutOverlay } from '../../../src/components/workout';
 import { Button, Card, EmptyState } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
@@ -18,6 +19,7 @@ export default function HomeScreen() {
   const { activeRoutine, fetchActiveRoutine } = useRoutineStore();
   const { session: activeSession, startWorkout, resumeWorkout } = useWorkoutStore();
   const { profile } = useProfileStore();
+  const { expand: expandWorkout } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
   const [refreshing, setRefreshing] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -69,9 +71,7 @@ export default function HomeScreen() {
       await startWorkout(user.id, target.id, target.exercises);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
-      return;
     }
-    router.push('/(tabs)/today/workout');
   };
 
   const openChooseModal = async () => {
@@ -268,7 +268,7 @@ export default function HomeScreen() {
                   onPress={async () => {
                     if (!user) return;
                     const ok = await resumeWorkout(user.id);
-                    if (ok) router.push('/(tabs)/today/workout');
+                    if (ok) expandWorkout();
                     else setHasActiveSession(false);
                   }}
                 />

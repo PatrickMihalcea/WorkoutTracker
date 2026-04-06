@@ -21,6 +21,11 @@ interface PreviousSetsMap {
   [exerciseId: string]: SetLog[];
 }
 
+export interface RestTimer {
+  remaining: number;
+  total: number;
+}
+
 interface WorkoutState {
   session: WorkoutSession | null;
   rows: RowMap;
@@ -28,6 +33,7 @@ interface WorkoutState {
   exercises: RoutineDayExercise[];
   collapsedCards: Record<string, boolean>;
   loading: boolean;
+  restTimer: RestTimer | null;
 
   startWorkout: (userId: string, routineDayId: string, exercises: RoutineDayExercise[]) => Promise<void>;
   resumeWorkout: (userId: string) => Promise<boolean>;
@@ -44,6 +50,10 @@ interface WorkoutState {
   completeWorkout: (weightUnit: string) => Promise<void>;
   cancelWorkout: () => Promise<void>;
   reset: () => void;
+  startRestTimer: (seconds: number) => void;
+  tickRestTimer: () => void;
+  adjustRestTimer: (delta: number) => void;
+  dismissRestTimer: () => void;
 }
 
 function groupByEntry(allRows: WorkoutRow[]): RowMap {
@@ -62,6 +72,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   exercises: [],
   collapsedCards: {},
   loading: false,
+  restTimer: null,
 
   startWorkout: async (userId, routineDayId, exercises) => {
     set({ loading: true });
@@ -169,7 +180,6 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const row = (get().rows[entryId] ?? []).find((r) => r.id === id);
     if (!row) return;
     const newCompleted = !row.is_completed;
-    await workoutRowService.updateRow(id, { is_completed: newCompleted });
     set((state) => ({
       rows: {
         ...state.rows,
@@ -178,7 +188,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         ),
       },
     }));
-  
+    await workoutRowService.updateRow(id, { is_completed: newCompleted });
   },
 
   deleteRow: async (id, entryId, setNumber) => {
@@ -329,7 +339,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
     await workoutRowService.deleteBySession(session.id);
     await sessionService.complete(session.id);
-    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {} });
+    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {}, restTimer: null });
   },
 
   cancelWorkout: async () => {
@@ -337,10 +347,41 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     if (!session) return;
     await workoutRowService.deleteBySession(session.id);
     await sessionService.cancel(session.id);
-    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {} });
+    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {}, restTimer: null });
   },
 
   reset: () => {
-    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {} });
+    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {}, restTimer: null });
+  },
+
+  startRestTimer: (seconds) => {
+    set({ restTimer: { remaining: seconds, total: seconds } });
+  },
+
+  tickRestTimer: () => {
+    const { restTimer } = get();
+    if (!restTimer) return;
+    const next = restTimer.remaining - 1;
+    if (next <= 0) {
+      set({ restTimer: null });
+    } else {
+      set({ restTimer: { ...restTimer, remaining: next } });
+    }
+  },
+
+  adjustRestTimer: (delta) => {
+    const { restTimer } = get();
+    if (!restTimer) return;
+    const newRemaining = Math.max(0, restTimer.remaining + delta);
+    const newTotal = Math.max(0, restTimer.total + delta);
+    if (newRemaining <= 0) {
+      set({ restTimer: null });
+    } else {
+      set({ restTimer: { remaining: newRemaining, total: newTotal } });
+    }
+  },
+
+  dismissRestTimer: () => {
+    set({ restTimer: null });
   },
 }));

@@ -5,6 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, fonts } from '../../src/constants';
 import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
 import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
+import { WorkoutOverlay, WorkoutOverlayProvider } from '../../src/components/workout';
 
 const { Navigator } = createMaterialTopTabNavigator();
 const SwipeableTabs = withLayoutContext(Navigator);
@@ -78,13 +79,12 @@ function TabLayoutInner() {
   const { view, chartMode } = useHistoryView();
   const { chartActive } = useChartInteraction();
   const isAtTabRoot = segments.length <= 2;
-  const isWorkout = segments.includes('workout' as never);
   const hasActiveChart = chartActive || (segments[1] === 'history' && view === 'dashboard' && chartMode === 'abs');
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <SwipeableTabs
-        tabBar={(props) => (isWorkout ? null : <BottomTabBar {...props} />)}
+        tabBar={(props) => <BottomTabBar {...props} />}
         tabBarPosition="bottom"
         screenOptions={{
           swipeEnabled: isAtTabRoot && !hasActiveChart,
@@ -110,17 +110,20 @@ function TabLayoutInner() {
         options={{ title: 'Profile' }}
       />
       </SwipeableTabs>
+      <WorkoutOverlay />
     </SafeAreaView>
   );
 }
 
 export default function TabLayout() {
   return (
-    <ChartInteractionProvider>
-      <HistoryViewProvider>
-        <TabLayoutInner />
-      </HistoryViewProvider>
-    </ChartInteractionProvider>
+    <WorkoutOverlayProvider>
+      <ChartInteractionProvider>
+        <HistoryViewProvider>
+          <TabLayoutInner />
+        </HistoryViewProvider>
+      </ChartInteractionProvider>
+    </WorkoutOverlayProvider>
   );
 }
 

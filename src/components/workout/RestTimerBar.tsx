@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { useWorkoutStore } from '../../stores/workout.store';
 import { colors, fonts } from '../../constants';
 
 interface RestTimerBarProps {
-  initialSeconds: number;
   onDismiss: () => void;
   onLongPress: () => void;
 }
@@ -14,47 +14,29 @@ function formatCountdown(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-export function RestTimerBar({ initialSeconds, onDismiss, onLongPress }: RestTimerBarProps) {
-  const [remaining, setRemaining] = useState(initialSeconds);
-  const [total, setTotal] = useState(initialSeconds);
-  const [collapsed, setCollapsed] = useState(false);
+export function RestTimerBar({ onDismiss, onLongPress }: RestTimerBarProps) {
+  const { restTimer, adjustRestTimer } = useWorkoutStore();
+  const [collapsed, setCollapsed] = React.useState(false);
   const progressAnim = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
-    if (remaining <= 0) {
-      onDismiss();
-      return;
-    }
-    const id = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(id);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [remaining <= 0]);
+  const remaining = restTimer?.remaining ?? 0;
+  const total = restTimer?.total ?? 1;
 
   useEffect(() => {
     if (total <= 0) return;
     Animated.timing(progressAnim, {
       toValue: remaining / total,
-      duration: 300,
+      duration: 1000,
       useNativeDriver: false,
     }).start();
   }, [remaining, total]);
-
-  const adjustTime = (delta: number) => {
-    setRemaining((prev) => Math.max(0, prev + delta));
-    setTotal((prev) => Math.max(1, prev + delta));
-  };
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
   });
+
+  if (!restTimer) return null;
 
   if (collapsed) {
     return (
@@ -71,17 +53,13 @@ export function RestTimerBar({ initialSeconds, onDismiss, onLongPress }: RestTim
     );
   }
 
-  const progressBar = (
-    <View style={styles.progressBarExpanded}>
-      <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
-    </View>
-  );
-
   return (
     <TouchableOpacity activeOpacity={1} onLongPress={onLongPress} style={styles.container}>
-      {progressBar}
+      <View style={styles.progressBarExpanded}>
+        <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+      </View>
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustTime(-15)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustRestTimer(-15)} activeOpacity={0.7}>
           <Text style={styles.adjustText}>-15</Text>
         </TouchableOpacity>
 
@@ -89,7 +67,7 @@ export function RestTimerBar({ initialSeconds, onDismiss, onLongPress }: RestTim
           <Text style={styles.countdown}>{formatCountdown(remaining)}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustTime(15)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustRestTimer(15)} activeOpacity={0.7}>
           <Text style={styles.adjustText}>+15</Text>
         </TouchableOpacity>
 
@@ -99,11 +77,6 @@ export function RestTimerBar({ initialSeconds, onDismiss, onLongPress }: RestTim
       </View>
     </TouchableOpacity>
   );
-}
-
-export function useRestTimerCollapse() {
-  const [collapsed, setCollapsed] = useState(false);
-  return { collapsed, setCollapsed };
 }
 
 const styles = StyleSheet.create({

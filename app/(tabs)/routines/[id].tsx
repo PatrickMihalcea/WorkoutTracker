@@ -225,11 +225,10 @@ export default function RoutineDetailScreen() {
     if (!user) return;
     try {
       await startWorkout(user.id, day.id, day.exercises);
-      router.push('/(tabs)/today/workout');
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
-  }, [activeSession, user, startWorkout, router]);
+  }, [activeSession, user, startWorkout]);
 
   const handleDuplicateDay = useCallback(async (day: RoutineDayWithExercises) => {
     try {
@@ -240,8 +239,6 @@ export default function RoutineDetailScreen() {
       Alert.alert('Error', (error as Error).message);
     }
   }, [id, fetchRoutineDetail, router]);
-
-  if (!currentRoutine) return null;
 
   const buildDayMenuItems = useCallback((day: RoutineDayWithExercises): OverflowMenuItem[] => [
     {
@@ -259,6 +256,8 @@ export default function RoutineDetailScreen() {
       destructive: true,
     },
   ], [activeSession, handleStartDay, handleDuplicateDay, handleDeleteDay]);
+
+  if (!currentRoutine) return null;
 
   const renderDay = (day: RoutineDayWithExercises) => (
     <Card key={day.id} style={styles.dayCard}>
