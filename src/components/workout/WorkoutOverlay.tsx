@@ -23,7 +23,8 @@ import { ExerciseCard } from './ExerciseCard';
 import { RestTimerBar } from './RestTimerBar';
 import { RestTimerModal } from './RestTimerModal';
 import { WorkoutPill } from './WorkoutPill';
-import { Button } from '../ui';
+import { Button, BottomSheetModal } from '../ui';
+import { MuscleHeatmap } from '../history/MuscleHeatmap';
 import { AddExerciseModal, SetsPayloadItem } from '../routine/AddExerciseModal';
 import { colors, fonts } from '../../constants';
 import { formatElapsed } from '../../utils/date';
@@ -71,6 +72,7 @@ export function WorkoutOverlay() {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [showTimerSettings, setShowTimerSettings] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   // Slide animation
   useEffect(() => {
@@ -128,6 +130,26 @@ export function WorkoutOverlay() {
     }
     return { completedSets: completed, totalSets: total };
   }, [rows]);
+
+  const { muscleHeatmapData, muscleHeatmapMax } = useMemo(() => {
+    const totals = new Map<string, { completed: number; total: number }>();
+    for (const ex of exercises) {
+      const group = ex.exercise?.muscle_group;
+      if (!group) continue;
+      const exRows = rows[ex.id] ?? [];
+      const done = exRows.filter((r) => r.is_completed).length;
+      const entry = totals.get(group) ?? { completed: 0, total: 0 };
+      entry.total += exRows.length;
+      entry.completed += done;
+      totals.set(group, entry);
+    }
+    const endStateMax = Math.max(...[...totals.values()].map((v) => v.total), 1);
+    const data = [...totals.entries()].map(([label, { completed }]) => ({
+      label,
+      value: completed,
+    }));
+    return { muscleHeatmapData: data, muscleHeatmapMax: endStateMax };
+  }, [exercises, rows]);
 
   const handleComplete = useCallback(() => {
     Alert.alert('Complete Workout', 'Finish and save this workout?', [
@@ -316,7 +338,26 @@ export function WorkoutOverlay() {
                 />
               </TouchableOpacity>
               <Text style={styles.setsCounter}>Sets: {completedSets}/{totalSets}</Text>
+              <TouchableOpacity onPress={() => setShowHeatmap(true)} activeOpacity={0.7} style={styles.muscleIconBtn}>
+                <Image
+                  source={require('../../../assets/icons/muscle.png')}
+                  style={styles.muscleIcon}
+                />
+              </TouchableOpacity>
             </View>
+
+            <BottomSheetModal
+              visible={showHeatmap}
+              onClose={() => setShowHeatmap(false)}
+            >
+              <MuscleHeatmap
+                data={muscleHeatmapData}
+                title="Muscle Progress"
+                subtitle="Based on completed sets"
+                bare
+                maxValue={muscleHeatmapMax}
+              />
+            </BottomSheetModal>
 
             <View style={{ flex: 1 }}>
               {reordering ? (
@@ -428,6 +469,7 @@ const styles = StyleSheet.create({
   infoBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderBottomWidth: 1,
@@ -437,10 +479,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
-    flex: 1,
   },
   timerIconBtn: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
   },
   timerIcon: {
     width: 18,
@@ -451,8 +492,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
-    flex: 1,
-    textAlign: 'right',
+  },
+  muscleIconBtn: {
+    paddingHorizontal: 8,
+  },
+  muscleIcon: {
+    width: 18,
+    height: 18,
+    tintColor: colors.text,
   },
   scrollContent: {
     paddingHorizontal: 8,

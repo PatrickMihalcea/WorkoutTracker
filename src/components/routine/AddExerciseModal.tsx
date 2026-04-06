@@ -149,52 +149,62 @@ export function AddExerciseModal({
   };
 
   return (
-    <BottomSheetModal
-      visible={visible}
-      title={showCreateExercise ? 'Create New Exercise' : (editingEntry ? 'Edit Exercise' : 'Add Exercise')}
-      fullHeight
-    >
-      {!showCreateExercise && (
-        <>
-          <View style={styles.formBody}>
-            <Text style={styles.fieldLabel}>Exercise</Text>
-            <TouchableOpacity
-              style={styles.exercisePickerRow}
-              onPress={() => setShowExercisePicker(true)}
-            >
-              <Text style={selectedExercise ? styles.exercisePickerText : styles.exercisePickerPlaceholder}>
-                {selectedExercise?.name ?? 'Select Exercise...'}
-              </Text>
-              <Text style={styles.exercisePickerArrow}>&#x25B8;</Text>
-            </TouchableOpacity>
+      <BottomSheetModal
+        visible={visible}
+        title={editingEntry ? 'Edit Exercise' : 'Add Exercise'}
+        fullHeight
+        onClose={resetAndClose}
+      >
+        <View style={styles.formBody}>
+          <Text style={styles.fieldLabel}>Exercise</Text>
+          <TouchableOpacity
+            style={styles.exercisePickerRow}
+            onPress={() => setShowExercisePicker(true)}
+          >
+            <Text style={selectedExercise ? styles.exercisePickerText : styles.exercisePickerPlaceholder}>
+              {selectedExercise?.name ?? 'Select Exercise...'}
+            </Text>
+            <Text style={styles.exercisePickerArrow}>&#x25B8;</Text>
+          </TouchableOpacity>
 
-            <SetsTableEditor
-              rows={templateSets}
-              setRows={setTemplateSets}
-              repRange={useRepRange}
-              setRepRange={setUseRepRange}
-              wUnit={weightUnit}
-            />
-          </View>
+          <SetsTableEditor
+            rows={templateSets}
+            setRows={setTemplateSets}
+            repRange={useRepRange}
+            setRepRange={setUseRepRange}
+            wUnit={weightUnit}
+          />
+        </View>
 
-          <View style={styles.actionButtons}>
-            <Button
-              title={editingEntry ? 'Save' : 'Add'}
-              onPress={handleConfirm}
-              disabled={!selectedExercise}
-              style={styles.addConfirmBtn}
-            />
-            <Button
-              title="Close"
-              variant="ghost"
-              onPress={resetAndClose}
-            />
-          </View>
-        </>
-      )}
+        <View style={styles.actionButtons}>
+          <Button
+            title={editingEntry ? 'Save' : 'Add'}
+            onPress={handleConfirm}
+            disabled={!selectedExercise}
+          />
+        </View>
 
-      {showCreateExercise && (
-        <>
+        <ExercisePickerModal
+          visible={showExercisePicker}
+          onClose={() => setShowExercisePicker(false)}
+          onSelect={handleSelectExercise}
+          onDeleteExercise={onDeleteExercise}
+          onCreateNew={() => {
+            setShowExercisePicker(false);
+            setTimeout(() => setShowCreateExercise(true), 300);
+          }}
+          selectedExerciseId={selectedExercise?.id}
+        />
+
+        <BottomSheetModal
+          visible={showCreateExercise}
+          title="Create New Exercise"
+          fullHeight
+          onClose={() => {
+            setShowCreateExercise(false);
+            setNewExerciseName('');
+          }}
+        >
           <View style={styles.formBody}>
             <Input
               label="Exercise Name"
@@ -221,38 +231,13 @@ export function AddExerciseModal({
           </View>
 
           <View style={styles.actionButtons}>
-            <View style={styles.createExActions}>
-              <Button
-                title="Cancel"
-                variant="ghost"
-                onPress={() => {
-                  setShowCreateExercise(false);
-                  setNewExerciseName('');
-                }}
-                style={styles.createExCancelBtn}
-              />
-              <Button
-                title="Save Exercise"
-                onPress={handleCreateExercise}
-                style={styles.createExSaveBtn}
-              />
-            </View>
+            <Button
+              title="Save Exercise"
+              onPress={handleCreateExercise}
+            />
           </View>
-        </>
-      )}
-
-      <ExercisePickerModal
-        visible={showExercisePicker}
-        onClose={() => setShowExercisePicker(false)}
-        onSelect={handleSelectExercise}
-        onDeleteExercise={onDeleteExercise}
-        onCreateNew={() => {
-          setShowExercisePicker(false);
-          setShowCreateExercise(true);
-        }}
-        selectedExerciseId={selectedExercise?.id}
-      />
-    </BottomSheetModal>
+        </BottomSheetModal>
+      </BottomSheetModal>
   );
 }
 
@@ -297,18 +282,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textMuted,
     marginLeft: 8,
-  },
-  addConfirmBtn: {
-    marginBottom: 8,
-  },
-  createExActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  createExCancelBtn: {
-    flex: 1,
-  },
-  createExSaveBtn: {
-    flex: 3,
   },
 });

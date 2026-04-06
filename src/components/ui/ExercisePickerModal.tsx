@@ -10,6 +10,7 @@ import {
 import { Exercise, MuscleGroup } from '../../models';
 import { exerciseService } from '../../services';
 import { BottomSheetModal } from './BottomSheetModal';
+import { Button } from './Button';
 import { ChipPicker } from './ChipPicker';
 import { colors, fonts } from '../../constants';
 
@@ -70,7 +71,7 @@ export function ExercisePickerModal({
   }, [exercises, muscleFilter, search]);
 
   return (
-    <BottomSheetModal visible={visible} title="Select Exercise" fullHeight>
+    <BottomSheetModal visible={visible} title="Select Exercise" fullHeight onClose={onClose}>
       <TextInput
         style={styles.searchInput}
         value={search}
@@ -121,13 +122,12 @@ export function ExercisePickerModal({
 
       <View style={styles.footer}>
         {onCreateNew && (
-          <TouchableOpacity style={styles.createBtn} onPress={onCreateNew} activeOpacity={0.7}>
-            <Text style={styles.createBtnText}>+ Create New Exercise</Text>
-          </TouchableOpacity>
+          <Button
+            title="+ Create New Exercise"
+            variant="secondary"
+            onPress={onCreateNew}
+          />
         )}
-        <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
-          <Text style={styles.closeBtnText}>Close</Text>
-        </TouchableOpacity>
       </View>
     </BottomSheetModal>
   );
@@ -182,28 +182,6 @@ const styles = StyleSheet.create({
   },
   footer: {
     gap: 8,
-  },
-  createBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    backgroundColor: colors.surfaceLight,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  createBtnText: {
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-  },
-  closeBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    marginBottom: 16,
-  },
-  closeBtnText: {
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.textMuted,
+    paddingBottom: 16,
   },
 });

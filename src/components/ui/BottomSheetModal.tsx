@@ -3,6 +3,8 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
+  TouchableOpacity,
   View,
   ScrollView,
   Text,
@@ -21,6 +23,7 @@ interface BottomSheetModalProps {
   children: React.ReactNode;
   scrollable?: boolean;
   fullHeight?: boolean;
+  onClose?: () => void;
 }
 
 export function BottomSheetModal({
@@ -29,6 +32,7 @@ export function BottomSheetModal({
   children,
   scrollable = false,
   fullHeight = false,
+  onClose,
 }: BottomSheetModalProps) {
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const sheetTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -62,7 +66,9 @@ export function BottomSheetModal({
   return (
     <Modal visible={modalVisible} animationType="none" transparent>
       <Wrapper {...wrapperProps}>
-        <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+        </Pressable>
         <Animated.View
           style={[
             fullHeight ? styles.sheetWrapperFull : styles.sheetWrapper,
@@ -70,7 +76,16 @@ export function BottomSheetModal({
           ]}
         >
           <Body style={[styles.sheet, fullHeight && styles.sheetFull]} {...bodyProps}>
-            {title ? <Text style={styles.title}>{title}</Text> : null}
+            {(title || onClose) ? (
+              <View style={styles.header}>
+                {title ? <Text style={styles.title}>{title}</Text> : <View />}
+                {onClose && (
+                  <TouchableOpacity onPress={onClose} activeOpacity={0.7} hitSlop={8}>
+                    <Text style={styles.closeBtn}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : null}
             {children}
           </Body>
         </Animated.View>
@@ -107,10 +122,20 @@ const styles = StyleSheet.create({
     flex: 1,
     maxHeight: undefined,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
   title: {
     fontSize: 20,
     fontFamily: fonts.bold,
     color: colors.text,
-    marginBottom: 20,
+  },
+  closeBtn: {
+    fontSize: 18,
+    color: colors.textMuted,
+    paddingLeft: 12,
   },
 });

@@ -40,17 +40,18 @@ const INTENSITY_COLORS = [
   '#5dffa0',
 ];
 
-function toBodyData(slices: MuscleSlice[]) {
+function toBodyData(slices: MuscleSlice[], overrideMax?: number) {
   if (slices.length === 0) return [];
 
-  const maxVal = Math.max(...slices.map((s) => s.value));
+  const maxVal = overrideMax ?? Math.max(...slices.map((s) => s.value));
   if (maxVal === 0) return [];
 
   const parts: { slug: BodySlug; intensity: number }[] = [];
   for (const slice of slices) {
+    if (slice.value === 0) continue;
     const slugs = MUSCLE_TO_SLUGS[slice.label] ?? MUSCLE_TO_SLUGS[slice.label.replace(' ', '_')];
     if (!slugs) continue;
-    const ratio = slice.value / maxVal;
+    const ratio = Math.min(slice.value / maxVal, 1);
     const intensity = Math.max(1, Math.min(INTENSITY_COLORS.length, Math.ceil(ratio * INTENSITY_COLORS.length)));
     for (const slug of slugs) {
       parts.push({ slug, intensity });
@@ -63,18 +64,22 @@ interface MuscleHeatmapProps {
   data: MuscleSlice[];
   title?: string;
   subtitle?: string;
+  bare?: boolean;
+  maxValue?: number;
 }
 
-export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set distribution by muscle group' }: MuscleHeatmapProps) {
+export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set distribution by muscle group', bare = false, maxValue }: MuscleHeatmapProps) {
   const { profile } = useProfileStore();
   const bodyGender = profile?.sex === 'female' ? 'female' : 'male';
 
   if (data.length === 0) return null;
 
-  const bodyData = toBodyData(data);
+  const bodyData = toBodyData(data, maxValue);
+
+  const Wrapper = bare ? View : Card;
 
   return (
-    <Card style={styles.card}>
+    <Wrapper style={bare ? styles.bareContainer : styles.card}>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
 
@@ -112,7 +117,7 @@ export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set 
         </View>
         <Text style={styles.legendLabel}>High</Text>
       </View>
-    </Card>
+    </Wrapper>
   );
 }
 
@@ -121,6 +126,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
+  },
+  bareContainer: {
+    paddingVertical: spacing.sm,
   },
   title: {
     fontSize: 16,
