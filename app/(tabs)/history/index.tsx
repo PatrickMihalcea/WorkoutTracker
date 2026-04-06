@@ -12,7 +12,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { sessionService, dashboardService } from '../../../src/services';
 import type { DashboardData, Granularity } from '../../../src/services';
 import { Card, EmptyState } from '../../../src/components/ui';
-import { Dashboard, GranularityMode } from '../../../src/components/history/Dashboard';
+import { Dashboard, GranularityMode, ChartMode } from '../../../src/components/history/Dashboard';
 import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { colors, fonts } from '../../../src/constants';
@@ -27,7 +27,7 @@ function granularityModeToBackend(mode: GranularityMode): Granularity {
 
 export default function HistoryScreen() {
   const router = useRouter();
-  const { view } = useHistoryView();
+  const { view, chartMode, setChartMode } = useHistoryView();
   const user = useAuthStore((s) => s.user);
 
   const [sessions, setSessions] = useState<WorkoutSessionWithRoutine[]>([]);
@@ -49,12 +49,17 @@ export default function HistoryScreen() {
     }
   }, []);
 
-  const loadDashboard = useCallback(async (w: number, gMode: GranularityMode) => {
+  const loadDashboard = useCallback(async (w: number, gMode: GranularityMode, cMode: ChartMode) => {
     if (!userId) return;
     setDashboardLoading(true);
     try {
-      const g = granularityModeToBackend(gMode);
-      const data = await dashboardService.getDashboardData(userId, w, g);
+      let data: DashboardData;
+      if (cMode === 'rel') {
+        data = await dashboardService.getDashboardDataRaw(userId, w);
+      } else {
+        const g = granularityModeToBackend(gMode);
+        data = await dashboardService.getDashboardData(userId, w, g);
+      }
       setDashboardData(data);
     } catch {
       // Handle quietly
@@ -66,26 +71,26 @@ export default function HistoryScreen() {
   useFocusEffect(
     useCallback(() => {
       if (view === 'dashboard') {
-        loadDashboard(weeks, granularity);
+        loadDashboard(weeks, granularity, chartMode);
       } else {
         loadSessions();
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [view, weeks, loadSessions, loadDashboard]),
+    }, [view, weeks, loadSessions, loadDashboard, chartMode]),
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       if (view === 'dashboard') {
-        await loadDashboard(weeks, granularity);
+        await loadDashboard(weeks, granularity, chartMode);
       } else {
         await loadSessions();
       }
     } finally {
       setRefreshing(false);
     }
-  }, [view, weeks, granularity, loadSessions, loadDashboard]);
+  }, [view, weeks, granularity, chartMode, loadSessions, loadDashboard]);
 
   const handleChangeWeeks = useCallback((w: number) => {
     setWeeks(w);
@@ -95,14 +100,27 @@ export default function HistoryScreen() {
     setGranularity(mode);
   }, []);
 
+  const handleChangeChartMode = useCallback((mode: ChartMode) => {
+    setChartMode(mode);
+  }, []);
+
   const prevGranRef = useRef(granularity);
+  const prevChartModeRef = useRef(chartMode);
   useEffect(() => {
     if (prevGranRef.current !== granularity) {
       prevGranRef.current = granularity;
-      loadDashboard(weeks, granularity);
+      loadDashboard(weeks, granularity, chartMode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [granularity]);
+
+  useEffect(() => {
+    if (prevChartModeRef.current !== chartMode) {
+      prevChartModeRef.current = chartMode;
+      loadDashboard(weeks, granularity, chartMode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartMode]);
 
   const handleDeleteSession = (item: WorkoutSessionWithRoutine) => {
     Alert.alert(
@@ -142,6 +160,8 @@ export default function HistoryScreen() {
           refreshing={refreshing}
           onChangeWeeks={handleChangeWeeks}
           onChangeGranularityMode={handleChangeGranularity}
+          chartMode={chartMode}
+          onChangeChartMode={handleChangeChartMode}
         />
       );
     }

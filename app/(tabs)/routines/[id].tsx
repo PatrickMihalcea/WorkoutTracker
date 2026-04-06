@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  Pressable,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -13,9 +12,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { routineService } from '../../../src/services';
 import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
-import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow } from '../../../src/components/ui';
+import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast } from '../../../src/components/ui';
+import type { OverflowMenuItem } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import {
   DayOfWeek,
@@ -25,6 +26,8 @@ import {
   Exercise,
 } from '../../../src/models';
 import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
+import { RoutineStatsChart } from '../../../src/components/routine/RoutineStatsChart';
+import { useChartInteraction } from '../../../src/components/charts';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
 function SwipeableExerciseRow({
@@ -64,6 +67,7 @@ function SwipeableExerciseRow({
 }
 
 export default function RoutineDetailScreen() {
+  const { scrollEnabled } = useChartInteraction();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuthStore();
@@ -81,6 +85,9 @@ export default function RoutineDetailScreen() {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [addExerciseDayId, setAddExerciseDayId] = useState<string | null>(null);
   const [editingEntry, setEditingEntry] = useState<RoutineDayExercise | null>(null);
+  const [toastMessage, setToastMessage] = useState('');
+
+  const { session: activeSession, startWorkout } = useWorkoutStore();
 
   useEffect(() => {
     if (id) fetchRoutineDetail(id);
@@ -105,7 +112,7 @@ export default function RoutineDetailScreen() {
     }
   };
 
-  const handleDeleteDay = (dayId: string, label: string) => {
+  const handleDeleteDay = useCallback((dayId: string, label: string) => {
     Alert.alert('Delete Day', `Remove "${label}" from this routine?`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -117,7 +124,7 @@ export default function RoutineDetailScreen() {
         },
       },
     ]);
-  };
+  }, [id, fetchRoutineDetail]);
 
   const openAddExercise = (dayId: string) => {
     setAddExerciseDayId(dayId);
@@ -210,8 +217,48 @@ export default function RoutineDetailScreen() {
     setShowAddExercise(true);
   };
 
+  const handleStartDay = useCallback(async (day: RoutineDayWithExercises) => {
+    if (activeSession) {
+      setToastMessage('Cannot start during active workout.');
+      return;
+    }
+    if (!user) return;
+    try {
+      await startWorkout(user.id, day.id, day.exercises);
+      router.push('/(tabs)/today/workout');
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  }, [activeSession, user, startWorkout, router]);
+
+  const handleDuplicateDay = useCallback(async (day: RoutineDayWithExercises) => {
+    try {
+      const newDay = await routineService.duplicateDay(day.id);
+      if (id) fetchRoutineDetail(id);
+      router.push(`/(tabs)/routines/day/${newDay.id}`);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  }, [id, fetchRoutineDetail, router]);
 
   if (!currentRoutine) return null;
+
+  const buildDayMenuItems = useCallback((day: RoutineDayWithExercises): OverflowMenuItem[] => [
+    {
+      label: 'Start Day',
+      onPress: () => handleStartDay(day),
+      disabled: !!activeSession,
+    },
+    {
+      label: 'Duplicate',
+      onPress: () => handleDuplicateDay(day),
+    },
+    {
+      label: 'Remove',
+      onPress: () => handleDeleteDay(day.id, day.label),
+      destructive: true,
+    },
+  ], [activeSession, handleStartDay, handleDuplicateDay, handleDeleteDay]);
 
   const renderDay = (day: RoutineDayWithExercises) => (
     <Card key={day.id} style={styles.dayCard}>
@@ -226,9 +273,7 @@ export default function RoutineDetailScreen() {
             {day.day_of_week ? DAY_LABELS[day.day_of_week as DayOfWeek] : 'No day assigned'}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => handleDeleteDay(day.id, day.label)}>
-          <Text style={styles.deleteText}>Remove</Text>
-        </TouchableOpacity>
+        <OverflowMenu items={buildDayMenuItems(day)} />
       </View>
 
       <DraggableFlatList
@@ -254,7 +299,8 @@ export default function RoutineDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
+      <Toast message={toastMessage} visible={!!toastMessage} onDismiss={() => setToastMessage('')} />
+      <ScrollView contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets scrollEnabled={scrollEnabled}>
         {editingName ? (
           <InlineEditRow
             value={nameDraft}
@@ -268,6 +314,11 @@ export default function RoutineDetailScreen() {
             <Image source={require('../../../assets/icons/edit.png')} style={styles.editHintIcon} />
           </TouchableOpacity>
         )}
+
+        <Text style={styles.subHeader}>Performance</Text>
+        {id && <RoutineStatsChart routineId={id} />}
+
+        <Text style={styles.subHeader}>Routine</Text>
 
         {currentRoutine.days.map(renderDay)}
 
@@ -340,6 +391,12 @@ const styles = StyleSheet.create({
     height: 18,
     tintColor: colors.textMuted,
   },
+  subHeader: {
+    fontSize: 16,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginBottom: 4,
+  },
   dayCard: {
     marginBottom: 16,
   },
@@ -359,11 +416,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.light,
     color: colors.textMuted,
     marginTop: 2,
-  },
-  deleteText: {
-    color: colors.danger,
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
   },
   exerciseRow: {
     flexDirection: 'row',

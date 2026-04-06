@@ -266,4 +266,36 @@ export const routineService = {
       .eq('id', id);
     if (error) throw error;
   },
+
+  async duplicateDay(dayId: string): Promise<RoutineDay> {
+    const source = await this.getDayWithExercises(dayId);
+
+    const newDay = await this.addDay({
+      routine_id: source.routine_id,
+      day_of_week: null,
+      label: `${source.label} (copy)`,
+    });
+
+    for (const ex of source.exercises) {
+      const setsPayload = (ex.sets ?? []).map((s) => ({
+        set_number: s.set_number,
+        target_weight: s.target_weight,
+        target_reps_min: s.target_reps_min,
+        target_reps_max: s.target_reps_max,
+      }));
+
+      await this.addExerciseToDay(
+        {
+          routine_day_id: newDay.id,
+          exercise_id: ex.exercise_id,
+          sort_order: ex.sort_order,
+          target_sets: ex.target_sets,
+          target_reps: ex.target_reps,
+        },
+        setsPayload,
+      );
+    }
+
+    return newDay;
+  },
 };

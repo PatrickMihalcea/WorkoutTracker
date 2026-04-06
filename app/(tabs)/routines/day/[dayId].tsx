@@ -7,13 +7,13 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useRoutineStore } from '../../../../src/stores/routine.store';
 import { useAuthStore } from '../../../../src/stores/auth.store';
 import { useProfileStore } from '../../../../src/stores/profile.store';
 import { routineService } from '../../../../src/services';
 import { confirmDeleteExercise } from '../../../../src/utils/confirmDeleteExercise';
-import { DayOfWeekPicker, SwipeToDeleteRow, AddRowButton, InlineEditRow } from '../../../../src/components/ui';
+import { DayOfWeekPicker, SwipeToDeleteRow, AddRowButton, InlineEditRow, Button } from '../../../../src/components/ui';
 import { colors, fonts } from '../../../../src/constants';
 import {
   DayOfWeek,
@@ -129,6 +129,7 @@ function ExerciseSetsEditor({
 
 export default function DayEditorScreen() {
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
+  const router = useRouter();
   const { user } = useAuthStore();
   const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
   const { profile } = useProfileStore();
@@ -235,6 +236,22 @@ export default function DayEditorScreen() {
   const handleDeleteExercise = (exercise: Exercise) =>
     confirmDeleteExercise(exercise, user?.id ?? '', refresh);
 
+  const handleRemoveDay = useCallback(() => {
+    if (!day || !dayId) return;
+    Alert.alert('Delete Day', `Remove "${day.label}" from this routine?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await routineService.deleteDay(dayId);
+          if (currentRoutine) fetchRoutineDetail(currentRoutine.id);
+          router.back();
+        },
+      },
+    ]);
+  }, [day, dayId, currentRoutine, fetchRoutineDetail, router]);
+
   if (!day) return null;
 
 
@@ -283,6 +300,10 @@ export default function DayEditorScreen() {
         />
 
         <AddRowButton label="+ Add Exercise" onPress={() => setShowAddExercise(true)} />
+
+        <TouchableOpacity onPress={handleRemoveDay} style={styles.removeDayBtn}>
+          <Text style={styles.removeDayText}>Remove Day</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <AddExerciseModal
@@ -360,5 +381,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  removeDayBtn: {
+    marginTop: 32,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  removeDayText: {
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    color: '#FF6B6B',
   },
 });

@@ -4,6 +4,7 @@ import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts } from '../../src/constants';
 import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
+import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
 
 const { Navigator } = createMaterialTopTabNavigator();
 const SwipeableTabs = withLayoutContext(Navigator);
@@ -74,10 +75,11 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
 
 function TabLayoutInner() {
   const segments = useSegments();
-  const { view } = useHistoryView();
+  const { view, chartMode } = useHistoryView();
+  const { chartActive } = useChartInteraction();
   const isAtTabRoot = segments.length <= 2;
   const isWorkout = segments.includes('workout' as never);
-  const isHistoryDashboard = segments[1] === 'history' && view === 'dashboard';
+  const hasActiveChart = chartActive || (segments[1] === 'history' && view === 'dashboard' && chartMode === 'abs');
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -85,7 +87,7 @@ function TabLayoutInner() {
         tabBar={(props) => (isWorkout ? null : <BottomTabBar {...props} />)}
         tabBarPosition="bottom"
         screenOptions={{
-          swipeEnabled: isAtTabRoot && !isHistoryDashboard,
+          swipeEnabled: isAtTabRoot && !hasActiveChart,
           lazy: true,
           lazyPreloadDistance: 1,
           animationEnabled: true,
@@ -114,9 +116,11 @@ function TabLayoutInner() {
 
 export default function TabLayout() {
   return (
-    <HistoryViewProvider>
-      <TabLayoutInner />
-    </HistoryViewProvider>
+    <ChartInteractionProvider>
+      <HistoryViewProvider>
+        <TabLayoutInner />
+      </HistoryViewProvider>
+    </ChartInteractionProvider>
   );
 }
 

@@ -63,6 +63,12 @@ export interface TimeSeriesWindowData {
   exerciseProgressions: ExerciseProgression[];
 }
 
+export interface RoutineChartData {
+  volume: TimeSeriesPoint[];
+  reps: TimeSeriesPoint[];
+  duration: TimeSeriesPoint[];
+}
+
 export const EARLIEST_DATE = '2016-01-01';
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
@@ -89,36 +95,36 @@ const EXERCISE_PALETTE = [
 
 function getWeekKey(date: Date): string {
   const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  const dayOfWeek = d.getUTCDay();
-  d.setUTCDate(d.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+  d.setHours(0, 0, 0, 0);
+  const dayOfWeek = d.getDay();
+  d.setDate(d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
   return getDayKey(d);
 }
 
 function getMonthKey(date: Date): string {
   const d = new Date(date);
-  const m = d.getUTCMonth() + 1;
-  return `${d.getUTCFullYear()}-${m < 10 ? '0' : ''}${m}`;
+  const m = d.getMonth() + 1;
+  return `${d.getFullYear()}-${m < 10 ? '0' : ''}${m}`;
 }
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function formatWeekLabel(weekKey: string): string {
   const [y, m, day] = weekKey.split('-').map(Number);
-  const start = new Date(Date.UTC(y, m - 1, day));
-  const end = new Date(Date.UTC(y, m - 1, day + 6));
-  const sMonth = MONTH_NAMES[start.getUTCMonth()];
-  const eMonth = MONTH_NAMES[end.getUTCMonth()];
+  const start = new Date(y, m - 1, day);
+  const end = new Date(y, m - 1, day + 6);
+  const sMonth = MONTH_NAMES[start.getMonth()];
+  const eMonth = MONTH_NAMES[end.getMonth()];
   if (sMonth === eMonth) {
-    return `${sMonth} ${start.getUTCDate()}-${end.getUTCDate()}`;
+    return `${sMonth} ${start.getDate()}-${end.getDate()}`;
   }
-  return `${sMonth} ${start.getUTCDate()}-${eMonth} ${end.getUTCDate()}`;
+  return `${sMonth} ${start.getDate()}-${eMonth} ${end.getDate()}`;
 }
 
 function getDayKey(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = date.getUTCMonth() + 1;
-  const d = date.getUTCDate();
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
   return `${y}-${m < 10 ? '0' : ''}${m}-${d < 10 ? '0' : ''}${d}`;
 }
 
@@ -130,12 +136,12 @@ function getBucketKey(date: Date, granularity: Granularity): string {
 
 function generateSkeleton(granularity: Granularity, weeks: number): TimeSeriesPoint[] {
   const now = new Date();
-  now.setUTCHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
   const points: TimeSeriesPoint[] = [];
 
   const totalDays = weeks > 0 ? weeks * 7 : 365 * 10;
   const start = new Date(now);
-  start.setUTCDate(start.getUTCDate() - totalDays);
+  start.setDate(start.getDate() - totalDays);
 
   if (granularity === 'day') {
     const cursor = new Date(start);
@@ -143,42 +149,42 @@ function generateSkeleton(granularity: Granularity, weeks: number): TimeSeriesPo
     while (cursor.getTime() <= endTime) {
       points.push({
         key: getDayKey(cursor),
-        label: String(cursor.getUTCDate()),
+        label: String(cursor.getDate()),
         value: 0,
         date: cursor.getTime(),
       });
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      cursor.setDate(cursor.getDate() + 1);
     }
   } else if (granularity === 'week') {
     const cursor = new Date(start);
-    const dow = cursor.getUTCDay();
-    cursor.setUTCDate(cursor.getUTCDate() - dow + (dow === 0 ? -6 : 1));
+    const dow = cursor.getDay();
+    cursor.setDate(cursor.getDate() - dow + (dow === 0 ? -6 : 1));
     const endTime = now.getTime();
     while (cursor.getTime() <= endTime) {
       const key = getDayKey(cursor);
       const endDate = new Date(cursor);
-      endDate.setUTCDate(endDate.getUTCDate() + 6);
-      const sMonth = MONTH_NAMES[cursor.getUTCMonth()];
-      const eMonth = MONTH_NAMES[endDate.getUTCMonth()];
+      endDate.setDate(endDate.getDate() + 6);
+      const sMonth = MONTH_NAMES[cursor.getMonth()];
+      const eMonth = MONTH_NAMES[endDate.getMonth()];
       const label = sMonth === eMonth
-        ? `${sMonth} ${cursor.getUTCDate()}-${endDate.getUTCDate()}`
-        : `${sMonth} ${cursor.getUTCDate()}-${eMonth} ${endDate.getUTCDate()}`;
+        ? `${sMonth} ${cursor.getDate()}-${endDate.getDate()}`
+        : `${sMonth} ${cursor.getDate()}-${eMonth} ${endDate.getDate()}`;
       points.push({ key, label, value: 0, date: cursor.getTime() });
-      cursor.setUTCDate(cursor.getUTCDate() + 7);
+      cursor.setDate(cursor.getDate() + 7);
     }
   } else {
-    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-    const endYear = now.getUTCFullYear();
-    const endMo = now.getUTCMonth();
-    while (cursor.getUTCFullYear() < endYear || (cursor.getUTCFullYear() === endYear && cursor.getUTCMonth() <= endMo)) {
-      const mo = cursor.getUTCMonth();
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endYear = now.getFullYear();
+    const endMo = now.getMonth();
+    while (cursor.getFullYear() < endYear || (cursor.getFullYear() === endYear && cursor.getMonth() <= endMo)) {
+      const mo = cursor.getMonth();
       points.push({
-        key: `${cursor.getUTCFullYear()}-${mo < 9 ? '0' : ''}${mo + 1}`,
+        key: `${cursor.getFullYear()}-${mo < 9 ? '0' : ''}${mo + 1}`,
         label: MONTH_NAMES[mo],
         value: 0,
         date: cursor.getTime(),
       });
-      cursor.setUTCMonth(mo + 1);
+      cursor.setMonth(mo + 1);
     }
   }
   return points;
@@ -187,50 +193,50 @@ function generateSkeleton(granularity: Granularity, weeks: number): TimeSeriesPo
 function generateSkeletonForRange(granularity: Granularity, rangeStart: Date, rangeEnd: Date): TimeSeriesPoint[] {
   const points: TimeSeriesPoint[] = [];
   const start = new Date(rangeStart);
-  start.setUTCHours(0, 0, 0, 0);
+  start.setHours(0, 0, 0, 0);
   const end = new Date(rangeEnd);
-  end.setUTCHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
 
   if (granularity === 'day') {
     const cursor = new Date(start);
     while (cursor.getTime() <= end.getTime()) {
       points.push({
         key: getDayKey(cursor),
-        label: String(cursor.getUTCDate()),
+        label: String(cursor.getDate()),
         value: 0,
         date: cursor.getTime(),
       });
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      cursor.setDate(cursor.getDate() + 1);
     }
   } else if (granularity === 'week') {
     const cursor = new Date(start);
-    const dow = cursor.getUTCDay();
-    cursor.setUTCDate(cursor.getUTCDate() - dow + (dow === 0 ? -6 : 1));
+    const dow = cursor.getDay();
+    cursor.setDate(cursor.getDate() - dow + (dow === 0 ? -6 : 1));
     while (cursor.getTime() <= end.getTime()) {
       const key = getDayKey(cursor);
       const weekEnd = new Date(cursor);
-      weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
-      const sMonth = MONTH_NAMES[cursor.getUTCMonth()];
-      const eMonth = MONTH_NAMES[weekEnd.getUTCMonth()];
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const sMonth = MONTH_NAMES[cursor.getMonth()];
+      const eMonth = MONTH_NAMES[weekEnd.getMonth()];
       const label = sMonth === eMonth
-        ? `${sMonth} ${cursor.getUTCDate()}-${weekEnd.getUTCDate()}`
-        : `${sMonth} ${cursor.getUTCDate()}-${eMonth} ${weekEnd.getUTCDate()}`;
+        ? `${sMonth} ${cursor.getDate()}-${weekEnd.getDate()}`
+        : `${sMonth} ${cursor.getDate()}-${eMonth} ${weekEnd.getDate()}`;
       points.push({ key, label, value: 0, date: cursor.getTime() });
-      cursor.setUTCDate(cursor.getUTCDate() + 7);
+      cursor.setDate(cursor.getDate() + 7);
     }
   } else {
-    const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-    const endYear = end.getUTCFullYear();
-    const endMo = end.getUTCMonth();
-    while (cursor.getUTCFullYear() < endYear || (cursor.getUTCFullYear() === endYear && cursor.getUTCMonth() <= endMo)) {
-      const mo = cursor.getUTCMonth();
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endYear = end.getFullYear();
+    const endMo = end.getMonth();
+    while (cursor.getFullYear() < endYear || (cursor.getFullYear() === endYear && cursor.getMonth() <= endMo)) {
+      const mo = cursor.getMonth();
       points.push({
-        key: `${cursor.getUTCFullYear()}-${mo < 9 ? '0' : ''}${mo + 1}`,
+        key: `${cursor.getFullYear()}-${mo < 9 ? '0' : ''}${mo + 1}`,
         label: MONTH_NAMES[mo],
         value: 0,
         date: cursor.getTime(),
       });
-      cursor.setUTCMonth(mo + 1);
+      cursor.setMonth(mo + 1);
     }
   }
   return points;
@@ -261,9 +267,9 @@ function keyToLabel(key: string, granularity: Granularity): string {
 function keyToDate(key: string, granularity: Granularity): number {
   if (granularity === 'month') {
     const [y, m] = key.split('-').map(Number);
-    return Date.UTC(y, m - 1, 1);
+    return new Date(y, m - 1, 1).getTime();
   }
-  return new Date(key + 'T00:00:00Z').getTime();
+  return new Date(key + 'T00:00:00').getTime();
 }
 
 function mapToPoints(dataMap: Map<string, number>, granularity: Granularity): TimeSeriesPoint[] {
@@ -327,6 +333,40 @@ export const dashboardService = {
     };
   },
 
+  async getDashboardDataRaw(userId: string, weeks: number = 0): Promise<DashboardData> {
+    let query = supabase
+      .from('workout_sessions')
+      .select(SESSION_SELECT)
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .order('started_at', { ascending: true });
+
+    if (weeks > 0) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - weeks * 7);
+      query = query.gte('started_at', cutoff.toISOString());
+    }
+
+    const { data: sessions, error } = await query;
+
+    if (error) throw error;
+    if (!sessions || sessions.length === 0) return emptyDashboard('day');
+
+    return {
+      summaryStats: computeSummaryStats(sessions),
+      granularity: 'day',
+      frequency: [],
+      volume: computeVolumeRaw(sessions),
+      muscleGroupSplit: computeMuscleGroupSplit(sessions),
+      muscleGroupExercises: computeMuscleGroupExercises(sessions),
+      personalRecords: computePersonalRecords(sessions),
+      duration: computeDurationRaw(sessions),
+      weeklyStreak: computeWeeklyStreak(sessions),
+      workoutDays: computeWorkoutDays(sessions),
+      exerciseProgressions: computeExerciseProgressionsRaw(sessions),
+    };
+  },
+
   async getSummaryData(userId: string): Promise<SummaryData> {
     const { data: sessions, error } = await supabase
       .from('workout_sessions')
@@ -345,6 +385,58 @@ export const dashboardService = {
       personalRecords: computePersonalRecords(sessions),
       weeklyStreak: computeWeeklyStreak(sessions),
       workoutDays: computeWorkoutDays(sessions),
+    };
+  },
+
+  async getRoutineChartData(
+    userId: string,
+    routineId: string,
+    weeks: number = 0,
+    granularity: Granularity = 'week',
+    raw: boolean = false,
+  ): Promise<RoutineChartData> {
+    const { data: days, error: dayErr } = await supabase
+      .from('routine_days')
+      .select('id')
+      .eq('routine_id', routineId);
+
+    if (dayErr) throw dayErr;
+    if (!days || days.length === 0) return { volume: [], reps: [], duration: [] };
+
+    const dayIds = days.map((d) => d.id);
+
+    let query = supabase
+      .from('workout_sessions')
+      .select(SESSION_SELECT)
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .in('routine_day_id', dayIds)
+      .order('started_at', { ascending: true });
+
+    if (weeks > 0) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - weeks * 7);
+      query = query.gte('started_at', cutoff.toISOString());
+    }
+
+    const { data: sessions, error } = await query;
+
+    if (error) throw error;
+    if (!sessions || sessions.length === 0) return { volume: [], reps: [], duration: [] };
+
+    if (raw) {
+      return {
+        volume: computeVolumeRaw(sessions),
+        reps: computeRepsRaw(sessions),
+        duration: computeDurationRaw(sessions),
+      };
+    }
+
+    const skeleton = weeks > 0 ? generateSkeleton(granularity, weeks) : null;
+    return {
+      volume: computeVolume(sessions, granularity, skeleton),
+      reps: computeReps(sessions, granularity, skeleton),
+      duration: computeDuration(sessions, granularity, skeleton),
     };
   },
 
@@ -637,6 +729,131 @@ function computeExerciseProgressions(sessions: RawSession[], granularity: Granul
       volumePoints: stamp(data.volume),
       repsPoints: stamp(data.reps),
       oneRMPoints: stamp(data.oneRM),
+    }))
+    .sort((a, b) => {
+      const maxA = Math.max(...a.weightPoints.map((p) => p.value));
+      const maxB = Math.max(...b.weightPoints.map((p) => p.value));
+      return maxB - maxA;
+    });
+}
+
+function sessionDateLabel(startedAt: string): string {
+  const d = new Date(startedAt);
+  return `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`;
+}
+
+function computeReps(sessions: RawSession[], granularity: Granularity, skeleton: TimeSeriesPoint[] | null): TimeSeriesPoint[] {
+  const map = new Map<string, number>();
+  for (const s of sessions) {
+    const reps = s.sets.reduce((sum, set) => sum + set.reps_performed, 0);
+    const key = getBucketKey(new Date(s.started_at), granularity);
+    map.set(key, (map.get(key) ?? 0) + reps);
+  }
+  return mapToPoints(map, skeleton, granularity);
+}
+
+function computeRepsRaw(sessions: RawSession[]): TimeSeriesPoint[] {
+  return sessions.map((s) => {
+    const reps = s.sets.reduce((sum, set) => sum + set.reps_performed, 0);
+    const d = new Date(s.started_at);
+    return {
+      key: s.started_at,
+      label: sessionDateLabel(s.started_at),
+      value: reps,
+      date: d.getTime(),
+    };
+  }).filter((p) => p.value > 0);
+}
+
+function computeVolumeRaw(sessions: RawSession[]): TimeSeriesPoint[] {
+  return sessions.map((s) => {
+    const vol = s.sets.reduce((sum, set) => sum + set.weight * set.reps_performed, 0);
+    const d = new Date(s.started_at);
+    return {
+      key: s.started_at,
+      label: sessionDateLabel(s.started_at),
+      value: vol,
+      date: d.getTime(),
+    };
+  }).filter((p) => p.value > 0);
+}
+
+function computeDurationRaw(sessions: RawSession[]): TimeSeriesPoint[] {
+  return sessions
+    .filter((s) => s.completed_at)
+    .map((s) => {
+      const mins = Math.round(
+        (new Date(s.completed_at!).getTime() - new Date(s.started_at).getTime()) / 60000,
+      );
+      const d = new Date(s.started_at);
+      return {
+        key: s.started_at,
+        label: sessionDateLabel(s.started_at),
+        value: mins,
+        date: d.getTime(),
+      };
+    })
+    .filter((p) => p.value > 0 && p.value < 300);
+}
+
+function computeExerciseProgressionsRaw(sessions: RawSession[]): ExerciseProgression[] {
+  const exerciseMap = new Map<string, {
+    name: string;
+    weight: TimeSeriesPoint[];
+    volume: TimeSeriesPoint[];
+    reps: TimeSeriesPoint[];
+    oneRM: TimeSeriesPoint[];
+  }>();
+
+  for (const s of sessions) {
+    const ts = new Date(s.started_at).getTime();
+    const label = sessionDateLabel(s.started_at);
+
+    const sessionExercises = new Map<string, {
+      maxWeight: number;
+      totalVol: number;
+      totalReps: number;
+      best1RM: number;
+      name: string;
+    }>();
+
+    for (const set of s.sets) {
+      if (!set.exercise || set.weight <= 0) continue;
+      const id = set.exercise_id;
+      const existing = sessionExercises.get(id) ?? {
+        maxWeight: 0, totalVol: 0, totalReps: 0, best1RM: 0, name: set.exercise.name,
+      };
+      existing.maxWeight = Math.max(existing.maxWeight, set.weight);
+      existing.totalVol += set.weight * set.reps_performed;
+      existing.totalReps += set.reps_performed;
+      const effectiveReps = set.reps_performed + (set.rir ?? 0);
+      const est1RM = Math.round(set.weight * (1 + effectiveReps / 30));
+      existing.best1RM = Math.max(existing.best1RM, est1RM);
+      sessionExercises.set(id, existing);
+    }
+
+    for (const [id, ex] of sessionExercises) {
+      if (!exerciseMap.has(id)) {
+        exerciseMap.set(id, { name: ex.name, weight: [], volume: [], reps: [], oneRM: [] });
+      }
+      const entry = exerciseMap.get(id)!;
+      const pt = (v: number): TimeSeriesPoint => ({ key: s.started_at, label, value: v, date: ts });
+      entry.weight.push(pt(ex.maxWeight));
+      entry.volume.push(pt(ex.totalVol));
+      entry.reps.push(pt(ex.totalReps));
+      entry.oneRM.push(pt(ex.best1RM));
+    }
+  }
+
+  return [...exerciseMap.entries()]
+    .filter(([, v]) => v.weight.length >= 2)
+    .map(([exerciseId, data]) => ({
+      exerciseId,
+      exerciseName: data.name,
+      weightPoints: data.weight,
+      volumePoints: data.volume,
+      repsPoints: data.reps,
+      oneRMPoints: data.oneRM,
     }))
     .sort((a, b) => {
       const maxA = Math.max(...a.weightPoints.map((p) => p.value));

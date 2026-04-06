@@ -6,8 +6,8 @@ import { useHistoryView, HistoryView } from '../../../src/components/history/His
 import { colors, fonts } from '../../../src/constants';
 
 const VIEW_OPTIONS: { key: HistoryView; label: string }[] = [
-  { key: 'history', label: 'History' },
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'history', label: 'History' },
 ];
 
 function HeaderDropdown() {

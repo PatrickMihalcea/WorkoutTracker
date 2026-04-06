@@ -10,3 +10,6 @@ export { AddRowButton } from './AddRowButton';
 export { InlineEditRow } from './InlineEditRow';
 export { AppStack } from './AppStack';
 export { ExercisePickerModal } from './ExercisePickerModal';
+export { OverflowMenu } from './OverflowMenu';
+export type { OverflowMenuItem } from './OverflowMenu';
+export { Toast } from './Toast';
