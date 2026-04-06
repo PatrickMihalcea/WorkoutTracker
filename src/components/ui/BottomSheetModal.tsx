@@ -76,17 +76,13 @@ export function BottomSheetModal({
           ]}
         >
           <Body style={[styles.sheet, fullHeight && styles.sheetFull]} {...bodyProps}>
-            {(title || onClose) ? (
-              <View style={styles.header}>
-                {title ? <Text style={styles.title}>{title}</Text> : <View />}
-                {onClose && (
-                  <TouchableOpacity onPress={onClose} activeOpacity={0.7} hitSlop={8}>
-                    <Text style={styles.closeBtn}>✕</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : null}
+            {title ? <Text style={styles.title}>{title}</Text> : null}
             {children}
+            {onClose && (
+              <TouchableOpacity style={styles.closeBtnOverlay} onPress={onClose} activeOpacity={0.7} hitSlop={8}>
+                <Text style={styles.closeBtn}>✕</Text>
+              </TouchableOpacity>
+            )}
           </Body>
         </Animated.View>
         <KeyboardDismiss />
@@ -122,20 +118,20 @@ const styles = StyleSheet.create({
     flex: 1,
     maxHeight: undefined,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
   title: {
     fontSize: 20,
     fontFamily: fonts.bold,
     color: colors.text,
+    marginBottom: 20,
+  },
+  closeBtnOverlay: {
+    position: 'absolute',
+    top: 24,
+    right: 24,
+    zIndex: 10,
   },
   closeBtn: {
     fontSize: 18,
     color: colors.textMuted,
-    paddingLeft: 12,
   },
 });

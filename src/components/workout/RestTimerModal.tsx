@@ -1,12 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  StyleSheet,
-} from 'react-native';
+import { StyleSheet } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import { BottomSheetModal, Button } from '../ui';
 import { colors, fonts } from '../../constants';
 
 function buildOptions(): { value: number; label: string }[] {
@@ -47,66 +42,26 @@ export function RestTimerModal({ visible, currentValue, onSave, onClose }: RestT
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity activeOpacity={1} style={styles.sheet}>
-          <Text style={styles.title}>Rest Timer</Text>
+    <BottomSheetModal visible={visible} title="Rest Timer" onClose={onClose}>
+      <Picker
+        selectedValue={selected}
+        onValueChange={(value) => setSelected(value)}
+        itemStyle={styles.pickerItem}
+      >
+        {OPTIONS.map((opt) => (
+          <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
+        ))}
+      </Picker>
 
-          <Picker
-            selectedValue={selected}
-            onValueChange={(value) => setSelected(value)}
-            itemStyle={styles.pickerItem}
-          >
-            {OPTIONS.map((opt) => (
-              <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
-            ))}
-          </Picker>
-
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.7}>
-            <Text style={styles.saveText}>Save</Text>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
+      <Button title="Save" onPress={handleSave} />
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 20,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
   pickerItem: {
     color: colors.text,
     fontSize: 20,
     fontFamily: fonts.regular,
-  },
-  saveBtn: {
-    backgroundColor: colors.text,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  saveText: {
-    color: colors.background,
-    fontSize: 16,
-    fontFamily: fonts.semiBold,
   },
 });

@@ -80,8 +80,8 @@ export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set 
 
   return (
     <Wrapper style={bare ? styles.bareContainer : styles.card}>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      {title ? <Text style={styles.title}>{title}</Text> : null}
+      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
 
       <View style={styles.bodyRow}>
         <View style={styles.bodyHalf}>
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   bareContainer: {
-    paddingVertical: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   title: {
     fontSize: 16,

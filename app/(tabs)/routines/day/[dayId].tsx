@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   removeDayBtn: {
-    marginTop: 32,
+    marginTop: 14,
     alignItems: 'center',
     paddingVertical: 12,
   },

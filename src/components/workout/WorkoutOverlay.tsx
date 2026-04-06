@@ -512,9 +512,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   cancelText: {
-    color: colors.textMuted,
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: fonts.semiBold,
+    color: '#FF6B6B',
   },
   reorderFooter: {
     flexDirection: 'row',

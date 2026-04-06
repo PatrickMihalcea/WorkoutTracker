@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
-import { Button, Card, EmptyState } from '../../../src/components/ui';
+import { Button, Card, EmptyState, BottomSheetModal } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
 import { weightUnitLabel, formatWeight } from '../../../src/utils/units';
@@ -257,14 +257,9 @@ export default function HomeScreen() {
 
             {hasActiveSession || activeSession ? (
               <View>
-                <Text style={styles.inProgress}>Workout in progress</Text>
-                {activeSession && (
-                  <Text style={styles.duration}>
-                    {formatDuration(activeSession.started_at, null)}
-                  </Text>
-                )}
                 <Button
                   title="Continue Workout"
+                  size="lg"
                   onPress={async () => {
                     if (!user) return;
                     const ok = await resumeWorkout(user.id);
@@ -272,6 +267,12 @@ export default function HomeScreen() {
                     else setHasActiveSession(false);
                   }}
                 />
+                <Text style={styles.inProgress}>Workout in progress</Text>
+                {activeSession && (
+                  <Text style={styles.duration}>
+                    {formatDuration(activeSession.started_at, null)}
+                  </Text>
+                )}
               </View>
             ) : (
               <>
@@ -289,57 +290,53 @@ export default function HomeScreen() {
         );
       })()}
 
-      <Modal visible={showChooseModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {!chosenRoutine ? (
-              <>
-                <Text style={styles.modalTitle}>Pick a Routine</Text>
-                {loadingRoutines ? (
-                  <ActivityIndicator color={colors.text} style={{ marginVertical: 24 }} />
-                ) : (
-                  <ScrollView style={styles.modalScroll}>
-                    {allRoutines.map((r) => (
-                      <TouchableOpacity key={r.id} style={styles.modalRow} onPress={() => handlePickRoutine(r)}>
-                        <Text style={styles.modalRowText}>{r.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                    {allRoutines.length === 0 && (
-                      <Text style={styles.modalEmpty}>No routines found</Text>
-                    )}
-                  </ScrollView>
-                )}
-              </>
+      <BottomSheetModal
+        visible={showChooseModal}
+        title={chosenRoutine ? chosenRoutine.name : 'Pick a Routine'}
+        onClose={() => setShowChooseModal(false)}
+        scrollable
+      >
+        {!chosenRoutine ? (
+          <>
+            {loadingRoutines ? (
+              <ActivityIndicator color={colors.text} style={{ marginVertical: 24 }} />
             ) : (
               <>
-                <Text style={styles.modalTitle}>{chosenRoutine.name}</Text>
-                <Text style={styles.modalSubtitle}>Pick a workout</Text>
-                {loadingRoutines ? (
-                  <ActivityIndicator color={colors.text} style={{ marginVertical: 24 }} />
-                ) : (
-                  <ScrollView style={styles.modalScroll}>
-                    {chosenRoutine.days.map((d) => (
-                      <TouchableOpacity key={d.id} style={styles.modalRow} onPress={() => handlePickDay(d)}>
-                        <Text style={styles.modalRowText}>{d.label}</Text>
-                        <Text style={styles.modalRowSub}>{d.exercises.length} exercises</Text>
-                      </TouchableOpacity>
-                    ))}
-                    {chosenRoutine.days.length === 0 && (
-                      <Text style={styles.modalEmpty}>No days in this routine</Text>
-                    )}
-                  </ScrollView>
+                {allRoutines.map((r) => (
+                  <TouchableOpacity key={r.id} style={styles.chooseRow} onPress={() => handlePickRoutine(r)}>
+                    <Text style={styles.chooseRowText}>{r.name}</Text>
+                  </TouchableOpacity>
+                ))}
+                {allRoutines.length === 0 && (
+                  <Text style={styles.chooseEmpty}>No routines found</Text>
                 )}
-                <TouchableOpacity style={styles.modalBackBtn} onPress={() => setChosenRoutine(null)}>
-                  <Text style={styles.modalBackText}>← Back to routines</Text>
-                </TouchableOpacity>
               </>
             )}
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowChooseModal(false)}>
-              <Text style={styles.modalCloseText}>Cancel</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.chooseSubtitle}>Pick a workout</Text>
+            {loadingRoutines ? (
+              <ActivityIndicator color={colors.text} style={{ marginVertical: 24 }} />
+            ) : (
+              <>
+                {chosenRoutine.days.map((d) => (
+                  <TouchableOpacity key={d.id} style={styles.chooseRow} onPress={() => handlePickDay(d)}>
+                    <Text style={styles.chooseRowText}>{d.label}</Text>
+                    <Text style={styles.chooseRowSub}>{d.exercises.length} exercises</Text>
+                  </TouchableOpacity>
+                ))}
+                {chosenRoutine.days.length === 0 && (
+                  <Text style={styles.chooseEmpty}>No days in this routine</Text>
+                )}
+              </>
+            )}
+            <TouchableOpacity style={styles.chooseBackBtn} onPress={() => setChosenRoutine(null)}>
+              <Text style={styles.chooseBackText}>← Back to routines</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+          </>
+        )}
+      </BottomSheetModal>
       </ScrollView>
     </View>
   );
@@ -441,6 +438,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: fonts.semiBold,
     textAlign: 'center',
+    marginTop: 20,
     marginBottom: 4,
   },
   duration: {
@@ -502,77 +500,40 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 40,
-    maxHeight: '70%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  modalSubtitle: {
+  chooseSubtitle: {
     fontSize: 14,
     fontFamily: fonts.regular,
     color: colors.textSecondary,
     marginBottom: 12,
   },
-  modalScroll: {
-    marginTop: 8,
-    maxHeight: 300,
-  },
-  modalRow: {
+  chooseRow: {
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  modalRowText: {
+  chooseRowText: {
     fontSize: 16,
     fontFamily: fonts.semiBold,
     color: colors.text,
   },
-  modalRowSub: {
+  chooseRowSub: {
     fontSize: 13,
     fontFamily: fonts.regular,
     color: colors.textMuted,
     marginTop: 2,
   },
-  modalEmpty: {
+  chooseEmpty: {
     fontSize: 14,
     fontFamily: fonts.regular,
     color: colors.textMuted,
     textAlign: 'center',
     paddingVertical: 24,
   },
-  modalBackBtn: {
+  chooseBackBtn: {
     marginTop: 12,
   },
-  modalBackText: {
+  chooseBackText: {
     fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-  modalCloseBtn: {
-    marginTop: 16,
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  modalCloseText: {
-    fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
   },
