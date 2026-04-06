@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,9 @@ import {
   StyleSheet,
   Alert,
   Image,
+  LayoutAnimation,
+  UIManager,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
@@ -17,7 +20,7 @@ import { routineService } from '../../../src/services';
 import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
 import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast } from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
-import { colors, fonts } from '../../../src/constants';
+import { colors, fonts, spacing } from '../../../src/constants';
 import {
   DayOfWeek,
   DAY_LABELS,
@@ -27,8 +30,13 @@ import {
 } from '../../../src/models';
 import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
 import { RoutineStatsChart } from '../../../src/components/routine/RoutineStatsChart';
+import { MuscleHeatmap } from '../../../src/components/history/MuscleHeatmap';
 import { useChartInteraction } from '../../../src/components/charts';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 function SwipeableExerciseRow({
   ex,
@@ -87,7 +95,29 @@ export default function RoutineDetailScreen() {
   const [editingEntry, setEditingEntry] = useState<RoutineDayExercise | null>(null);
   const [toastMessage, setToastMessage] = useState('');
 
+  const [perfExpanded, setPerfExpanded] = useState(true);
+
   const { session: activeSession, startWorkout } = useWorkoutStore();
+
+  const routineMuscleData = useMemo(() => {
+    if (!currentRoutine) return [];
+    const counts = new Map<string, number>();
+    for (const day of currentRoutine.days) {
+      for (const ex of day.exercises) {
+        const group = ex.exercise?.muscle_group;
+        if (!group) continue;
+        counts.set(group, (counts.get(group) ?? 0) + (ex.sets?.length ?? ex.target_sets));
+      }
+    }
+    const total = [...counts.values()].reduce((a, b) => a + b, 0);
+    if (total === 0) return [];
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([group, count]) => ({
+        label: group,
+        value: Math.round((count / total) * 100),
+      }));
+  }, [currentRoutine]);
 
   useEffect(() => {
     if (id) fetchRoutineDetail(id);
@@ -314,8 +344,29 @@ export default function RoutineDetailScreen() {
           </TouchableOpacity>
         )}
 
-        <Text style={styles.subHeader}>Performance</Text>
-        {id && <RoutineStatsChart routineId={id} />}
+        <TouchableOpacity
+          style={styles.subHeaderRow}
+          activeOpacity={0.7}
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setPerfExpanded((v) => !v);
+          }}
+        >
+          <Text style={styles.subHeader}>Performance</Text>
+          <Text style={styles.chevron}>{perfExpanded ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+        {perfExpanded && (
+          <>
+            {id && <RoutineStatsChart routineId={id} />}
+            {routineMuscleData.length > 0 && (
+              <MuscleHeatmap
+                data={routineMuscleData}
+                title="Targeted Muscles"
+                subtitle="Set distribution by muscle group"
+              />
+            )}
+          </>
+        )}
 
         <Text style={styles.subHeader}>Routine</Text>
 
@@ -371,7 +422,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
     paddingBottom: 40,
   },
   titleRow: {
@@ -390,11 +442,23 @@ const styles = StyleSheet.create({
     height: 18,
     tintColor: colors.textMuted,
   },
+  subHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    marginBottom: 8,
+  },
   subHeader: {
     fontSize: 16,
     fontFamily: fonts.bold,
     color: colors.text,
-    marginBottom: 4,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  chevron: {
+    fontSize: 12,
+    color: colors.textMuted,
   },
   dayCard: {
     marginBottom: 16,

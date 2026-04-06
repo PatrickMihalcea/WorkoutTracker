@@ -27,6 +27,7 @@ import {
   ChartMode,
   formatVolume,
 } from '../charts';
+import { MuscleHeatmap } from './MuscleHeatmap';
 
 export type { GranularityMode, ChartMode } from '../charts';
 
@@ -164,6 +165,7 @@ export function Dashboard({
         <HeroStatsRow stats={data.summaryStats} />
         <ContributionGrid workoutDays={data.workoutDays} streakWeeks={data.weeklyStreak} />
         <VolumeSection data={data.volume} {...chartConfig} />
+        <DurationTrendSection data={data.duration} {...chartConfig} />
         {activeExercise && (
           <ExerciseSpotlightSection
             active={activeExercise}
@@ -177,8 +179,8 @@ export function Dashboard({
           data={data.muscleGroupSplit}
           exerciseBreakdown={data.muscleGroupExercises}
         />
+        <MuscleHeatmap data={data.muscleGroupSplit} />
         <PersonalRecordsSection data={data.personalRecords} />
-        <DurationTrendSection data={data.duration} {...chartConfig} />
 
         <ExercisePickerModal
           visible={showExercisePicker}

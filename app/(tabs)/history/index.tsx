@@ -15,7 +15,7 @@ import { Card, EmptyState } from '../../../src/components/ui';
 import { Dashboard, GranularityMode, ChartMode } from '../../../src/components/history/Dashboard';
 import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
 import { useAuthStore } from '../../../src/stores/auth.store';
-import { colors, fonts } from '../../../src/constants';
+import { colors, fonts, spacing } from '../../../src/constants';
 import { WorkoutSessionWithRoutine } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 
@@ -231,7 +231,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   list: {
-    padding: 16,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
   },
   sessionCard: {
     marginBottom: 12,
