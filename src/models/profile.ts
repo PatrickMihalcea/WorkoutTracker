@@ -22,6 +22,7 @@ export interface UserProfile {
   distance_unit: DistanceUnit;
   color_preferences: ColorPreferences;
   rest_timer_seconds: number;
+  show_routine_performance: boolean;
   onboarding_complete: boolean;
   created_at: string;
 }

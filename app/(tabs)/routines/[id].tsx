@@ -94,7 +94,7 @@ export default function RoutineDetailScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
-  const { profile } = useProfileStore();
+  const { profile, updateProfile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
 
   const [editingName, setEditingName] = useState(false);
@@ -109,7 +109,8 @@ export default function RoutineDetailScreen() {
   const [editingEntry, setEditingEntry] = useState<RoutineDayExercise | null>(null);
   const [toastMessage, setToastMessage] = useState('');
 
-  const [perfExpanded, setPerfExpanded] = useState(true);
+  const perfExpanded = profile?.show_routine_performance ?? true;
+  const [reorderingDayId, setReorderingDayId] = useState<string | null>(null);
   const [swapDayId, setSwapDayId] = useState<string | null>(null);
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
@@ -503,7 +504,7 @@ export default function RoutineDetailScreen() {
           activeOpacity={0.7}
           onPress={() => {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            setPerfExpanded((v) => !v);
+            updateProfile({ show_routine_performance: !perfExpanded });
           }}
         >
           <Text style={styles.subHeader}>Performance</Text>
