@@ -23,12 +23,23 @@ import { ExerciseCard } from './ExerciseCard';
 import { RestTimerBar } from './RestTimerBar';
 import { RestTimerModal } from './RestTimerModal';
 import { WorkoutPill } from './WorkoutPill';
-import { Button, BottomSheetModal } from '../ui';
+import { Button, BottomSheetModal, ExercisePickerModal, SupersetBracket } from '../ui';
 import { MuscleHeatmap } from '../history/MuscleHeatmap';
 import { AddExerciseModal, SetsPayloadItem } from '../routine/AddExerciseModal';
 import { colors, fonts } from '../../constants';
 import { formatElapsed } from '../../utils/date';
 import { Exercise, RoutineDayExercise } from '../../models';
+import {
+  supersetPrev,
+  supersetNext,
+  separateFromSuperset,
+  autoCleanAfterDelete,
+  getSupersetPosition,
+  buildReorderItems,
+  flattenReorderItems,
+  type ReorderItem,
+  type SupersetGroups,
+} from '../../utils/superset';
 
 const TAB_BAR_HEIGHT = 60;
 
@@ -43,6 +54,7 @@ export function WorkoutOverlay() {
     rows,
     previousSets,
     collapsedCards,
+    supersetGroups,
     restTimer,
     loadPreviousSets,
     updateRowLocal,
@@ -56,6 +68,9 @@ export function WorkoutOverlay() {
     addExercise,
     reorderExercises,
     toggleCollapse,
+    setSupersetGroup,
+    duplicateExercise,
+    swapExercise,
     completeWorkout,
     cancelWorkout,
     startRestTimer,
@@ -75,8 +90,9 @@ export function WorkoutOverlay() {
   const [reordering, setReordering] = useState(false);
   const [showTimerSettings, setShowTimerSettings] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
+  const [showSwapPicker, setShowSwapPicker] = useState(false);
 
-  // Slide animation
   useEffect(() => {
     if (expanded && session) {
       setShowFullScreen(true);
@@ -96,7 +112,6 @@ export function WorkoutOverlay() {
     }
   }, [expanded, !!session]);
 
-  // Elapsed time ticker
   useEffect(() => {
     if (!session) return;
     const tick = () => setElapsed(formatElapsed(session.started_at));
@@ -105,14 +120,12 @@ export function WorkoutOverlay() {
     return () => clearInterval(id);
   }, [session]);
 
-  // Rest timer ticker
   useEffect(() => {
     if (!restTimer) return;
     const id = setInterval(() => tickRestTimer(), 1000);
     return () => clearInterval(id);
   }, [restTimer !== null]);
 
-  // Load previous sets when session loads
   useEffect(() => {
     if (!session) return;
     const exerciseIds = exercises.map((e) => e.exercise_id);
@@ -171,63 +184,50 @@ export function WorkoutOverlay() {
   };
 
   const handleUpdate = async (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => {
-    try {
-      await updateRow(id, entryId, updates);
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
-    }
+    try { await updateRow(id, entryId, updates); }
+    catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
   const handleToggle = async (id: string, entryId: string) => {
     try {
       const row = (rows[entryId] ?? []).find((r) => r.id === id);
-      if (row && !row.is_completed) {
-        handleStartRestTimer();
-      }
+      if (row && !row.is_completed) handleStartRestTimer();
       await toggleRow(id, entryId);
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
-    }
+    } catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
   const handleDelete = async (id: string, entryId: string, setNumber: number) => {
-    try {
-      await deleteRow(id, entryId, setNumber);
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
-    }
+    try { await deleteRow(id, entryId, setNumber); }
+    catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
   const handleAdd = async (entryId: string, exerciseId: string) => {
-    try {
-      await addRow(entryId, exerciseId);
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
-    }
+    try { await addRow(entryId, exerciseId); }
+    catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
   const handleAddWarmup = async (entryId: string, exerciseId: string) => {
-    try {
-      await addWarmupRow(entryId, exerciseId);
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
-    }
+    try { await addWarmupRow(entryId, exerciseId); }
+    catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
   const handleToggleWarmup = async (id: string, entryId: string) => {
-    try {
-      await toggleWarmup(id, entryId);
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
-    }
+    try { await toggleWarmup(id, entryId); }
+    catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
   const handleRemoveExercise = async (entryId: string) => {
     try {
       await removeExercise(entryId);
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
-    }
+      const currentExercises = useWorkoutStore.getState().exercises;
+      const currentGroups = useWorkoutStore.getState().supersetGroups;
+      const cleaned = autoCleanAfterDelete(currentExercises, currentGroups);
+      for (const ex of currentExercises) {
+        if (cleaned[ex.id] !== currentGroups[ex.id]) {
+          await setSupersetGroup(ex.id, cleaned[ex.id]);
+        }
+      }
+    } catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
   const handleAddExerciseConfirm = async (exercise: Exercise, setsPayload: SetsPayloadItem[]) => {
@@ -243,9 +243,7 @@ export function WorkoutOverlay() {
           }));
         }
       }
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
-    }
+    } catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
   const handleCancel = () => {
@@ -259,52 +257,169 @@ export function WorkoutOverlay() {
     await updateProfile({ rest_timer_seconds: seconds });
   };
 
-  const handleDragEnd = useCallback(({ data }: { data: RoutineDayExercise[] }) => {
-    reorderExercises(data);
+  const applySupersetChange = async (updated: SupersetGroups) => {
+    for (const ex of exercises) {
+      const newGroup = updated[ex.id] ?? null;
+      const oldGroup = supersetGroups[ex.id] ?? null;
+      if (newGroup !== oldGroup) {
+        await setSupersetGroup(ex.id, newGroup);
+      }
+    }
+  };
+
+  const handleSupersetPrev = async (entryId: string) => {
+    const idx = exercises.findIndex((e) => e.id === entryId);
+    if (idx <= 0) return;
+    const updated = supersetPrev(exercises, idx, supersetGroups);
+    await applySupersetChange(updated);
+  };
+
+  const handleSupersetNext = async (entryId: string) => {
+    const idx = exercises.findIndex((e) => e.id === entryId);
+    if (idx < 0 || idx >= exercises.length - 1) return;
+    const updated = supersetNext(exercises, idx, supersetGroups);
+    await applySupersetChange(updated);
+  };
+
+  const handleSeparate = async (entryId: string) => {
+    const idx = exercises.findIndex((e) => e.id === entryId);
+    if (idx < 0) return;
+    const result = separateFromSuperset(exercises, idx, supersetGroups);
+    await applySupersetChange(result.groups);
+    if (result.exercises !== exercises) {
+      await reorderExercises(result.exercises);
+    }
+  };
+
+  const handleSwap = (entryId: string) => {
+    setSwapEntryId(entryId);
+    setShowSwapPicker(true);
+  };
+
+  const handleSwapSelect = async (exercise: Exercise) => {
+    if (!swapEntryId) return;
+    try {
+      await swapExercise(swapEntryId, exercise);
+      if (user) {
+        const sets = await import('../../services').then(
+          (m) => m.sessionService.getLastSessionSets(exercise.id, user.id),
+        );
+        if (sets.length > 0) {
+          useWorkoutStore.setState((state) => ({
+            previousSets: { ...state.previousSets, [exercise.id]: sets },
+          }));
+        }
+      }
+    } catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
+    setShowSwapPicker(false);
+    setSwapEntryId(null);
+  };
+
+  const handleDuplicate = async (entryId: string) => {
+    try { await duplicateExercise(entryId); }
+    catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
+  };
+
+  const reorderItems = useMemo(() =>
+    buildReorderItems(exercises, supersetGroups),
+    [exercises, supersetGroups],
+  );
+
+  const handleReorderDragEnd = useCallback(({ data }: { data: ReorderItem[] }) => {
+    const flat = flattenReorderItems(data);
+    reorderExercises(flat);
   }, [reorderExercises]);
 
-  const renderNormalItem = useCallback(({ item }: { item: RoutineDayExercise }) => (
-    <ExerciseCard
-      entry={item}
-      rows={rows[item.id] ?? []}
-      previousSets={previousSets[item.exercise_id] ?? []}
-      weightUnit={weightUnit}
-      isCollapsed={collapsedCards[item.id] ?? false}
-      onToggleCollapse={() => toggleCollapse(item.id)}
-      onLongPress={() => setReordering(true)}
-      onUpdateRowLocal={handleUpdateLocal}
-      onUpdateRow={handleUpdate}
-      onToggleRow={handleToggle}
-      onDeleteRow={handleDelete}
-      onAddRow={handleAdd}
-      onAddWarmup={handleAddWarmup}
-      onToggleWarmup={handleToggleWarmup}
-      onRemove={() => handleRemoveExercise(item.id)}
-    />
-  ), [rows, previousSets, weightUnit, collapsedCards, toggleCollapse]);
+  const reorderKeyExtractor = useCallback((item: ReorderItem) =>
+    item.type === 'single' ? item.entry.id : item.groupId,
+    [],
+  );
 
-  const noop = useCallback(() => {}, []);
-
-  const renderReorderItem = useCallback(({ item, drag, isActive }: RenderItemParams<RoutineDayExercise>) => (
+  const renderReorderItem = useCallback(({ item, drag, isActive }: RenderItemParams<ReorderItem>) => (
     <ScaleDecorator>
       <Pressable onLongPress={drag} disabled={isActive} delayLongPress={400}>
-        <ExerciseCard
-          entry={item}
-          rows={rows[item.id] ?? []}
-          previousSets={previousSets[item.exercise_id] ?? []}
-          weightUnit={weightUnit}
-          reorderCollapsed
-          onUpdateRow={noop as any}
-          onToggleRow={noop as any}
-          onDeleteRow={noop as any}
-          onAddRow={noop as any}
-          onAddWarmup={noop as any}
-          onToggleWarmup={noop as any}
-          onRemove={() => handleRemoveExercise(item.id)}
-        />
+        {item.type === 'single' ? (
+          <ExerciseCard
+            entry={item.entry}
+            rows={rows[item.entry.id] ?? []}
+            previousSets={previousSets[item.entry.exercise_id] ?? []}
+            weightUnit={weightUnit}
+            reorderCollapsed
+            onUpdateRow={() => {}}
+            onToggleRow={() => {}}
+            onDeleteRow={() => {}}
+            onAddRow={() => {}}
+            onAddWarmup={() => {}}
+            onToggleWarmup={() => {}}
+            onRemove={() => handleRemoveExercise(item.entry.id)}
+          />
+        ) : (
+          <View>
+            {item.entries.map((entry, idx) => {
+              const pos = idx === 0 ? 'first' as const : idx === item.entries.length - 1 ? 'last' as const : 'middle' as const;
+              return (
+                <SupersetBracket key={entry.id} position={pos}>
+                  <ExerciseCard
+                    entry={entry}
+                    rows={rows[entry.id] ?? []}
+                    previousSets={previousSets[entry.exercise_id] ?? []}
+                    weightUnit={weightUnit}
+                    reorderCollapsed
+                    noBottomMargin={pos !== 'last'}
+                    onUpdateRow={() => {}}
+                    onToggleRow={() => {}}
+                    onDeleteRow={() => {}}
+                    onAddRow={() => {}}
+                    onAddWarmup={() => {}}
+                    onToggleWarmup={() => {}}
+                  />
+                </SupersetBracket>
+              );
+            })}
+          </View>
+        )}
       </Pressable>
     </ScaleDecorator>
-  ), [rows, previousSets, weightUnit, noop, handleRemoveExercise]);
+  ), [rows, previousSets, weightUnit]);
+
+  const renderNormalItem = useCallback(({ item, index }: { item: RoutineDayExercise; index: number }) => {
+    const position = getSupersetPosition(exercises, index, supersetGroups);
+    const needsNoMargin = position === 'first' || position === 'middle';
+    const myGroup = supersetGroups[item.id] ?? null;
+    const prevGroup = index > 0 ? (supersetGroups[exercises[index - 1].id] ?? null) : null;
+    const nextGroup = index < exercises.length - 1 ? (supersetGroups[exercises[index + 1].id] ?? null) : null;
+    const canPrev = index > 0 && (!myGroup || myGroup !== prevGroup);
+    const canNext = index < exercises.length - 1 && (!myGroup || myGroup !== nextGroup);
+    const card = (
+      <ExerciseCard
+        entry={item}
+        rows={rows[item.id] ?? []}
+        previousSets={previousSets[item.exercise_id] ?? []}
+        weightUnit={weightUnit}
+        isCollapsed={collapsedCards[item.id] ?? false}
+        onToggleCollapse={() => toggleCollapse(item.id)}
+        onLongPress={() => setReordering(true)}
+        onUpdateRowLocal={handleUpdateLocal}
+        onUpdateRow={handleUpdate}
+        onToggleRow={handleToggle}
+        onDeleteRow={handleDelete}
+        onAddRow={handleAdd}
+        onAddWarmup={handleAddWarmup}
+        onToggleWarmup={handleToggleWarmup}
+        onRemove={() => handleRemoveExercise(item.id)}
+        supersetGroup={myGroup}
+        canSupersetPrev={canPrev}
+        canSupersetNext={canNext}
+        onSupersetPrev={() => handleSupersetPrev(item.id)}
+        onSupersetNext={() => handleSupersetNext(item.id)}
+        onSeparate={() => handleSeparate(item.id)}
+        onSwap={() => handleSwap(item.id)}
+        onDuplicate={() => handleDuplicate(item.id)}
+        noBottomMargin={needsNoMargin}
+      />
+    );
+    return <SupersetBracket position={position}>{card}</SupersetBracket>;
+  }, [rows, previousSets, weightUnit, collapsedCards, supersetGroups, exercises, toggleCollapse]);
 
   const keyExtractor = useCallback((item: RoutineDayExercise) => item.id, []);
 
@@ -384,10 +499,10 @@ export function WorkoutOverlay() {
             <View style={{ flex: 1 }}>
               {reordering ? (
                 <DraggableFlatList
-                  data={exercises}
-                  keyExtractor={keyExtractor}
+                  data={reorderItems}
+                  keyExtractor={reorderKeyExtractor}
                   renderItem={renderReorderItem}
-                  onDragEnd={handleDragEnd}
+                  onDragEnd={handleReorderDragEnd}
                   contentContainerStyle={styles.scrollContent}
                 />
               ) : (
@@ -432,6 +547,12 @@ export function WorkoutOverlay() {
               onClose={() => setShowAddExercise(false)}
               onConfirm={handleAddExerciseConfirm}
               weightUnit={weightUnit}
+            />
+
+            <ExercisePickerModal
+              visible={showSwapPicker}
+              onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); }}
+              onSelect={handleSwapSelect}
             />
           </KeyboardAvoidingView>
         </Animated.View>

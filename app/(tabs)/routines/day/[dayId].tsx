@@ -13,7 +13,8 @@ import { useAuthStore } from '../../../../src/stores/auth.store';
 import { useProfileStore } from '../../../../src/stores/profile.store';
 import { routineService } from '../../../../src/services';
 import { confirmDeleteExercise } from '../../../../src/utils/confirmDeleteExercise';
-import { DayOfWeekPicker, SwipeToDeleteRow, AddRowButton, InlineEditRow, Button } from '../../../../src/components/ui';
+import { DayOfWeekPicker, SwipeToDeleteRow, AddRowButton, InlineEditRow, Button, OverflowMenu, ExercisePickerModal, SupersetBracket } from '../../../../src/components/ui';
+import type { OverflowMenuItem } from '../../../../src/components/ui';
 import { colors, fonts } from '../../../../src/constants';
 import {
   DayOfWeek,
@@ -31,6 +32,17 @@ import {
 } from '../../../../src/components/routine/SetsTableEditor';
 import { AddExerciseModal, SetsPayloadItem } from '../../../../src/components/routine/AddExerciseModal';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+import {
+  supersetPrev,
+  supersetNext,
+  separateFromSuperset,
+  autoCleanAfterDelete,
+  getSupersetPosition,
+  buildReorderItems,
+  flattenReorderItems,
+  type ReorderItem,
+  type SupersetGroups,
+} from '../../../../src/utils/superset';
 
 function SwipeableExerciseRow({
   ex,
@@ -38,6 +50,7 @@ function SwipeableExerciseRow({
   onToggle,
   onDelete,
   onLongPress,
+  menuItems,
   children,
 }: {
   ex: RoutineDayExercise;
@@ -45,6 +58,7 @@ function SwipeableExerciseRow({
   onToggle: () => void;
   onDelete: () => void;
   onLongPress?: () => void;
+  menuItems?: OverflowMenuItem[];
   children?: React.ReactNode;
 }) {
   const setsCount = ex.sets?.length ?? ex.target_sets;
@@ -63,11 +77,14 @@ function SwipeableExerciseRow({
         activeOpacity={0.7}
       >
         <View style={styles.exerciseInfo}>
-          <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+            <Text style={styles.expandArrow}>{isExpanded ? '▾' : '▸'}</Text>
+          </View>
           <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group} · {ex.exercise?.equipment}</Text>
         </View>
         <Text style={styles.exerciseTarget}>{setsLabel}</Text>
-        <Text style={styles.expandArrow}>{isExpanded ? '▾' : '▸'}</Text>
+        {menuItems && <View style={styles.menuWrap}><OverflowMenu items={menuItems} /></View>}
       </TouchableOpacity>
       {isExpanded && children}
     </SwipeToDeleteRow>
@@ -142,6 +159,8 @@ export default function DayEditorScreen() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
+  const [showSwapPicker, setShowSwapPicker] = useState(false);
 
   const loadDay = useCallback(() => {
     if (!currentRoutine || !dayId) return;
@@ -201,6 +220,14 @@ export default function DayEditorScreen() {
 
   const handleAddExerciseConfirm = async (exercise: Exercise, setsPayload: SetsPayloadItem[]) => {
     if (!dayId) return;
+    const normalizedSets = setsPayload.map((s) => ({
+      set_number: s.set_number,
+      target_weight: s.target_weight,
+      target_reps_min: s.target_reps_min,
+      target_reps_max: s.target_reps_max,
+      target_rir: s.target_rir ?? null,
+      is_warmup: s.is_warmup ?? false,
+    }));
     try {
       const dayExercises = day?.exercises ?? [];
       await routineService.addExerciseToDay(
@@ -208,10 +235,10 @@ export default function DayEditorScreen() {
           routine_day_id: dayId,
           exercise_id: exercise.id,
           sort_order: dayExercises.length,
-          target_sets: setsPayload.length,
-          target_reps: setsPayload[0]?.target_reps_min ?? 10,
+          target_sets: normalizedSets.length,
+          target_reps: normalizedSets[0]?.target_reps_min ?? 10,
         },
-        setsPayload,
+        normalizedSets,
       );
       setShowAddExercise(false);
       refresh();
@@ -235,6 +262,110 @@ export default function DayEditorScreen() {
 
   const handleDeleteExercise = (exercise: Exercise) =>
     confirmDeleteExercise(exercise, user?.id ?? '', refresh);
+
+  const applySupersetChanges = async (dayExercises: RoutineDayExercise[], updated: SupersetGroups) => {
+    for (const ex of dayExercises) {
+      const newGroup = updated[ex.id] ?? null;
+      const oldGroup = ex.superset_group ?? null;
+      if (newGroup !== oldGroup) {
+        await routineService.setSupersetGroup(ex.id, newGroup);
+      }
+    }
+    refresh();
+  };
+
+  const handleExSupersetPrev = async (entryId: string) => {
+    if (!day) return;
+    const idx = day.exercises.findIndex((e) => e.id === entryId);
+    if (idx <= 0) return;
+    const groups: SupersetGroups = {};
+    for (const ex of day.exercises) groups[ex.id] = ex.superset_group ?? null;
+    const updated = supersetPrev(day.exercises, idx, groups);
+    await applySupersetChanges(day.exercises, updated);
+  };
+
+  const handleExSupersetNext = async (entryId: string) => {
+    if (!day) return;
+    const idx = day.exercises.findIndex((e) => e.id === entryId);
+    if (idx < 0 || idx >= day.exercises.length - 1) return;
+    const groups: SupersetGroups = {};
+    for (const ex of day.exercises) groups[ex.id] = ex.superset_group ?? null;
+    const updated = supersetNext(day.exercises, idx, groups);
+    await applySupersetChanges(day.exercises, updated);
+  };
+
+  const handleExSeparate = async (entryId: string) => {
+    if (!day) return;
+    const idx = day.exercises.findIndex((e) => e.id === entryId);
+    if (idx < 0) return;
+    const groups: SupersetGroups = {};
+    for (const ex of day.exercises) groups[ex.id] = ex.superset_group ?? null;
+    const result = separateFromSuperset(day.exercises, idx, groups);
+    await applySupersetChanges(day.exercises, result.groups);
+    if (result.exercises !== day.exercises) {
+      await handleReorderExercises(result.exercises);
+    }
+  };
+
+  const handleExDuplicate = async (entryId: string) => {
+    if (!dayId) return;
+    try {
+      await routineService.duplicateExercise(entryId, dayId);
+      refresh();
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
+  const handleExSwapStart = (entryId: string) => {
+    setSwapEntryId(entryId);
+    setShowSwapPicker(true);
+  };
+
+  const handleExSwapSelect = async (exercise: Exercise) => {
+    if (!swapEntryId) return;
+    try {
+      await routineService.changeExercise(swapEntryId, exercise.id);
+      refresh();
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+    setShowSwapPicker(false);
+    setSwapEntryId(null);
+  };
+
+  const handleExRemove = async (entryId: string) => {
+    if (!day) return;
+    await routineService.removeDayExercise(entryId);
+    const remaining = day.exercises.filter((e) => e.id !== entryId);
+    const groups: SupersetGroups = {};
+    for (const ex of remaining) groups[ex.id] = ex.superset_group ?? null;
+    const cleaned = autoCleanAfterDelete(remaining, groups);
+    for (const ex of remaining) {
+      if ((cleaned[ex.id] ?? null) !== (ex.superset_group ?? null)) {
+        await routineService.setSupersetGroup(ex.id, cleaned[ex.id] ?? null);
+      }
+    }
+    refresh();
+  };
+
+  const buildExerciseMenuItems = (ex: RoutineDayExercise, idx: number): OverflowMenuItem[] => {
+    if (!day) return [];
+    const items: OverflowMenuItem[] = [];
+    const myGroup = ex.superset_group ?? null;
+    const prevGroup = idx > 0 ? (day.exercises[idx - 1].superset_group ?? null) : null;
+    const nextGroup = idx < day.exercises.length - 1 ? (day.exercises[idx + 1].superset_group ?? null) : null;
+    if (idx > 0 && (!myGroup || myGroup !== prevGroup))
+      items.push({ label: 'Superset Prev', onPress: () => handleExSupersetPrev(ex.id) });
+    if (idx < day.exercises.length - 1 && (!myGroup || myGroup !== nextGroup))
+      items.push({ label: 'Superset Next', onPress: () => handleExSupersetNext(ex.id) });
+    if (myGroup)
+      items.push({ label: 'Separate', onPress: () => handleExSeparate(ex.id) });
+    items.push({ label: 'Swap', onPress: () => handleExSwapStart(ex.id) });
+    items.push({ label: 'Duplicate', onPress: () => handleExDuplicate(ex.id) });
+    items.push({ label: 'Delete', onPress: () => handleExRemove(ex.id), destructive: true });
+    return items;
+  };
 
   const handleRemoveDay = useCallback(() => {
     if (!day || !dayId) return;
@@ -280,21 +411,51 @@ export default function DayEditorScreen() {
         <Text style={styles.sectionLabel}>Exercises</Text>
 
         <DraggableFlatList
-          data={day.exercises}
-          keyExtractor={(item) => item.id}
+          data={(() => {
+            const groups: SupersetGroups = {};
+            for (const ex of day.exercises) groups[ex.id] = ex.superset_group ?? null;
+            return buildReorderItems(day.exercises, groups);
+          })()}
+          keyExtractor={(item) => item.type === 'single' ? item.entry.id : item.groupId}
           scrollEnabled={false}
-          onDragEnd={({ data }) => handleReorderExercises(data)}
-          renderItem={({ item, drag }: RenderItemParams<RoutineDayExercise>) => (
+          onDragEnd={({ data }) => {
+            const flat = flattenReorderItems(data);
+            handleReorderExercises(flat);
+          }}
+          renderItem={({ item, drag }: RenderItemParams<ReorderItem>) => (
             <ScaleDecorator>
-              <SwipeableExerciseRow
-                ex={item}
-                isExpanded={expandedIds.has(item.id)}
-                onToggle={() => toggleExpand(item.id)}
-                onDelete={() => handleRemoveExercise(item.id)}
-                onLongPress={drag}
-              >
-                <ExerciseSetsEditor entry={item} wUnit={wUnit} onSave={refresh} />
-              </SwipeableExerciseRow>
+              {item.type === 'single' ? (
+                <SwipeableExerciseRow
+                  ex={item.entry}
+                  isExpanded={expandedIds.has(item.entry.id)}
+                  onToggle={() => toggleExpand(item.entry.id)}
+                  onDelete={() => handleExRemove(item.entry.id)}
+                  onLongPress={drag}
+                  menuItems={buildExerciseMenuItems(item.entry, day.exercises.indexOf(item.entry))}
+                >
+                  <ExerciseSetsEditor entry={item.entry} wUnit={wUnit} onSave={refresh} />
+                </SwipeableExerciseRow>
+              ) : (
+                <View>
+                  {item.entries.map((entry, idx) => {
+                    const pos = idx === 0 ? 'first' as const : idx === item.entries.length - 1 ? 'last' as const : 'middle' as const;
+                    return (
+                      <SupersetBracket key={entry.id} position={pos}>
+                        <SwipeableExerciseRow
+                          ex={entry}
+                          isExpanded={expandedIds.has(entry.id)}
+                          onToggle={() => toggleExpand(entry.id)}
+                          onDelete={() => handleExRemove(entry.id)}
+                          onLongPress={drag}
+                          menuItems={buildExerciseMenuItems(entry, day.exercises.indexOf(entry))}
+                        >
+                          <ExerciseSetsEditor entry={entry} wUnit={wUnit} onSave={refresh} />
+                        </SwipeableExerciseRow>
+                      </SupersetBracket>
+                    );
+                  })}
+                </View>
+              )}
             </ScaleDecorator>
           )}
         />
@@ -312,6 +473,12 @@ export default function DayEditorScreen() {
         onConfirm={handleAddExerciseConfirm}
         weightUnit={wUnit}
         onDeleteExercise={handleDeleteExercise}
+      />
+
+      <ExercisePickerModal
+        visible={showSwapPicker}
+        onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); }}
+        onSelect={handleExSwapSelect}
       />
     </View>
   );
@@ -353,10 +520,19 @@ const styles = StyleSheet.create({
   exerciseInfo: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   exerciseName: {
     fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.text,
+  },
+  expandArrow: {
+    fontSize: 12,
+    color: colors.textMuted,
   },
   exerciseMeta: {
     fontSize: 12,
@@ -371,9 +547,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginRight: 8,
   },
-  expandArrow: {
-    fontSize: 14,
-    color: colors.textMuted,
+  menuWrap: {
+    marginLeft: 4,
+    alignSelf: 'center',
   },
   setsEditorContainer: {
     paddingHorizontal: 8,

@@ -267,6 +267,53 @@ export const routineService = {
     if (error) throw error;
   },
 
+  async setSupersetGroup(entryId: string, group: string | null): Promise<void> {
+    const { error } = await supabase
+      .from('routine_day_exercises')
+      .update({ superset_group: group })
+      .eq('id', entryId);
+    if (error) throw error;
+  },
+
+  async duplicateExercise(entryId: string, dayId: string): Promise<void> {
+    const day = await this.getDayWithExercises(dayId);
+    const source = day.exercises.find((e) => e.id === entryId);
+    if (!source) throw new Error('Exercise not found');
+
+    let insertIndex = source.sort_order + 1;
+    if (source.superset_group) {
+      const lastMember = [...day.exercises]
+        .filter((e) => e.superset_group === source.superset_group)
+        .sort((a, b) => b.sort_order - a.sort_order)[0];
+      if (lastMember) insertIndex = lastMember.sort_order + 1;
+    }
+
+    const toShift = day.exercises.filter((e) => e.sort_order >= insertIndex);
+    for (const ex of toShift) {
+      await this.updateDayExercise(ex.id, { sort_order: ex.sort_order + 1 });
+    }
+
+    const setsPayload = (source.sets ?? []).map((s) => ({
+      set_number: s.set_number,
+      target_weight: s.target_weight,
+      target_reps_min: s.target_reps_min,
+      target_reps_max: s.target_reps_max,
+      target_rir: s.target_rir ?? null,
+      is_warmup: s.is_warmup ?? false,
+    }));
+
+    await this.addExerciseToDay(
+      {
+        routine_day_id: dayId,
+        exercise_id: source.exercise_id,
+        sort_order: insertIndex,
+        target_sets: source.target_sets,
+        target_reps: source.target_reps,
+      },
+      setsPayload,
+    );
+  },
+
   async duplicateDay(dayId: string): Promise<RoutineDay> {
     const source = await this.getDayWithExercises(dayId);
 
@@ -275,6 +322,8 @@ export const routineService = {
       day_of_week: null,
       label: `${source.label} (copy)`,
     });
+
+    const groupMap = new Map<string, string>();
 
     for (const ex of source.exercises) {
       const setsPayload = (ex.sets ?? []).map((s) => ({
@@ -286,7 +335,7 @@ export const routineService = {
         is_warmup: s.is_warmup ?? false,
       }));
 
-      await this.addExerciseToDay(
+      const newEntry = await this.addExerciseToDay(
         {
           routine_day_id: newDay.id,
           exercise_id: ex.exercise_id,
@@ -296,6 +345,19 @@ export const routineService = {
         },
         setsPayload,
       );
+
+      if (ex.superset_group) {
+        if (!groupMap.has(ex.superset_group)) {
+          const hex = '0123456789abcdef';
+          let id = '';
+          for (let i = 0; i < 32; i++) {
+            id += hex[Math.floor(Math.random() * 16)];
+            if (i === 7 || i === 11 || i === 15 || i === 19) id += '-';
+          }
+          groupMap.set(ex.superset_group, id);
+        }
+        await this.setSupersetGroup(newEntry.id, groupMap.get(ex.superset_group)!);
+      }
     }
 
     return newDay;

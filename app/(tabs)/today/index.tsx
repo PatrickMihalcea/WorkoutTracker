@@ -6,7 +6,8 @@ import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
-import { Button, Card, EmptyState, BottomSheetModal, RirCircle } from '../../../src/components/ui';
+import { Button, Card, EmptyState, BottomSheetModal, RirCircle, SupersetBracket } from '../../../src/components/ui';
+import { getSupersetPosition, type SupersetGroups } from '../../../src/utils/superset';
 import { colors, fonts } from '../../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
 import { weightUnitLabel, formatWeight } from '../../../src/utils/units';
@@ -204,75 +205,82 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {displayWorkout.exercises.map((ex) => {
-                const setsLabel = ex.sets && ex.sets.length > 0
-                  ? `${ex.sets.length} sets`
-                  : `${ex.target_sets}x${ex.target_reps}`;
-                const isExpanded = expandedIds.has(ex.id);
-                return (
-                  <View key={ex.id}>
-                    <TouchableOpacity
-                      style={styles.exerciseRow}
-                      onPress={() => {
-                        setExpandedIds((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(ex.id)) next.delete(ex.id);
-                          else next.add(ex.id);
-                          return next;
-                        });
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.exerciseName}>
-                        {ex.exercise?.name ?? 'Exercise'}
-                      </Text>
-                      <Text style={styles.exerciseTarget}>{setsLabel}</Text>
-                    </TouchableOpacity>
-                    {isExpanded && ex.sets && ex.sets.length > 0 && (
-                      <View style={styles.setDetails}>
-                        <View style={styles.setDetailHeader}>
-                          <View style={styles.setCol}><Text style={styles.setDetailCol}>SET</Text></View>
-                          <View style={styles.setCol}><Text style={styles.setDetailCol}>{weightUnitLabel(wUnit)}</Text></View>
-                          <View style={styles.setCol}><Text style={styles.setDetailCol}>REPS</Text></View>
-                          <View style={styles.setCol}><Text style={styles.setDetailCol}>RIR</Text></View>
-                        </View>
-                        {(() => {
-                          let workingCount = 0;
-                          return ex.sets.map((s) => {
-                            if (!s.is_warmup) workingCount++;
-                            return (
-                              <View key={s.id} style={styles.setDetailRow}>
-                                <View style={styles.setCol}>
-                                  {s.is_warmup ? (
-                                    <View style={styles.warmupCircle}><Text style={styles.warmupText}>W</Text></View>
-                                  ) : (
-                                    <Text style={styles.setDetailCell}>{workingCount}</Text>
-                                  )}
-                                </View>
-                                <View style={styles.setCol}>
-                                  <Text style={styles.setDetailCell}>
-                                    {s.target_weight > 0 ? formatWeight(s.target_weight, wUnit) : '-'}
-                                  </Text>
-                                </View>
-                                <View style={styles.setCol}>
-                                  <Text style={styles.setDetailCell}>
-                                    {s.target_reps_min === s.target_reps_max
-                                      ? String(s.target_reps_min)
-                                      : `${s.target_reps_min}-${s.target_reps_max}`}
-                                  </Text>
-                                </View>
-                                <View style={styles.setCol}>
-                                  <RirCircle value={s.target_rir ?? null} size={22} />
-                                </View>
-                              </View>
-                            );
-                          });
-                        })()}
+              {(() => {
+                const groups: SupersetGroups = {};
+                for (const e of displayWorkout.exercises) groups[e.id] = e.superset_group ?? null;
+                return displayWorkout.exercises.map((ex, exIdx) => {
+                  const setsLabel = ex.sets && ex.sets.length > 0
+                    ? `${ex.sets.length} sets`
+                    : `${ex.target_sets}x${ex.target_reps}`;
+                  const isExpanded = expandedIds.has(ex.id);
+                  const ssPosition = getSupersetPosition(displayWorkout.exercises, exIdx, groups);
+                  return (
+                    <SupersetBracket key={ex.id} position={ssPosition}>
+                      <View>
+                        <TouchableOpacity
+                          style={styles.exerciseRow}
+                          onPress={() => {
+                            setExpandedIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(ex.id)) next.delete(ex.id);
+                              else next.add(ex.id);
+                              return next;
+                            });
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.exerciseName}>
+                            {ex.exercise?.name ?? 'Exercise'}
+                          </Text>
+                          <Text style={styles.exerciseTarget}>{setsLabel}</Text>
+                        </TouchableOpacity>
+                        {isExpanded && ex.sets && ex.sets.length > 0 && (
+                          <View style={styles.setDetails}>
+                            <View style={styles.setDetailHeader}>
+                              <View style={styles.setCol}><Text style={styles.setDetailCol}>SET</Text></View>
+                              <View style={styles.setCol}><Text style={styles.setDetailCol}>{weightUnitLabel(wUnit)}</Text></View>
+                              <View style={styles.setCol}><Text style={styles.setDetailCol}>REPS</Text></View>
+                              <View style={styles.setCol}><Text style={styles.setDetailCol}>RIR</Text></View>
+                            </View>
+                            {(() => {
+                              let workingCount = 0;
+                              return ex.sets.map((s) => {
+                                if (!s.is_warmup) workingCount++;
+                                return (
+                                  <View key={s.id} style={styles.setDetailRow}>
+                                    <View style={styles.setCol}>
+                                      {s.is_warmup ? (
+                                        <View style={styles.warmupCircle}><Text style={styles.warmupText}>W</Text></View>
+                                      ) : (
+                                        <Text style={styles.setDetailCell}>{workingCount}</Text>
+                                      )}
+                                    </View>
+                                    <View style={styles.setCol}>
+                                      <Text style={styles.setDetailCell}>
+                                        {s.target_weight > 0 ? formatWeight(s.target_weight, wUnit) : '-'}
+                                      </Text>
+                                    </View>
+                                    <View style={styles.setCol}>
+                                      <Text style={styles.setDetailCell}>
+                                        {s.target_reps_min === s.target_reps_max
+                                          ? String(s.target_reps_min)
+                                          : `${s.target_reps_min}-${s.target_reps_max}`}
+                                      </Text>
+                                    </View>
+                                    <View style={styles.setCol}>
+                                      <RirCircle value={s.target_rir ?? null} size={22} />
+                                    </View>
+                                  </View>
+                                );
+                              });
+                            })()}
+                          </View>
+                        )}
                       </View>
-                    )}
-                  </View>
-                );
-              })}
+                    </SupersetBracket>
+                  );
+                });
+              })()}
             </Card>
 
             {hasActiveSession || activeSession ? (

@@ -54,6 +54,7 @@ export interface WorkoutRow {
   target_reps_min: number;
   target_reps_max: number;
   exercise_order: number;
+  superset_group: string | null;
 }
 
 export interface WorkoutSessionWithRoutine extends WorkoutSession {

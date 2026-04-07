@@ -27,6 +27,7 @@ export const workoutRowService = {
           target_reps_min: tpl?.target_reps_min ?? 0,
           target_reps_max: tpl?.target_reps_max ?? 0,
           exercise_order: exIdx,
+          superset_group: ex.superset_group ?? null,
         });
       }
     }
@@ -72,6 +73,7 @@ export const workoutRowService = {
     targets?: { target_weight: number; target_reps_min: number; target_reps_max: number },
     exerciseOrder?: number,
     isWarmup?: boolean,
+    supersetGroup?: string | null,
   ): Promise<WorkoutRow> {
     const { data, error } = await supabase
       .from('workout_rows')
@@ -89,11 +91,30 @@ export const workoutRowService = {
         target_reps_min: targets?.target_reps_min ?? 0,
         target_reps_max: targets?.target_reps_max ?? 0,
         exercise_order: exerciseOrder ?? 0,
+        superset_group: supersetGroup ?? null,
       })
       .select()
       .single();
     if (error) throw error;
     return data;
+  },
+
+  async updateSupersetGroup(sessionId: string, entryId: string, group: string | null): Promise<void> {
+    const { error } = await supabase
+      .from('workout_rows')
+      .update({ superset_group: group })
+      .eq('session_id', sessionId)
+      .eq('routine_day_exercise_id', entryId);
+    if (error) throw error;
+  },
+
+  async updateExerciseId(sessionId: string, entryId: string, newExerciseId: string): Promise<void> {
+    const { error } = await supabase
+      .from('workout_rows')
+      .update({ exercise_id: newExerciseId })
+      .eq('session_id', sessionId)
+      .eq('routine_day_exercise_id', entryId);
+    if (error) throw error;
   },
 
   async updateWarmup(id: string, isWarmup: boolean): Promise<void> {

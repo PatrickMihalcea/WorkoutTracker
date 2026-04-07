@@ -5,6 +5,8 @@ import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit } from '../../models
 import { colors, fonts } from '../../constants';
 import { Card } from '../ui/Card';
 import { SwipeToDeleteRow } from '../ui/SwipeToDeleteRow';
+import { OverflowMenu } from '../ui/OverflowMenu';
+import type { OverflowMenuItem } from '../ui/OverflowMenu';
 import { SetRow } from './SetRow';
 import { weightUnitLabel, formatWeight } from '../../utils/units';
 import { useThemeColors } from '../../hooks/useThemeColors';
@@ -35,6 +37,15 @@ interface ExerciseCardProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   onLongPress?: () => void;
+  supersetGroup?: string | null;
+  canSupersetPrev?: boolean;
+  canSupersetNext?: boolean;
+  onSupersetPrev?: () => void;
+  onSupersetNext?: () => void;
+  onSeparate?: () => void;
+  onSwap?: () => void;
+  onDuplicate?: () => void;
+  noBottomMargin?: boolean;
 }
 
 export function ExerciseCard({
@@ -54,6 +65,15 @@ export function ExerciseCard({
   isCollapsed,
   onToggleCollapse,
   onLongPress,
+  supersetGroup,
+  canSupersetPrev,
+  canSupersetNext,
+  onSupersetPrev,
+  onSupersetNext,
+  onSeparate,
+  onSwap,
+  onDuplicate,
+  noBottomMargin,
 }: ExerciseCardProps) {
   const { setCompletion } = useThemeColors();
   const exerciseName = entry.exercise?.name ?? 'Unknown Exercise';
@@ -108,10 +128,25 @@ export function ExerciseCard({
     onToggleCollapse?.();
   };
 
+  const menuItems = useMemo((): OverflowMenuItem[] => {
+    const items: OverflowMenuItem[] = [];
+    if (canSupersetPrev) items.push({ label: 'Superset Prev', onPress: () => onSupersetPrev?.() });
+    if (canSupersetNext) items.push({ label: 'Superset Next', onPress: () => onSupersetNext?.() });
+    if (supersetGroup) items.push({ label: 'Separate', onPress: () => onSeparate?.() });
+    if (onSwap) items.push({ label: 'Swap', onPress: onSwap });
+    if (onDuplicate) items.push({ label: 'Duplicate', onPress: onDuplicate });
+    if (onRemove) items.push({ label: 'Delete', onPress: onRemove, destructive: true });
+    return items;
+  }, [supersetGroup, canSupersetPrev, canSupersetNext, onSupersetPrev, onSupersetNext, onSeparate, onSwap, onDuplicate, onRemove]);
+
+  const showMenu = !reorderCollapsed && (onSwap || onDuplicate || onRemove);
+
+  const marginOverride = noBottomMargin ? { marginBottom: 0 } : undefined;
+
   if (reorderCollapsed) {
     const reorderCardStyle = (allDone && canAnimate)
-      ? [styles.cardCollapsed, { backgroundColor: setCompletion }]
-      : [styles.cardCollapsed];
+      ? [styles.cardCollapsed, { backgroundColor: setCompletion }, marginOverride]
+      : [styles.cardCollapsed, marginOverride];
     return (
       <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
         <Card style={StyleSheet.flatten(reorderCardStyle)}>
@@ -132,8 +167,8 @@ export function ExerciseCard({
   if (isCollapsed) {
     const collapsedBg = animatedBg ?? (allDone && canAnimate ? setCompletion : undefined);
     const collapsedStyle = collapsedBg
-      ? [styles.cardCollapsed, { backgroundColor: collapsedBg }] as any
-      : styles.cardCollapsed;
+      ? [styles.cardCollapsed, { backgroundColor: collapsedBg }, marginOverride] as any
+      : [styles.cardCollapsed, marginOverride];
 
     return (
       <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
@@ -147,6 +182,7 @@ export function ExerciseCard({
               <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
                 {completedCount}/{rows.length}
               </Text>
+              {showMenu && <OverflowMenu items={menuItems} />}
             </View>
           </TouchableOpacity>
         </Card>
@@ -156,8 +192,8 @@ export function ExerciseCard({
 
   const expandedBg = animatedBg ?? undefined;
   const expandedStyle = expandedBg
-    ? [styles.card, { backgroundColor: expandedBg }] as any
-    : styles.card;
+    ? [styles.card, { backgroundColor: expandedBg }, marginOverride] as any
+    : [styles.card, marginOverride];
 
   let workingSetIndex = 0;
 
@@ -172,6 +208,7 @@ export function ExerciseCard({
           <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
             {completedCount}/{rows.length}
           </Text>
+          {showMenu && <OverflowMenu items={menuItems} />}
         </View>
       </TouchableOpacity>
 
@@ -303,6 +340,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: fonts.bold,
     color: colors.text,
+    marginRight: 4,
   },
   columnHeaders: {
     flexDirection: 'row',

@@ -39,11 +39,12 @@ export interface RoutineDayExercise {
   sort_order: number;
   target_sets: number;
   target_reps: number;
+  superset_group: string | null;
   exercise?: Exercise;
   sets?: RoutineDayExerciseSet[];
 }
 
-export type RoutineDayExerciseInsert = Omit<RoutineDayExercise, 'id' | 'exercise' | 'sets'>;
+export type RoutineDayExerciseInsert = Omit<RoutineDayExercise, 'id' | 'exercise' | 'sets' | 'superset_group'>;
 
 export enum DayOfWeek {
   Monday = 1,

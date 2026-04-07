@@ -15,3 +15,4 @@ export type { OverflowMenuItem } from './OverflowMenu';
 export { Toast } from './Toast';
 export { RirCircle, getRirColor, formatRir } from './RirCircle';
 export { RirPickerModal } from './RirPickerModal';
+export { SupersetBracket } from './SupersetBracket';
