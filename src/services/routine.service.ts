@@ -282,6 +282,8 @@ export const routineService = {
         target_weight: s.target_weight,
         target_reps_min: s.target_reps_min,
         target_reps_max: s.target_reps_max,
+        target_rir: s.target_rir ?? null,
+        is_warmup: s.is_warmup ?? false,
       }));
 
       await this.addExerciseToDay(

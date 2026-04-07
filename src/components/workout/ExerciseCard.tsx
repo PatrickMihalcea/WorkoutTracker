@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation, Animated } from 'react-native';
 import type { LayoutAnimationConfig } from 'react-native';
 import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit } from '../../models';
@@ -28,6 +28,8 @@ interface ExerciseCardProps {
   onToggleRow: (id: string, entryId: string) => void;
   onDeleteRow: (id: string, entryId: string, setNumber: number) => void;
   onAddRow: (entryId: string, exerciseId: string) => void;
+  onAddWarmup: (entryId: string, exerciseId: string) => void;
+  onToggleWarmup: (id: string, entryId: string) => void;
   onRemove?: () => void;
   reorderCollapsed?: boolean;
   isCollapsed?: boolean;
@@ -45,6 +47,8 @@ export function ExerciseCard({
   onToggleRow,
   onDeleteRow,
   onAddRow,
+  onAddWarmup,
+  onToggleWarmup,
   onRemove,
   reorderCollapsed,
   isCollapsed,
@@ -58,18 +62,22 @@ export function ExerciseCard({
   const allDone = rows.length > 0 && rows.every((r) => r.is_completed);
   const templates = entry.sets ?? [];
 
+  const sortedRows = useMemo(() => {
+    const warmups = rows.filter((r) => r.is_warmup).sort((a, b) => a.set_number - b.set_number);
+    const working = rows.filter((r) => !r.is_warmup).sort((a, b) => a.set_number - b.set_number);
+    return [...warmups, ...working];
+  }, [rows]);
+
   const colorAnim = useRef(new Animated.Value(allDone ? 1 : 0)).current;
   const prevAllDone = useRef(allDone);
 
   const canAnimate = setCompletion !== 'transparent';
 
-  // Color fade: only on allDone transitions
   useEffect(() => {
     if (allDone === prevAllDone.current) return;
     prevAllDone.current = allDone;
 
     if (allDone && canAnimate) {
-      // Done: fade color in + auto-collapse
       LayoutAnimation.configureNext(slowLayout);
       onToggleCollapse?.();
       Animated.timing(colorAnim, {
@@ -78,7 +86,6 @@ export function ExerciseCard({
         useNativeDriver: false,
       }).start();
     } else if (!allDone && canAnimate) {
-      // Undone: fade color out
       Animated.timing(colorAnim, {
         toValue: 0,
         duration: ANIM_DURATION,
@@ -96,7 +103,6 @@ export function ExerciseCard({
 
   const doneTextColor = (allDone && canAnimate) ? '#000000' : undefined;
 
-  // Collapse/expand: always animate layout, never touch color
   const handleToggle = () => {
     LayoutAnimation.configureNext(slowLayout);
     onToggleCollapse?.();
@@ -153,6 +159,8 @@ export function ExerciseCard({
     ? [styles.card, { backgroundColor: expandedBg }] as any
     : styles.card;
 
+  let workingSetIndex = 0;
+
   const cardContent = (
     <Card style={expandedStyle}>
       <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
@@ -186,22 +194,25 @@ export function ExerciseCard({
           <View style={styles.actionCol} />
         </View>
 
-        {rows.map((row, i) => {
+        {sortedRows.map((row) => {
+          const displayNum = row.is_warmup ? 'W' : ++workingSetIndex;
+
+          const origIndex = rows.indexOf(row);
           let suggestedWeight: string | undefined;
-          for (let j = i - 1; j >= 0; j--) {
+          for (let j = origIndex - 1; j >= 0; j--) {
             if (rows[j].weight) { suggestedWeight = rows[j].weight; break; }
           }
           if (!suggestedWeight) {
-            const tpl = templates[i];
+            const tpl = templates[origIndex];
             if (tpl?.target_weight > 0) suggestedWeight = formatWeight(tpl.target_weight, weightUnit);
           }
 
           let suggestedReps: string | undefined;
-          for (let j = i - 1; j >= 0; j--) {
+          for (let j = origIndex - 1; j >= 0; j--) {
             if (rows[j].reps) { suggestedReps = rows[j].reps; break; }
           }
           if (!suggestedReps) {
-            const tpl = templates[i];
+            const tpl = templates[origIndex];
             if (tpl) {
               suggestedReps = tpl.target_reps_min === tpl.target_reps_max
                 ? String(tpl.target_reps_min)
@@ -213,7 +224,8 @@ export function ExerciseCard({
             <SetRow
               key={row.id}
               row={row}
-              previousSet={previousSets[i]}
+              displaySetNumber={displayNum}
+              previousSet={previousSets[origIndex]}
               weightUnit={weightUnit}
               suggestedWeight={suggestedWeight}
               suggestedReps={suggestedReps}
@@ -222,17 +234,27 @@ export function ExerciseCard({
               onUpdateRow={(updates) => onUpdateRow(row.id, entry.id, updates)}
               onToggle={() => onToggleRow(row.id, entry.id)}
               onSwipeDelete={() => onDeleteRow(row.id, entry.id, row.set_number)}
+              onToggleWarmup={() => onToggleWarmup(row.id, entry.id)}
             />
           );
         })}
 
-        <TouchableOpacity
-          style={styles.addSetButton}
-          onPress={() => onAddRow(entry.id, entry.exercise_id)}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.addSetText, doneTextColor && { color: doneTextColor }]}>+ Add Set</Text>
-        </TouchableOpacity>
+        <View style={styles.addSetRow}>
+          <TouchableOpacity
+            style={styles.addSetButton}
+            onPress={() => onAddWarmup(entry.id, entry.exercise_id)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.addWarmupText, doneTextColor && { color: doneTextColor }]}>+ Warmup</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addSetButton}
+            onPress={() => onAddRow(entry.id, entry.exercise_id)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.addSetText, doneTextColor && { color: doneTextColor }]}>+ Add Set</Text>
+          </TouchableOpacity>
+        </View>
     </Card>
   );
 
@@ -297,19 +319,29 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-  setLabelCol: { width: 22, alignItems: 'center' },
+  setLabelCol: { width: 28, alignItems: 'center' },
   previousCol: { width: 72, alignItems: 'center' },
   weightCol: { flex: 0.8, alignItems: 'center' },
-  inputCol: { flex: 1, alignItems: 'center' },
-  rirCol: { maxWidth: 44, flex: 1, alignItems: 'center' },
+  inputCol: { flex: 0.8, alignItems: 'center' },
+  rirCol: { width: 40, alignItems: 'center' },
   actionCol: { width: 32, marginLeft: 4 },
+  addSetRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 24,
+    marginTop: 4,
+  },
   addSetButton: {
     alignItems: 'center',
     paddingVertical: 10,
-    marginTop: 4,
   },
   addSetText: {
     color: colors.textSecondary,
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+  },
+  addWarmupText: {
+    color: '#FFD93D',
     fontSize: 14,
     fontFamily: fonts.semiBold,
   },

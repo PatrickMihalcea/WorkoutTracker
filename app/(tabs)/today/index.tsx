@@ -6,7 +6,7 @@ import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
-import { Button, Card, EmptyState, BottomSheetModal } from '../../../src/components/ui';
+import { Button, Card, EmptyState, BottomSheetModal, RirCircle } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
 import { weightUnitLabel, formatWeight } from '../../../src/utils/units';
@@ -231,23 +231,43 @@ export default function HomeScreen() {
                     {isExpanded && ex.sets && ex.sets.length > 0 && (
                       <View style={styles.setDetails}>
                         <View style={styles.setDetailHeader}>
-                          <Text style={[styles.setDetailCol, styles.setColNum]}>SET</Text>
-                          <Text style={[styles.setDetailCol, styles.setColWeight]}>{weightUnitLabel(wUnit)}</Text>
-                          <Text style={[styles.setDetailCol, styles.setColReps]}>REPS</Text>
+                          <View style={styles.setCol}><Text style={styles.setDetailCol}>SET</Text></View>
+                          <View style={styles.setCol}><Text style={styles.setDetailCol}>{weightUnitLabel(wUnit)}</Text></View>
+                          <View style={styles.setCol}><Text style={styles.setDetailCol}>REPS</Text></View>
+                          <View style={styles.setCol}><Text style={styles.setDetailCol}>RIR</Text></View>
                         </View>
-                        {ex.sets.map((s) => (
-                          <View key={s.id} style={styles.setDetailRow}>
-                            <Text style={[styles.setDetailCell, styles.setColNum]}>{s.set_number}</Text>
-                            <Text style={[styles.setDetailCell, styles.setColWeight]}>
-                              {s.target_weight > 0 ? formatWeight(s.target_weight, wUnit) : '-'}
-                            </Text>
-                            <Text style={[styles.setDetailCell, styles.setColReps]}>
-                              {s.target_reps_min === s.target_reps_max
-                                ? String(s.target_reps_min)
-                                : `${s.target_reps_min}-${s.target_reps_max}`}
-                            </Text>
-                          </View>
-                        ))}
+                        {(() => {
+                          let workingCount = 0;
+                          return ex.sets.map((s) => {
+                            if (!s.is_warmup) workingCount++;
+                            return (
+                              <View key={s.id} style={styles.setDetailRow}>
+                                <View style={styles.setCol}>
+                                  {s.is_warmup ? (
+                                    <View style={styles.warmupCircle}><Text style={styles.warmupText}>W</Text></View>
+                                  ) : (
+                                    <Text style={styles.setDetailCell}>{workingCount}</Text>
+                                  )}
+                                </View>
+                                <View style={styles.setCol}>
+                                  <Text style={styles.setDetailCell}>
+                                    {s.target_weight > 0 ? formatWeight(s.target_weight, wUnit) : '-'}
+                                  </Text>
+                                </View>
+                                <View style={styles.setCol}>
+                                  <Text style={styles.setDetailCell}>
+                                    {s.target_reps_min === s.target_reps_max
+                                      ? String(s.target_reps_min)
+                                      : `${s.target_reps_min}-${s.target_reps_max}`}
+                                  </Text>
+                                </View>
+                                <View style={styles.setCol}>
+                                  <RirCircle value={s.target_rir ?? null} size={22} />
+                                </View>
+                              </View>
+                            );
+                          });
+                        })()}
                       </View>
                     )}
                   </View>
@@ -262,9 +282,13 @@ export default function HomeScreen() {
                   size="lg"
                   onPress={async () => {
                     if (!user) return;
-                    const ok = await resumeWorkout(user.id);
-                    if (ok) expandWorkout();
-                    else setHasActiveSession(false);
+                    if (activeSession) {
+                      expandWorkout();
+                    } else {
+                      const ok = await resumeWorkout(user.id);
+                      if (ok) expandWorkout();
+                      else setHasActiveSession(false);
+                    }
                   }}
                 />
                 <Text style={styles.inProgress}>Workout in progress</Text>
@@ -403,12 +427,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   setDetails: {
-    paddingLeft: 8,
     paddingBottom: 8,
     marginBottom: 4,
   },
   setDetailHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingBottom: 4,
     marginBottom: 2,
     borderBottomWidth: 1,
@@ -422,6 +446,7 @@ const styles = StyleSheet.create({
   },
   setDetailRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 3,
   },
   setDetailCell: {
@@ -430,9 +455,20 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  setColNum: { width: 32 },
-  setColWeight: { flex: 1 },
-  setColReps: { flex: 1 },
+  setCol: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const },
+  warmupCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#D4A017',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  warmupText: {
+    fontSize: 10,
+    fontFamily: fonts.bold,
+    color: '#fff',
+  },
   inProgress: {
     color: colors.textSecondary,
     fontSize: 16,

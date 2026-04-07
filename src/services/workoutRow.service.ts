@@ -22,6 +22,7 @@ export const workoutRowService = {
           reps: '',
           rir: '',
           is_completed: false,
+          is_warmup: tpl?.is_warmup ?? false,
           target_weight: tpl?.target_weight ?? 0,
           target_reps_min: tpl?.target_reps_min ?? 0,
           target_reps_max: tpl?.target_reps_max ?? 0,
@@ -70,6 +71,7 @@ export const workoutRowService = {
     setNumber: number,
     targets?: { target_weight: number; target_reps_min: number; target_reps_max: number },
     exerciseOrder?: number,
+    isWarmup?: boolean,
   ): Promise<WorkoutRow> {
     const { data, error } = await supabase
       .from('workout_rows')
@@ -82,6 +84,7 @@ export const workoutRowService = {
         reps: '',
         rir: '',
         is_completed: false,
+        is_warmup: isWarmup ?? false,
         target_weight: targets?.target_weight ?? 0,
         target_reps_min: targets?.target_reps_min ?? 0,
         target_reps_max: targets?.target_reps_max ?? 0,
@@ -91,6 +94,14 @@ export const workoutRowService = {
       .single();
     if (error) throw error;
     return data;
+  },
+
+  async updateWarmup(id: string, isWarmup: boolean): Promise<void> {
+    const { error } = await supabase
+      .from('workout_rows')
+      .update({ is_warmup: isWarmup })
+      .eq('id', id);
+    if (error) throw error;
   },
 
   async deleteAndRenumber(

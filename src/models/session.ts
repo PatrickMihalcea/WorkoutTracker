@@ -49,6 +49,7 @@ export interface WorkoutRow {
   reps: string;
   rir: string;
   is_completed: boolean;
+  is_warmup: boolean;
   target_weight: number;
   target_reps_min: number;
   target_reps_max: number;

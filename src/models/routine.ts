@@ -26,6 +26,8 @@ export interface RoutineDayExerciseSet {
   target_weight: number;
   target_reps_min: number;
   target_reps_max: number;
+  target_rir: number | null;
+  is_warmup: boolean;
 }
 
 export type RoutineDayExerciseSetInsert = Omit<RoutineDayExerciseSet, 'id'>;

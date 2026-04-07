@@ -5,23 +5,30 @@ interface WorkoutOverlayContextType {
   expanded: boolean;
   expand: () => void;
   minimize: () => void;
+  suppressNextAutoExpand: () => void;
 }
 
 const WorkoutOverlayContext = createContext<WorkoutOverlayContextType>({
   expanded: false,
   expand: () => {},
   minimize: () => {},
+  suppressNextAutoExpand: () => {},
 });
 
 export function WorkoutOverlayProvider({ children }: { children: React.ReactNode }) {
   const session = useWorkoutStore((s) => s.session);
   const [expanded, setExpanded] = useState(false);
   const prevSessionRef = useRef<string | null>(null);
+  const suppressRef = useRef(false);
 
   useEffect(() => {
     const currentId = session?.id ?? null;
     if (currentId && currentId !== prevSessionRef.current) {
-      setExpanded(true);
+      if (suppressRef.current) {
+        suppressRef.current = false;
+      } else {
+        setExpanded(true);
+      }
     }
     if (!currentId) {
       setExpanded(false);
@@ -31,8 +38,12 @@ export function WorkoutOverlayProvider({ children }: { children: React.ReactNode
 
   const expand = useCallback(() => setExpanded(true), []);
   const minimize = useCallback(() => setExpanded(false), []);
+  const suppressNextAutoExpand = useCallback(() => { suppressRef.current = true; }, []);
 
-  const value = useMemo(() => ({ expanded, expand, minimize }), [expanded, expand, minimize]);
+  const value = useMemo(
+    () => ({ expanded, expand, minimize, suppressNextAutoExpand }),
+    [expanded, expand, minimize, suppressNextAutoExpand],
+  );
 
   return (
     <WorkoutOverlayContext.Provider value={value}>

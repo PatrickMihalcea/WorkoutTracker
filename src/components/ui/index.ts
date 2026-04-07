@@ -13,3 +13,5 @@ export { ExercisePickerModal } from './ExercisePickerModal';
 export { OverflowMenu } from './OverflowMenu';
 export type { OverflowMenuItem } from './OverflowMenu';
 export { Toast } from './Toast';
+export { RirCircle, getRirColor, formatRir } from './RirCircle';
+export { RirPickerModal } from './RirPickerModal';

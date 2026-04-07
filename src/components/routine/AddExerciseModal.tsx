@@ -31,6 +31,8 @@ export interface SetsPayloadItem {
   target_weight: number;
   target_reps_min: number;
   target_reps_max: number;
+  target_rir?: number | null;
+  is_warmup?: boolean;
 }
 
 interface AddExerciseModalProps {

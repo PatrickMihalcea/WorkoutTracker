@@ -8,6 +8,7 @@ interface SwipeToDeleteRowProps {
   expandedHeight?: number;
   children: React.ReactNode;
   enabled?: boolean;
+  onSwipeRight?: () => void;
 }
 
 export function SwipeToDeleteRow({
@@ -15,6 +16,7 @@ export function SwipeToDeleteRow({
   expandedHeight = 80,
   children,
   enabled = true,
+  onSwipeRight,
 }: SwipeToDeleteRowProps) {
   const swipeRef = useRef<Swipeable>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -25,12 +27,16 @@ export function SwipeToDeleteRow({
     outputRange: [0, expandedHeight],
   });
 
-  const handleSwipeOpen = () => {
+  const handleSwipeOpen = (direction: 'left' | 'right') => {
     swipeRef.current?.close();
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
-      Animated.timing(heightAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
-    ]).start(() => onDelete());
+    if (direction === 'right') {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
+        Animated.timing(heightAnim, { toValue: 0, duration: 250, useNativeDriver: false }),
+      ]).start(() => onDelete());
+    } else if (direction === 'left' && onSwipeRight) {
+      onSwipeRight();
+    }
   };
 
   const renderRightActions = (progress: Animated.AnimatedInterpolation<number>) => {
@@ -46,16 +52,34 @@ export function SwipeToDeleteRow({
     );
   };
 
+  const renderLeftActions = onSwipeRight
+    ? (progress: Animated.AnimatedInterpolation<number>) => {
+        const translateX = progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [-70, 0],
+          extrapolate: 'clamp',
+        });
+        return (
+          <Animated.View style={[styles.warmupAction, { transform: [{ translateX }] }]}>
+            <Text style={styles.warmupText}>W</Text>
+          </Animated.View>
+        );
+      }
+    : undefined;
+
   return (
     <Animated.View style={{ opacity: fadeAnim, maxHeight, overflow: 'hidden' as const }}>
       {enabled ? (
         <Swipeable
           ref={swipeRef}
           renderRightActions={renderRightActions}
+          renderLeftActions={renderLeftActions}
           onSwipeableOpen={handleSwipeOpen}
           rightThreshold={70}
+          leftThreshold={70}
           overshootRight={false}
-          dragOffsetFromLeftEdge={10000}
+          overshootLeft={false}
+          dragOffsetFromLeftEdge={onSwipeRight ? undefined : 10000}
           friction={2}
         >
           {children}
@@ -76,6 +100,17 @@ const styles = StyleSheet.create({
   },
   deleteText: {
     color: '#fff',
+    fontSize: 18,
+    fontFamily: fonts.bold,
+  },
+  warmupAction: {
+    width: 70,
+    backgroundColor: '#FFD93D',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  warmupText: {
+    color: '#000',
     fontSize: 18,
     fontFamily: fonts.bold,
   },

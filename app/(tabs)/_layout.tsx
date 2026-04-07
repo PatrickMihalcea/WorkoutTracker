@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { withLayoutContext, useSegments } from 'expo-router';
 import { createMaterialTopTabNavigator, type MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
@@ -5,7 +6,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, fonts } from '../../src/constants';
 import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
 import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
-import { WorkoutOverlay, WorkoutOverlayProvider } from '../../src/components/workout';
+import { WorkoutOverlay, WorkoutOverlayProvider, useWorkoutOverlay } from '../../src/components/workout';
+import { useAuthStore } from '../../src/stores/auth.store';
+import { useWorkoutStore } from '../../src/stores/workout.store';
 
 const { Navigator } = createMaterialTopTabNavigator();
 const SwipeableTabs = withLayoutContext(Navigator);
@@ -78,8 +81,18 @@ function TabLayoutInner() {
   const segments = useSegments();
   const { view, chartMode } = useHistoryView();
   const { chartActive } = useChartInteraction();
+  const { user } = useAuthStore();
+  const { session, resumeWorkout } = useWorkoutStore();
+  const { suppressNextAutoExpand } = useWorkoutOverlay();
   const isAtTabRoot = segments.length <= 2;
   const hasActiveChart = chartActive || (segments[1] === 'history' && view === 'dashboard' && chartMode === 'abs');
+
+  useEffect(() => {
+    if (user && !session) {
+      suppressNextAutoExpand();
+      resumeWorkout(user.id);
+    }
+  }, [user?.id]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>

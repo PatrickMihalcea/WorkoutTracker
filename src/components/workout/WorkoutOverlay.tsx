@@ -50,6 +50,8 @@ export function WorkoutOverlay() {
     toggleRow,
     deleteRow,
     addRow,
+    addWarmupRow,
+    toggleWarmup,
     removeExercise,
     addExercise,
     reorderExercises,
@@ -204,6 +206,22 @@ export function WorkoutOverlay() {
     }
   };
 
+  const handleAddWarmup = async (entryId: string, exerciseId: string) => {
+    try {
+      await addWarmupRow(entryId, exerciseId);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
+  const handleToggleWarmup = async (id: string, entryId: string) => {
+    try {
+      await toggleWarmup(id, entryId);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
   const handleRemoveExercise = async (entryId: string) => {
     try {
       await removeExercise(entryId);
@@ -259,6 +277,8 @@ export function WorkoutOverlay() {
       onToggleRow={handleToggle}
       onDeleteRow={handleDelete}
       onAddRow={handleAdd}
+      onAddWarmup={handleAddWarmup}
+      onToggleWarmup={handleToggleWarmup}
       onRemove={() => handleRemoveExercise(item.id)}
     />
   ), [rows, previousSets, weightUnit, collapsedCards, toggleCollapse]);
@@ -278,6 +298,8 @@ export function WorkoutOverlay() {
           onToggleRow={noop as any}
           onDeleteRow={noop as any}
           onAddRow={noop as any}
+          onAddWarmup={noop as any}
+          onToggleWarmup={noop as any}
           onRemove={() => handleRemoveExercise(item.id)}
         />
       </Pressable>

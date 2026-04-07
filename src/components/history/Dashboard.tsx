@@ -395,7 +395,7 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
     weight: 'Max weight per session',
     volume: 'Total volume per session',
     reps: 'Total reps per session',
-    '1rm': 'Estimated 1RM per session',
+    '1rm': 'Estimated 1 Rep Max per session',
   };
 
   const tooltipSuffix: Record<SpotlightMetric, string> = {

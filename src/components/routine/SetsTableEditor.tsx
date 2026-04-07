@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,25 +11,32 @@ import {
 import { colors, fonts } from '../../constants';
 import { WeightUnit } from '../../models';
 import { weightUnitLabel, parseWeightToKg } from '../../utils/units';
+import { RirCircle, RirPickerModal } from '../ui';
 
 export interface TemplateSetRow {
   weight: string;
   repsMin: string;
   repsMax: string;
+  rir: string;
+  isWarmup: boolean;
   editedFields: Set<string>;
 }
 
-export const defaultSetRow = (): TemplateSetRow => ({
+export const defaultSetRow = (isWarmup = false): TemplateSetRow => ({
   weight: '',
   repsMin: '',
   repsMax: '',
+  rir: '',
+  isWarmup,
   editedFields: new Set(),
 });
+
+type TemplateField = 'weight' | 'repsMin' | 'repsMax' | 'rir';
 
 export function getSuggestion(
   rows: TemplateSetRow[],
   index: number,
-  field: 'weight' | 'repsMin' | 'repsMax',
+  field: TemplateField,
 ): string {
   if (field === 'repsMax') {
     const row = rows[index];
@@ -50,7 +57,7 @@ export function getSuggestion(
 export function resolveValue(
   rows: TemplateSetRow[],
   index: number,
-  field: 'weight' | 'repsMin' | 'repsMax',
+  field: TemplateField,
 ): string {
   const row = rows[index];
   if (row.editedFields.has(field)) return row[field];
@@ -62,19 +69,24 @@ export function buildSetsPayload(
   wUnit: WeightUnit,
   useRepRange: boolean,
 ) {
-  return rows.map((_, i) => ({
-    set_number: i + 1,
-    target_weight: parseWeightToKg(parseFloat(resolveValue(rows, i, 'weight')) || 0, wUnit),
-    target_reps_min: parseInt(resolveValue(rows, i, 'repsMin'), 10) || 10,
-    target_reps_max: useRepRange
-      ? (parseInt(resolveValue(rows, i, 'repsMax'), 10)
-          || parseInt(resolveValue(rows, i, 'repsMin'), 10) || 10)
-      : (parseInt(resolveValue(rows, i, 'repsMin'), 10) || 10),
-  }));
+  return rows.map((row, i) => {
+    const rirVal = resolveValue(rows, i, 'rir');
+    return {
+      set_number: i + 1,
+      target_weight: parseWeightToKg(parseFloat(resolveValue(rows, i, 'weight')) || 0, wUnit),
+      target_reps_min: parseInt(resolveValue(rows, i, 'repsMin'), 10) || 10,
+      target_reps_max: useRepRange
+        ? (parseInt(resolveValue(rows, i, 'repsMax'), 10)
+            || parseInt(resolveValue(rows, i, 'repsMin'), 10) || 10)
+        : (parseInt(resolveValue(rows, i, 'repsMin'), 10) || 10),
+      target_rir: rirVal ? parseFloat(rirVal) : null,
+      is_warmup: row.isWarmup,
+    };
+  });
 }
 
 export function setsToTemplateRows(
-  sets: { target_weight: number; target_reps_min: number; target_reps_max: number }[],
+  sets: { target_weight: number; target_reps_min: number; target_reps_max: number; target_rir?: number | null; is_warmup?: boolean }[],
   fallbackReps: number,
   wUnit: WeightUnit,
 ): { rows: TemplateSetRow[]; hasRepRange: boolean } {
@@ -84,22 +96,31 @@ export function setsToTemplateRows(
         weight: '',
         repsMin: String(fallbackReps),
         repsMax: String(fallbackReps),
+        rir: '',
+        isWarmup: false,
         editedFields: new Set(['repsMin', 'repsMax']),
       }],
       hasRepRange: false,
     };
   }
   const hasRepRange = sets.some((s) => s.target_reps_min !== s.target_reps_max);
-  const rows = sets.map((s) => ({
-    weight: s.target_weight > 0
-      ? String(wUnit === 'lbs'
-          ? Math.round(s.target_weight * 2.20462 * 10) / 10
-          : Math.round(s.target_weight * 10) / 10)
-      : '',
-    repsMin: String(s.target_reps_min),
-    repsMax: String(s.target_reps_max),
-    editedFields: new Set(['weight', 'repsMin', 'repsMax']),
-  }));
+  const rows = sets.map((s) => {
+    const edited = new Set(['weight', 'repsMin', 'repsMax']);
+    const rirStr = s.target_rir != null ? String(s.target_rir) : '';
+    if (rirStr) edited.add('rir');
+    return {
+      weight: s.target_weight > 0
+        ? String(wUnit === 'lbs'
+            ? Math.round(s.target_weight * 2.20462 * 10) / 10
+            : Math.round(s.target_weight * 10) / 10)
+        : '',
+      repsMin: String(s.target_reps_min),
+      repsMax: String(s.target_reps_max),
+      rir: rirStr,
+      isWarmup: s.is_warmup ?? false,
+      editedFields: edited,
+    };
+  });
   return { rows, hasRepRange };
 }
 
@@ -120,7 +141,7 @@ export function updateSetRow(
   rows: TemplateSetRow[],
   setRows: (r: TemplateSetRow[]) => void,
   index: number,
-  field: 'weight' | 'repsMin' | 'repsMax',
+  field: TemplateField,
   value: string,
   useRepRange: boolean,
 ) {
@@ -143,6 +164,21 @@ interface SetsTableEditorProps {
 }
 
 export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }: SetsTableEditorProps) {
+  const [rirPickerIndex, setRirPickerIndex] = useState<number | null>(null);
+
+  const handleRirSelect = (value: number | null) => {
+    if (rirPickerIndex === null) return;
+    updateSetRow(rows, setRows, rirPickerIndex, 'rir', value != null ? String(value) : '', repRange);
+    setRirPickerIndex(null);
+  };
+
+  const currentRirValue = rirPickerIndex !== null
+    ? (() => {
+        const v = resolveValue(rows, rirPickerIndex, 'rir');
+        return v ? parseFloat(v) : null;
+      })()
+    : null;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -157,6 +193,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }:
           </Text>
           <Text style={styles.repsToggleArrow}>▾</Text>
         </TouchableOpacity>
+        <Text style={[styles.colHeader, styles.colRir]}>RIR</Text>
         {rows.length > 1 && <View style={styles.headerSpacer} />}
       </View>
 
@@ -165,9 +202,18 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }:
           const weightSugg = getSuggestion(rows, i, 'weight');
           const repsMinSugg = getSuggestion(rows, i, 'repsMin');
           const repsMaxSugg = getSuggestion(rows, i, 'repsMax');
+          const rirResolved = resolveValue(rows, i, 'rir');
+          const rirNum = rirResolved ? parseFloat(rirResolved) : null;
+          const workingIndex = rows.slice(0, i + 1).filter((r) => !r.isWarmup).length;
           return (
             <View key={i} style={styles.tableRow}>
-              <Text style={[styles.colCell, styles.colSet]}>{i + 1}</Text>
+              {row.isWarmup ? (
+                <View style={styles.colSet}>
+                  <View style={styles.warmupCircle}><Text style={styles.warmupText}>W</Text></View>
+                </View>
+              ) : (
+                <Text style={[styles.colCell, styles.colSet]}>{workingIndex}</Text>
+              )}
               <TextInput
                 style={[styles.input, styles.colWeight]}
                 value={row.editedFields.has('weight') ? row.weight : ''}
@@ -206,6 +252,13 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }:
                   placeholderTextColor={colors.textMuted}
                 />
               )}
+              <View style={styles.colRir}>
+                <RirCircle
+                  value={rirNum}
+                  size={28}
+                  onPress={() => setRirPickerIndex(i)}
+                />
+              </View>
               {rows.length > 1 && (
                 <TouchableOpacity
                   style={styles.removeSetBtn}
@@ -222,12 +275,31 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }:
         })}
       </ScrollView>
 
-      <TouchableOpacity
-        style={styles.addSetBtn}
-        onPress={() => setRows([...rows, defaultSetRow()])}
-      >
-        <Text style={styles.addSetText}>+ Add Set</Text>
-      </TouchableOpacity>
+      <View style={styles.addBtnRow}>
+        <TouchableOpacity
+          style={styles.addSetBtn}
+          onPress={() => {
+            const warmups = rows.filter((r) => r.isWarmup);
+            const working = rows.filter((r) => !r.isWarmup);
+            setRows([...warmups, defaultSetRow(true), ...working]);
+          }}
+        >
+          <Text style={styles.addWarmupText}>+ Warmup</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.addSetBtn}
+          onPress={() => setRows([...rows, defaultSetRow()])}
+        >
+          <Text style={styles.addSetText}>+ Add Set</Text>
+        </TouchableOpacity>
+      </View>
+
+      <RirPickerModal
+        visible={rirPickerIndex !== null}
+        onClose={() => setRirPickerIndex(null)}
+        onSelect={handleRirSelect}
+        currentValue={currentRirValue}
+      />
     </View>
   );
 }
@@ -253,9 +325,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-  colSet: { width: 36 },
-  colWeight: { width: '30%', textAlign: 'center', marginHorizontal: 4 },
+  colSet: { width: 36, alignItems: 'center', justifyContent: 'center' },
+  colWeight: { width: '25%', textAlign: 'center', marginHorizontal: 4 },
   colReps: { flex: 1, textAlign: 'center' },
+  colRir: { width: 36, alignItems: 'center' },
   repsHeaderBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -321,16 +394,39 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontFamily: fonts.bold,
   },
-  addSetBtn: {
-    paddingVertical: 10,
-    alignItems: 'center',
+  addBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 24,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     marginTop: 4,
+  },
+  addSetBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
   },
   addSetText: {
     fontSize: 13,
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
+  },
+  addWarmupText: {
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: '#D4A017',
+  },
+  warmupCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#D4A017',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warmupText: {
+    fontSize: 11,
+    fontFamily: fonts.bold,
+    color: '#fff',
   },
 });

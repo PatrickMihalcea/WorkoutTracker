@@ -3,10 +3,11 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-nativ
 import { WorkoutRow, SetLog, WeightUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { formatWeight } from '../../utils/units';
-import { SwipeToDeleteRow } from '../ui';
+import { SwipeToDeleteRow, RirCircle, RirPickerModal } from '../ui';
 
 interface SetRowProps {
   row: WorkoutRow;
+  displaySetNumber: number | string;
   previousSet?: SetLog;
   weightUnit: WeightUnit;
   suggestedWeight?: string;
@@ -16,10 +17,12 @@ interface SetRowProps {
   onUpdateRow: (updates: { weight?: string; reps?: string; rir?: string }) => void;
   onToggle: () => void;
   onSwipeDelete: () => void;
+  onToggleWarmup: () => void;
 }
 
 export function SetRow({
   row,
+  displaySetNumber,
   previousSet,
   weightUnit,
   suggestedWeight,
@@ -29,10 +32,11 @@ export function SetRow({
   onUpdateRow,
   onToggle,
   onSwipeDelete,
+  onToggleWarmup,
 }: SetRowProps) {
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
 
-  const [rir, setRir] = useState(row.rir);
+  const [showRirPicker, setShowRirPicker] = useState(false);
 
   const suggestedRepsValue = suggestedReps?.includes('-')
     ? suggestedReps.split('-')[1]
@@ -51,23 +55,23 @@ export function SetRow({
   const handleRepsBlur = () => {
     onUpdateRow({ reps: row.reps });
   };
-  const handleRirBlur = () => {
-    if (rir !== row.rir) {
-      onUpdateRow({ rir });
-      onUpdateRowLocal({ rir });
-    }
-    if (rir && !row.is_completed) {
-      markDone();
+
+  const handleRirSelect = (value: number | null) => {
+    const rirStr = value != null ? String(value) : '';
+    onUpdateRowLocal({ rir: rirStr });
+    onUpdateRow({ rir: rirStr });
+    if (rirStr && !row.is_completed) {
+      markDone(rirStr);
     }
   };
 
-  const markDone = () => {
+  const markDone = (overrideRir?: string) => {
     const finalWeight = row.weight || suggestedWeight || '0';
     const finalReps = row.reps || suggestedRepsValue || '0';
     const pendingUpdates: { weight?: string; reps?: string; rir?: string } = {};
     if (finalWeight !== row.weight) pendingUpdates.weight = finalWeight;
     if (finalReps !== row.reps) pendingUpdates.reps = finalReps;
-    if (rir !== row.rir) pendingUpdates.rir = rir;
+    if (overrideRir !== undefined && overrideRir !== row.rir) pendingUpdates.rir = overrideRir;
     if (Object.keys(pendingUpdates).length > 0) {
       onUpdateRowLocal(pendingUpdates);
       onUpdateRow(pendingUpdates);
@@ -83,81 +87,96 @@ export function SetRow({
     }
   };
 
+  const rirNum = row.rir ? parseFloat(row.rir) : null;
+  const isWarmup = row.is_warmup;
+
   return (
-    <SwipeToDeleteRow onDelete={onSwipeDelete} expandedHeight={60}>
-      <View style={[
-          styles.row,
-          row.is_completed && styles.rowSaved,
-          row.is_completed && completionColor && completionColor !== 'transparent' && { backgroundColor: completionColor },
-        ]}>
-          <View style={styles.setLabel}>
-            <Text style={[
-              styles.setNumber,
-              row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
-            ]}>{row.set_number}</Text>
-          </View>
+    <>
+      <SwipeToDeleteRow onDelete={onSwipeDelete} expandedHeight={60} onSwipeRight={onToggleWarmup}>
+        <View style={[
+            styles.row,
+            row.is_completed && styles.rowSaved,
+            row.is_completed && completionColor && completionColor !== 'transparent' && { backgroundColor: completionColor },
+          ]}>
+            <View style={styles.setLabel}>
+              {isWarmup ? (
+                <View style={styles.warmupCircle}>
+                  <Text style={styles.warmupText}>W</Text>
+                </View>
+              ) : (
+                <Text style={[
+                  styles.setNumber,
+                  row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+                ]}>{displaySetNumber}</Text>
+              )}
+            </View>
 
-          <View style={styles.previousCol}>
-            {previousSet ? (
-              <Text style={[
-                styles.previousText,
-                row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
-              ]}>
-                {displayStoredWeight(previousSet.weight)}x{previousSet.reps_performed}
-                {previousSet.rir !== null && ` @${previousSet.rir}`}
+            <View style={styles.previousCol}>
+              {previousSet ? (
+                <Text style={[
+                  styles.previousText,
+                  row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+                ]}>
+                  {displayStoredWeight(previousSet.weight)}x{previousSet.reps_performed}
+                  {previousSet.rir !== null && ` @${previousSet.rir}`}
+                </Text>
+              ) : (
+                <Text style={[
+                  styles.previousText,
+                  row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+                ]}>-</Text>
+              )}
+            </View>
+
+            <TextInput
+              style={[styles.input, styles.weightInput]}
+              value={row.weight}
+              onChangeText={handleWeightChange}
+              onBlur={handleWeightBlur}
+              placeholder={suggestedWeight ?? '0'}
+              placeholderTextColor={colors.textMuted}
+              keyboardType="decimal-pad"
+              selectTextOnFocus
+            />
+
+            <TextInput
+              style={[styles.input, styles.repsInput]}
+              value={row.reps}
+              onChangeText={handleRepsChange}
+              onBlur={handleRepsBlur}
+              placeholder={suggestedReps ?? '0'}
+              placeholderTextColor={colors.textMuted}
+              keyboardType="number-pad"
+              selectTextOnFocus
+            />
+
+            <View style={styles.rirCol}>
+              <RirCircle
+                value={rirNum}
+                size={32}
+                onPress={() => setShowRirPicker(true)}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.saveButton, row.is_completed && styles.saveButtonDone]}
+              onPress={handleToggle}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.saveButtonText, row.is_completed && styles.saveButtonTextDone]}>
+                {row.is_completed ? '✓' : '+'}
               </Text>
-            ) : (
-              <Text style={[
-                styles.previousText,
-                row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
-              ]}>-</Text>
-            )}
+            </TouchableOpacity>
           </View>
+      </SwipeToDeleteRow>
 
-          <TextInput
-            style={[styles.input, styles.weightInput]}
-            value={row.weight}
-            onChangeText={handleWeightChange}
-            onBlur={handleWeightBlur}
-            placeholder={suggestedWeight ?? '0'}
-            placeholderTextColor={colors.textMuted}
-            keyboardType="decimal-pad"
-            selectTextOnFocus
-          />
-
-          <TextInput
-            style={styles.input}
-            value={row.reps}
-            onChangeText={handleRepsChange}
-            onBlur={handleRepsBlur}
-            placeholder={suggestedReps ?? '0'}
-            placeholderTextColor={colors.textMuted}
-            keyboardType="number-pad"
-            selectTextOnFocus
-          />
-
-          <TextInput
-            style={[styles.input, styles.rirInput]}
-            value={rir}
-            onChangeText={setRir}
-            onBlur={handleRirBlur}
-            placeholder="-"
-            placeholderTextColor={colors.textMuted}
-            keyboardType="number-pad"
-            selectTextOnFocus
-          />
-
-          <TouchableOpacity
-            style={[styles.saveButton, row.is_completed && styles.saveButtonDone]}
-            onPress={handleToggle}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.saveButtonText, row.is_completed && styles.saveButtonTextDone]}>
-              {row.is_completed ? '✓' : '+'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-    </SwipeToDeleteRow>
+      <RirPickerModal
+        visible={showRirPicker}
+        onClose={() => setShowRirPicker(false)}
+        onSelect={handleRirSelect}
+        currentValue={rirNum}
+      />
+    </>
   );
 }
 
@@ -170,17 +189,29 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: colors.surface,
   },
-  rowSaved: {
-    opacity: 0.7,
-  },
+  rowSaved: {},
   setLabel: {
-    width: 22,
+    width: 28,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   setNumber: {
     color: colors.textSecondary,
     fontSize: 14,
     fontFamily: fonts.semiBold,
+  },
+  warmupCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFD93D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warmupText: {
+    color: '#000',
+    fontSize: 12,
+    fontFamily: fonts.bold,
   },
   previousCol: {
     width: 72,
@@ -206,8 +237,12 @@ const styles = StyleSheet.create({
   weightInput: {
     flex: 0.8,
   },
-  rirInput: {
-    maxWidth: 44,
+  repsInput: {
+    flex: 0.8,
+  },
+  rirCol: {
+    width: 40,
+    alignItems: 'center',
   },
   saveButton: {
     width: 32,

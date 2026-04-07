@@ -42,6 +42,8 @@ interface WorkoutState {
   toggleRow: (id: string, entryId: string) => Promise<void>;
   deleteRow: (id: string, entryId: string, setNumber: number) => Promise<void>;
   addRow: (entryId: string, exerciseId: string) => Promise<void>;
+  addWarmupRow: (entryId: string, exerciseId: string) => Promise<void>;
+  toggleWarmup: (id: string, entryId: string) => Promise<void>;
   removeExercise: (entryId: string) => Promise<void>;
   addExercise: (exercise: Exercise, setsPayload: { set_number: number; target_weight: number; target_reps_min: number; target_reps_max: number }[]) => Promise<void>;
   loadPreviousSets: (exerciseIds: string[], userId: string) => Promise<void>;
@@ -223,6 +225,39 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     }));
   },
 
+  addWarmupRow: async (entryId, exerciseId) => {
+    const { session, rows } = get();
+    if (!session) return;
+    const entryRows = rows[entryId] ?? [];
+    const nextSetNumber = entryRows.length > 0
+      ? Math.max(...entryRows.map((r) => r.set_number)) + 1
+      : 1;
+    const newRow = await workoutRowService.addRow(
+      session.id, exerciseId, entryId, nextSetNumber, undefined, undefined, true,
+    );
+    set((state) => ({
+      rows: {
+        ...state.rows,
+        [entryId]: [...(state.rows[entryId] ?? []), newRow],
+      },
+    }));
+  },
+
+  toggleWarmup: async (id, entryId) => {
+    const row = (get().rows[entryId] ?? []).find((r) => r.id === id);
+    if (!row) return;
+    const newWarmup = !row.is_warmup;
+    set((state) => ({
+      rows: {
+        ...state.rows,
+        [entryId]: (state.rows[entryId] ?? []).map((r) =>
+          r.id === id ? { ...r, is_warmup: newWarmup } : r,
+        ),
+      },
+    }));
+    await workoutRowService.updateWarmup(id, newWarmup);
+  },
+
   removeExercise: async (entryId) => {
     const { session } = get();
     if (!session) return;
@@ -330,7 +365,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           weight: parseWeight(row.weight),
           reps_performed: parseInt(row.reps, 10) || 0,
           rir: row.rir ? parseInt(row.rir, 10) : null,
-          is_warmup: false,
+          is_warmup: row.is_warmup,
           exercise_order: order,
         });
       }
