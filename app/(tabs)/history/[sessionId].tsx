@@ -19,11 +19,14 @@ import { colors, fonts } from '../../../src/constants';
 import { SessionWithSetsAndExercises, SetLogWithExercise } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 import { formatWeight, weightUnitLabel } from '../../../src/utils/units';
+import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
+import { formatDurationValue } from '../../../src/utils/duration';
 
 interface ExerciseGroup {
   exerciseId: string;
   exerciseName: string;
   muscleGroup: string;
+  exerciseType?: string;
   sets: SetLogWithExercise[];
 }
 
@@ -43,6 +46,7 @@ function groupSetsByExercise(sets: SetLogWithExercise[]): ExerciseGroup[] {
         exerciseId: set.exercise_id,
         exerciseName: set.exercise?.name ?? 'Unknown',
         muscleGroup: set.exercise?.muscle_group ?? '',
+        exerciseType: set.exercise?.exercise_type,
         sets: [set],
       };
       map.set(key, group);
@@ -193,28 +197,45 @@ export default function SessionDetailScreen() {
               <Text style={styles.muscleGroup}>{group.muscleGroup}</Text>
             </View>
 
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableCol, styles.colSet]}>SET</Text>
-              <Text style={[styles.tableCol, styles.colWeight]}>{weightUnitLabel(weightUnit)}</Text>
-              <Text style={[styles.tableCol, styles.colReps]}>REPS</Text>
-              <Text style={[styles.tableCol, styles.colRir]}>RIR</Text>
-            </View>
+            {(() => {
+              const cfg = getExerciseTypeConfig(group.exerciseType);
+              const showWeight = cfg.fields.some((f) => f.key === 'weight');
+              const showReps = cfg.fields.some((f) => f.key === 'reps');
+              const showDuration = cfg.fields.some((f) => f.key === 'duration');
+              const showDistance = cfg.fields.some((f) => f.key === 'distance');
+              return (
+                <>
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.tableCol, styles.colSet]}>SET</Text>
+                    {showWeight && <Text style={[styles.tableCol, styles.colFlex]}>{getWeightLabel(group.exerciseType, weightUnitLabel(weightUnit))}</Text>}
+                    {showReps && <Text style={[styles.tableCol, styles.colFlex]}>REPS</Text>}
+                    {showDuration && <Text style={[styles.tableCol, styles.colFlex]}>TIME</Text>}
+                    {showDistance && <Text style={[styles.tableCol, styles.colFlex]}>KM</Text>}
+                    {cfg.showRir && <Text style={[styles.tableCol, styles.colRir]}>RIR</Text>}
+                  </View>
 
-            {group.sets.map((set) => (
-              <View key={set.id} style={styles.tableRow}>
-                <Text style={[styles.tableCell, styles.colSet]}>{set.set_number}</Text>
-                <Text style={[styles.tableCell, styles.colWeight]}>{formatWeight(set.weight, weightUnit)}</Text>
-                <Text style={[styles.tableCell, styles.colReps]}>{set.reps_performed}</Text>
-                <Text style={[styles.tableCell, styles.colRir]}>
-                  {set.rir !== null ? set.rir : '-'}
-                </Text>
-              </View>
-            ))}
+                  {group.sets.map((set) => (
+                    <View key={set.id} style={styles.tableRow}>
+                      <Text style={[styles.tableCell, styles.colSet]}>{set.set_number}</Text>
+                      {showWeight && <Text style={[styles.tableCell, styles.colFlex]}>{formatWeight(set.weight, weightUnit)}</Text>}
+                      {showReps && <Text style={[styles.tableCell, styles.colFlex]}>{set.reps_performed}</Text>}
+                      {showDuration && <Text style={[styles.tableCell, styles.colFlex]}>{set.duration > 0 ? formatDurationValue(set.duration) : '-'}</Text>}
+                      {showDistance && <Text style={[styles.tableCell, styles.colFlex]}>{set.distance > 0 ? `${set.distance}km` : '-'}</Text>}
+                      {cfg.showRir && (
+                        <Text style={[styles.tableCell, styles.colRir]}>
+                          {set.rir !== null ? set.rir : '-'}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                </>
+              );
+            })()}
           </Card>
         ))}
       </ScrollView>
 
-      <BottomSheetModal visible={showEdit} title="Edit Session" scrollable>
+      <BottomSheetModal visible={showEdit} title="Edit Session" scrollable onClose={() => setShowEdit(false)}>
             <Text style={styles.fieldLabel}>Date</Text>
             {Platform.OS === 'android' && (
               <TouchableOpacity
@@ -406,6 +427,7 @@ const styles = StyleSheet.create({
   colSet: { width: 40 },
   colWeight: { flex: 1 },
   colReps: { flex: 1 },
+  colFlex: { flex: 1 },
   colRir: { width: 50 },
 
   fieldLabel: {

@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../../stores/auth.store';
 import { useWorkoutStore } from '../../stores/workout.store';
 import { useProfileStore } from '../../stores/profile.store';
@@ -44,6 +46,7 @@ import {
 const TAB_BAR_HEIGHT = 60;
 
 export function WorkoutOverlay() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const { profile, updateProfile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
@@ -92,6 +95,28 @@ export function WorkoutOverlay() {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
+  const [autoOpenPicker, setAutoOpenPicker] = useState(false);
+  const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
+
+  useFocusEffect(useCallback(() => {
+    const which = pendingPickerReopenRef.current;
+    if (which) {
+      pendingPickerReopenRef.current = null;
+      if (which === 'swap') {
+        setShowSwapPicker(true);
+      } else if (which === 'add') {
+        setAutoOpenPicker(true);
+        setShowAddExercise(true);
+      }
+    }
+  }, []));
+
+  const navigateToExerciseDetail = useCallback((exerciseId: string, source: 'swap' | 'add') => {
+    pendingPickerReopenRef.current = source;
+    setShowSwapPicker(false);
+    setShowAddExercise(false);
+    setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
+  }, [router]);
 
   useEffect(() => {
     if (expanded && session) {
@@ -179,11 +204,11 @@ export function WorkoutOverlay() {
     }
   }, [restTimerDefault, startRestTimer]);
 
-  const handleUpdateLocal = (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => {
+  const handleUpdateLocal = (id: string, entryId: string, updates: Record<string, string>) => {
     updateRowLocal(id, entryId, updates);
   };
 
-  const handleUpdate = async (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => {
+  const handleUpdate = async (id: string, entryId: string, updates: Record<string, string>) => {
     try { await updateRow(id, entryId, updates); }
     catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
@@ -415,6 +440,7 @@ export function WorkoutOverlay() {
         onSeparate={() => handleSeparate(item.id)}
         onSwap={() => handleSwap(item.id)}
         onDuplicate={() => handleDuplicate(item.id)}
+        onDetails={() => router.push(`/exercise/${item.exercise_id}`)}
         noBottomMargin={needsNoMargin}
       />
     );
@@ -544,15 +570,18 @@ export function WorkoutOverlay() {
 
             <AddExerciseModal
               visible={showAddExercise}
-              onClose={() => setShowAddExercise(false)}
+              onClose={() => { setShowAddExercise(false); setAutoOpenPicker(false); }}
               onConfirm={handleAddExerciseConfirm}
               weightUnit={weightUnit}
+              onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
+              autoOpenPicker={autoOpenPicker}
             />
 
             <ExercisePickerModal
               visible={showSwapPicker}
               onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); }}
               onSelect={handleSwapSelect}
+              onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
             />
           </KeyboardAvoidingView>
         </Animated.View>

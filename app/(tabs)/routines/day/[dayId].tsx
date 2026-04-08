@@ -8,6 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRoutineStore } from '../../../../src/stores/routine.store';
 import { useAuthStore } from '../../../../src/stores/auth.store';
 import { useProfileStore } from '../../../../src/stores/profile.store';
@@ -139,6 +140,7 @@ function ExerciseSetsEditor({
         repRange={useRepRange}
         setRepRange={setUseRepRange}
         wUnit={wUnit}
+        exerciseType={entry.exercise?.exercise_type}
       />
     </View>
   );
@@ -161,6 +163,28 @@ export default function DayEditorScreen() {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
+  const [autoOpenPicker, setAutoOpenPicker] = useState(false);
+  const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
+
+  useFocusEffect(useCallback(() => {
+    const which = pendingPickerReopenRef.current;
+    if (which) {
+      pendingPickerReopenRef.current = null;
+      if (which === 'swap') {
+        setShowSwapPicker(true);
+      } else if (which === 'add') {
+        setAutoOpenPicker(true);
+        setShowAddExercise(true);
+      }
+    }
+  }, []));
+
+  const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
+    if (source) pendingPickerReopenRef.current = source;
+    setShowSwapPicker(false);
+    setShowAddExercise(false);
+    setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
+  }, [router]);
 
   const loadDay = useCallback(() => {
     if (!currentRoutine || !dayId) return;
@@ -226,6 +250,8 @@ export default function DayEditorScreen() {
       target_reps_min: s.target_reps_min,
       target_reps_max: s.target_reps_max,
       target_rir: s.target_rir ?? null,
+      target_duration: s.target_duration ?? 0,
+      target_distance: s.target_distance ?? 0,
       is_warmup: s.is_warmup ?? false,
     }));
     try {
@@ -352,6 +378,7 @@ export default function DayEditorScreen() {
   const buildExerciseMenuItems = (ex: RoutineDayExercise, idx: number): OverflowMenuItem[] => {
     if (!day) return [];
     const items: OverflowMenuItem[] = [];
+    items.push({ label: 'Details', onPress: () => navigateToExerciseDetail(ex.exercise_id) });
     const myGroup = ex.superset_group ?? null;
     const prevGroup = idx > 0 ? (day.exercises[idx - 1].superset_group ?? null) : null;
     const nextGroup = idx < day.exercises.length - 1 ? (day.exercises[idx + 1].superset_group ?? null) : null;
@@ -469,16 +496,19 @@ export default function DayEditorScreen() {
 
       <AddExerciseModal
         visible={showAddExercise}
-        onClose={() => setShowAddExercise(false)}
+        onClose={() => { setShowAddExercise(false); setAutoOpenPicker(false); }}
         onConfirm={handleAddExerciseConfirm}
         weightUnit={wUnit}
         onDeleteExercise={handleDeleteExercise}
+        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
+        autoOpenPicker={autoOpenPicker}
       />
 
       <ExercisePickerModal
         visible={showSwapPicker}
         onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); }}
         onSelect={handleExSwapSelect}
+        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
       />
     </View>
   );

@@ -1,20 +1,26 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { WorkoutRow, SetLog, WeightUnit } from '../../models';
+import { WorkoutRow, SetLog, WeightUnit, ExerciseType } from '../../models';
 import { colors, fonts } from '../../constants';
 import { formatWeight } from '../../utils/units';
-import { SwipeToDeleteRow, RirCircle, RirPickerModal } from '../ui';
+import { getExerciseTypeConfig } from '../../utils/exerciseType';
+import { formatDurationValue } from '../../utils/duration';
+import { SwipeToDeleteRow, RirCircle, RirPickerModal, DurationPickerModal } from '../ui';
 
 interface SetRowProps {
   row: WorkoutRow;
   displaySetNumber: number | string;
   previousSet?: SetLog;
   weightUnit: WeightUnit;
+  exerciseType?: ExerciseType | string;
   suggestedWeight?: string;
   suggestedReps?: string;
+  suggestedDuration?: string;
+  suggestedDistance?: string;
+  suggestedRir?: string;
   completionColor?: string;
-  onUpdateRowLocal: (updates: { weight?: string; reps?: string; rir?: string }) => void;
-  onUpdateRow: (updates: { weight?: string; reps?: string; rir?: string }) => void;
+  onUpdateRowLocal: (updates: { weight?: string; reps?: string; rir?: string; duration?: string; distance?: string }) => void;
+  onUpdateRow: (updates: { weight?: string; reps?: string; rir?: string; duration?: string; distance?: string }) => void;
   onToggle: () => void;
   onSwipeDelete: () => void;
   onToggleWarmup: () => void;
@@ -25,8 +31,12 @@ export function SetRow({
   displaySetNumber,
   previousSet,
   weightUnit,
+  exerciseType,
   suggestedWeight,
   suggestedReps,
+  suggestedDuration,
+  suggestedDistance,
+  suggestedRir,
   completionColor,
   onUpdateRowLocal,
   onUpdateRow,
@@ -35,25 +45,33 @@ export function SetRow({
   onToggleWarmup,
 }: SetRowProps) {
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
+  const config = getExerciseTypeConfig(exerciseType);
 
   const [showRirPicker, setShowRirPicker] = useState(false);
+  const [showDurationPicker, setShowDurationPicker] = useState(false);
 
-  const suggestedRepsValue = suggestedReps?.includes('-')
+  const suggestedRepsAutofill = suggestedReps?.includes('-')
     ? suggestedReps.split('-')[1]
     : suggestedReps;
 
-  const handleWeightChange = (v: string) => {
-    onUpdateRowLocal({ weight: v });
-  };
-  const handleRepsChange = (v: string) => {
-    onUpdateRowLocal({ reps: v });
+  const getSuggestedForField = (key: string): string => {
+    if (key === 'weight') return suggestedWeight || '0';
+    if (key === 'reps') return suggestedRepsAutofill || '0';
+    if (key === 'duration') return suggestedDuration || '0';
+    if (key === 'distance') return suggestedDistance || '0';
+    return '0';
   };
 
-  const handleWeightBlur = () => {
-    onUpdateRow({ weight: row.weight });
+  const getPlaceholderForField = (key: string): string => {
+    if (key === 'reps') return suggestedReps || '0';
+    return getSuggestedForField(key);
   };
-  const handleRepsBlur = () => {
-    onUpdateRow({ reps: row.reps });
+
+  const handleFieldChange = (key: string, v: string) => {
+    onUpdateRowLocal({ [key]: v });
+  };
+  const handleFieldBlur = (key: string) => {
+    onUpdateRow({ [key]: (row as Record<string, unknown>)[key] as string });
   };
 
   const handleRirSelect = (value: number | null) => {
@@ -65,13 +83,27 @@ export function SetRow({
     }
   };
 
+  const handleDurationConfirm = (totalSeconds: number) => {
+    const val = String(totalSeconds);
+    onUpdateRowLocal({ duration: val });
+    onUpdateRow({ duration: val });
+  };
+
   const markDone = (overrideRir?: string) => {
-    const finalWeight = row.weight || suggestedWeight || '0';
-    const finalReps = row.reps || suggestedRepsValue || '0';
-    const pendingUpdates: { weight?: string; reps?: string; rir?: string } = {};
-    if (finalWeight !== row.weight) pendingUpdates.weight = finalWeight;
-    if (finalReps !== row.reps) pendingUpdates.reps = finalReps;
-    if (overrideRir !== undefined && overrideRir !== row.rir) pendingUpdates.rir = overrideRir;
+    const pendingUpdates: Record<string, string> = {};
+
+    for (const field of config.fields) {
+      const rowVal = (row as Record<string, unknown>)[field.key] as string;
+      const suggested = getSuggestedForField(field.key);
+      const finalVal = rowVal || suggested;
+      if (finalVal !== rowVal) pendingUpdates[field.key] = finalVal;
+    }
+
+    if (config.showRir) {
+      const rirVal = overrideRir ?? row.rir ?? suggestedRir ?? '';
+      if (rirVal && rirVal !== row.rir) pendingUpdates.rir = rirVal;
+    }
+
     if (Object.keys(pendingUpdates).length > 0) {
       onUpdateRowLocal(pendingUpdates);
       onUpdateRow(pendingUpdates);
@@ -89,6 +121,31 @@ export function SetRow({
 
   const rirNum = row.rir ? parseFloat(row.rir) : null;
   const isWarmup = row.is_warmup;
+
+  const buildPreviousText = () => {
+    if (!previousSet) return '-';
+    const parts: string[] = [];
+    if (config.fields.some((f) => f.key === 'weight')) {
+      parts.push(displayStoredWeight(previousSet.weight));
+    }
+    if (config.fields.some((f) => f.key === 'reps')) {
+      parts.push(`${previousSet.reps_performed}`);
+    }
+    if (config.fields.some((f) => f.key === 'duration') && previousSet.duration > 0) {
+      parts.push(formatDurationValue(previousSet.duration));
+    }
+    if (config.fields.some((f) => f.key === 'distance') && previousSet.distance > 0) {
+      parts.push(`${previousSet.distance}km`);
+    }
+    let text = parts.join('x');
+    if (config.showRir && previousSet.rir !== null) {
+      text += ` @${previousSet.rir}`;
+    }
+    return text || '-';
+  };
+
+  const durationSeconds = row.duration ? parseFloat(row.duration) || 0 : 0;
+  const suggestedDurationNum = suggestedDuration ? parseFloat(suggestedDuration) || 0 : 0;
 
   return (
     <>
@@ -112,51 +169,63 @@ export function SetRow({
             </View>
 
             <View style={styles.previousCol}>
-              {previousSet ? (
-                <Text style={[
-                  styles.previousText,
-                  row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
-                ]}>
-                  {displayStoredWeight(previousSet.weight)}x{previousSet.reps_performed}
-                  {previousSet.rir !== null && ` @${previousSet.rir}`}
-                </Text>
-              ) : (
-                <Text style={[
-                  styles.previousText,
-                  row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
-                ]}>-</Text>
-              )}
+              <Text style={[
+                styles.previousText,
+                row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+              ]}>
+                {buildPreviousText()}
+              </Text>
             </View>
 
-            <TextInput
-              style={[styles.input, styles.weightInput]}
-              value={row.weight}
-              onChangeText={handleWeightChange}
-              onBlur={handleWeightBlur}
-              placeholder={suggestedWeight ?? '0'}
-              placeholderTextColor={colors.textMuted}
-              keyboardType="decimal-pad"
-              selectTextOnFocus
-            />
+            {config.fields.map((field) => {
+              const rowVal = (row as Record<string, unknown>)[field.key] as string;
 
-            <TextInput
-              style={[styles.input, styles.repsInput]}
-              value={row.reps}
-              onChangeText={handleRepsChange}
-              onBlur={handleRepsBlur}
-              placeholder={suggestedReps ?? '0'}
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              selectTextOnFocus
-            />
+              if (field.key === 'duration') {
+                const displayVal = durationSeconds > 0
+                  ? formatDurationValue(durationSeconds)
+                  : '';
+                const placeholderVal = suggestedDurationNum > 0
+                  ? formatDurationValue(suggestedDurationNum)
+                  : '0:00';
+                return (
+                  <TouchableOpacity
+                    key={field.key}
+                    style={[styles.input, styles.fieldInput]}
+                    onPress={() => setShowDurationPicker(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={displayVal ? styles.durationText : styles.durationPlaceholder}>
+                      {displayVal || placeholderVal}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }
 
-            <View style={styles.rirCol}>
-              <RirCircle
-                value={rirNum}
-                size={32}
-                onPress={() => setShowRirPicker(true)}
-              />
-            </View>
+              const placeholder = getPlaceholderForField(field.key);
+              return (
+                <TextInput
+                  key={field.key}
+                  style={[styles.input, styles.fieldInput]}
+                  value={rowVal}
+                  onChangeText={(v) => handleFieldChange(field.key, v)}
+                  onBlur={() => handleFieldBlur(field.key)}
+                  placeholder={placeholder}
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType={field.keyboardType}
+                  selectTextOnFocus
+                />
+              );
+            })}
+
+            {config.showRir && (
+              <View style={styles.rirCol}>
+                <RirCircle
+                  value={rirNum}
+                  size={32}
+                  onPress={() => setShowRirPicker(true)}
+                />
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.saveButton, row.is_completed && styles.saveButtonDone]}
@@ -170,11 +239,20 @@ export function SetRow({
           </View>
       </SwipeToDeleteRow>
 
-      <RirPickerModal
-        visible={showRirPicker}
-        onClose={() => setShowRirPicker(false)}
-        onSelect={handleRirSelect}
-        currentValue={rirNum}
+      {config.showRir && (
+        <RirPickerModal
+          visible={showRirPicker}
+          onClose={() => setShowRirPicker(false)}
+          onSelect={handleRirSelect}
+          currentValue={rirNum}
+        />
+      )}
+
+      <DurationPickerModal
+        visible={showDurationPicker}
+        onClose={() => setShowDurationPicker(false)}
+        onConfirm={handleDurationConfirm}
+        value={durationSeconds || suggestedDurationNum}
       />
     </>
   );
@@ -234,11 +312,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.semiBold,
   },
-  weightInput: {
-    flex: 0.8,
+  fieldInput: {
+    flex: 1,
   },
-  repsInput: {
-    flex: 0.8,
+  durationText: {
+    color: colors.text,
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    textAlign: 'center',
+  },
+  durationPlaceholder: {
+    color: colors.textMuted,
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    textAlign: 'center',
   },
   rirCol: {
     width: 40,

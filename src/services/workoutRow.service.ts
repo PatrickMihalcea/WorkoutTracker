@@ -20,12 +20,16 @@ export const workoutRowService = {
           set_number: i,
           weight: '',
           reps: '',
-          rir: '',
+          rir: tpl?.target_rir != null ? String(tpl.target_rir) : '',
+          duration: '',
+          distance: '',
           is_completed: false,
           is_warmup: tpl?.is_warmup ?? false,
           target_weight: tpl?.target_weight ?? 0,
           target_reps_min: tpl?.target_reps_min ?? 0,
           target_reps_max: tpl?.target_reps_max ?? 0,
+          target_duration: tpl?.target_duration ?? 0,
+          target_distance: tpl?.target_distance ?? 0,
           exercise_order: exIdx,
           superset_group: ex.superset_group ?? null,
         });
@@ -53,7 +57,7 @@ export const workoutRowService = {
 
   async updateRow(
     id: string,
-    updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'is_completed'>>,
+    updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'duration' | 'distance' | 'is_completed'>>,
   ): Promise<WorkoutRow> {
     const { data, error } = await supabase
       .from('workout_rows')
@@ -70,7 +74,7 @@ export const workoutRowService = {
     exerciseId: string,
     entryId: string,
     setNumber: number,
-    targets?: { target_weight: number; target_reps_min: number; target_reps_max: number },
+    targets?: { target_weight: number; target_reps_min: number; target_reps_max: number; target_duration?: number; target_distance?: number },
     exerciseOrder?: number,
     isWarmup?: boolean,
     supersetGroup?: string | null,
@@ -85,11 +89,15 @@ export const workoutRowService = {
         weight: '',
         reps: '',
         rir: '',
+        duration: '',
+        distance: '',
         is_completed: false,
         is_warmup: isWarmup ?? false,
         target_weight: targets?.target_weight ?? 0,
         target_reps_min: targets?.target_reps_min ?? 0,
         target_reps_max: targets?.target_reps_max ?? 0,
+        target_duration: targets?.target_duration ?? 0,
+        target_distance: targets?.target_distance ?? 0,
         exercise_order: exerciseOrder ?? 0,
         superset_group: supersetGroup ?? null,
       })

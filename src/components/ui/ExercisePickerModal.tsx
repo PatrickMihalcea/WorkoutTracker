@@ -3,16 +3,20 @@ import {
   View,
   Text,
   TextInput,
+  Image,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { Exercise, MuscleGroup } from '../../models';
 import { exerciseService } from '../../services';
+import { useAuthStore } from '../../stores/auth.store';
 import { BottomSheetModal } from './BottomSheetModal';
 import { Button } from './Button';
 import { ChipPicker } from './ChipPicker';
 import { colors, fonts } from '../../constants';
+
+const chartIcon = require('../../../assets/icons/chart.png');
 
 const MUSCLE_GROUP_ITEMS = Object.values(MuscleGroup).map((mg) => ({
   key: mg,
@@ -26,6 +30,7 @@ interface ExercisePickerModalProps {
   onSelect: (exercise: Exercise) => void;
   onDeleteExercise?: (exercise: Exercise) => void;
   onCreateNew?: () => void;
+  onExerciseDetails?: (exerciseId: string) => void;
   selectedExerciseId?: string | null;
 }
 
@@ -35,8 +40,10 @@ export function ExercisePickerModal({
   onSelect,
   onDeleteExercise,
   onCreateNew,
+  onExerciseDetails,
   selectedExerciseId,
 }: ExercisePickerModalProps) {
+  const { user } = useAuthStore();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [search, setSearch] = useState('');
   const [muscleFilter, setMuscleFilter] = useState<string | null>(null);
@@ -58,17 +65,54 @@ export function ExercisePickerModal({
     }
   };
 
-  const filtered = useMemo(() => {
-    let list = exercises;
+  const applyFilters = (list: Exercise[]) => {
+    let result = list;
     if (muscleFilter) {
-      list = list.filter((e) => e.muscle_group === muscleFilter);
+      result = result.filter((e) => e.muscle_group === muscleFilter);
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      list = list.filter((e) => e.name.toLowerCase().includes(q));
+      result = result.filter((e) => e.name.toLowerCase().includes(q));
     }
-    return list.sort((a, b) => a.name.localeCompare(b.name));
+    return result.sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  const customExercises = useMemo(() => {
+    if (!user) return [];
+    return applyFilters(exercises.filter((e) => e.user_id === user.id));
+  }, [exercises, muscleFilter, search, user]);
+
+  const allExercises = useMemo(() => {
+    return applyFilters(exercises);
   }, [exercises, muscleFilter, search]);
+
+  const renderRow = (item: Exercise) => (
+    <View key={item.id} style={[styles.exerciseRow, selectedExerciseId === item.id && styles.exerciseRowSelected]}>
+      <TouchableOpacity
+        style={styles.exerciseRowContent}
+        onPress={() => {
+          onSelect(item);
+          onClose();
+        }}
+        onLongPress={onDeleteExercise && item.user_id ? () => onDeleteExercise(item) : undefined}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.exerciseName}>{item.name}</Text>
+        <Text style={styles.exerciseMeta}>
+          {item.muscle_group.replace('_', ' ')} · {item.equipment.replace('_', ' ')}
+        </Text>
+      </TouchableOpacity>
+      {onExerciseDetails && (
+        <TouchableOpacity
+          style={styles.chartIconBtn}
+          onPress={() => onExerciseDetails(item.id)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Image source={chartIcon} style={styles.chartIcon} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 
   return (
     <BottomSheetModal visible={visible} title="Select Exercise" fullHeight onClose={onClose}>
@@ -94,29 +138,18 @@ export function ExercisePickerModal({
         keyboardShouldPersistTaps="always"
         keyboardDismissMode="none"
       >
-        {filtered.length === 0 ? (
+        {customExercises.length > 0 && (
+          <>
+            <Text style={styles.sectionHeader}>Custom</Text>
+            {customExercises.map(renderRow)}
+          </>
+        )}
+
+        <Text style={styles.sectionHeader}>All Exercises</Text>
+        {allExercises.length === 0 ? (
           <Text style={styles.emptyText}>No exercises found.</Text>
         ) : (
-          filtered.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[
-                styles.exerciseRow,
-                selectedExerciseId === item.id && styles.exerciseRowSelected,
-              ]}
-              onPress={() => {
-                onSelect(item);
-                onClose();
-              }}
-              onLongPress={onDeleteExercise ? () => onDeleteExercise(item) : undefined}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.exerciseName}>{item.name}</Text>
-              <Text style={styles.exerciseMeta}>
-                {item.muscle_group} · {item.equipment}
-              </Text>
-            </TouchableOpacity>
-          ))
+          allExercises.map(renderRow)
         )}
       </ScrollView>
 
@@ -153,13 +186,35 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: 12,
   },
+  sectionHeader: {
+    fontSize: 12,
+    fontFamily: fonts.bold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 12,
+    marginBottom: 6,
+  },
   exerciseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  exerciseRowContent: {
+    flex: 1,
+  },
   exerciseRowSelected: {
     backgroundColor: colors.surfaceLight,
+  },
+  chartIconBtn: {
+    paddingLeft: 12,
+  },
+  chartIcon: {
+    width: 20,
+    height: 20,
+    tintColor: colors.textMuted,
   },
   exerciseName: {
     fontSize: 16,

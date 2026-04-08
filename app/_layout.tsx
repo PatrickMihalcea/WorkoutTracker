@@ -75,6 +75,17 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(onboarding)" />
+        <Stack.Screen
+          name="exercise/[exerciseId]"
+          options={{
+            headerShown: true,
+            headerStyle: { backgroundColor: colors.background },
+            headerTintColor: colors.text,
+            headerTitle: 'Exercise Details',
+            headerTitleStyle: { fontFamily: 'Monospaceland-Bold' },
+            headerBackTitle: 'Back',
+          }}
+        />
       </Stack>
       <KeyboardDismiss />
     </GestureHandlerRootView>

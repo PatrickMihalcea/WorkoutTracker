@@ -27,6 +27,8 @@ export interface RoutineDayExerciseSet {
   target_reps_min: number;
   target_reps_max: number;
   target_rir: number | null;
+  target_duration: number;
+  target_distance: number;
   is_warmup: boolean;
 }
 

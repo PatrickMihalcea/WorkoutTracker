@@ -7,3 +7,5 @@ export { profileService } from './profile.service';
 export { workoutRowService } from './workoutRow.service';
 export { dashboardService, EARLIEST_DATE } from './dashboard.service';
 export type { DashboardData, PRRecord, SummaryStats, ExerciseProgression, Granularity, TimeSeriesPoint, RoutineChartData } from './dashboard.service';
+export { exerciseDetailService } from './exerciseDetail.service';
+export type { ExerciseDetailData, PersonalRecord, SetRecord, WeightDurationRecord, DistanceRecord } from './exerciseDetail.service';

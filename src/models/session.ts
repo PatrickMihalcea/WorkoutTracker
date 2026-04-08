@@ -23,6 +23,8 @@ export interface SetLog {
   rir: number | null;
   is_warmup: boolean;
   exercise_order: number | null;
+  duration: number;
+  distance: number;
 }
 
 export type SetLogInsert = Omit<SetLog, 'id'>;
@@ -48,11 +50,15 @@ export interface WorkoutRow {
   weight: string;
   reps: string;
   rir: string;
+  duration: string;
+  distance: string;
   is_completed: boolean;
   is_warmup: boolean;
   target_weight: number;
   target_reps_min: number;
   target_reps_max: number;
+  target_duration: number;
+  target_distance: number;
   exercise_order: number;
   superset_group: string | null;
 }

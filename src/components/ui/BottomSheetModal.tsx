@@ -23,6 +23,7 @@ interface BottomSheetModalProps {
   children: React.ReactNode;
   scrollable?: boolean;
   fullHeight?: boolean;
+  showCloseButton?: boolean;
   onClose?: () => void;
 }
 
@@ -32,6 +33,7 @@ export function BottomSheetModal({
   children,
   scrollable = false,
   fullHeight = false,
+  showCloseButton = true,
   onClose,
 }: BottomSheetModalProps) {
   const overlayOpacity = useRef(new Animated.Value(0)).current;
@@ -40,18 +42,25 @@ export function BottomSheetModal({
 
   useEffect(() => {
     if (visible) {
+      overlayOpacity.setValue(0);
+      sheetTranslateY.setValue(SCREEN_HEIGHT);
       setModalVisible(true);
-      Animated.parallel([
-        Animated.timing(overlayOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-        Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true, damping: 28, stiffness: 250 }),
-      ]).start();
+      requestAnimationFrame(() => {
+        Animated.parallel([
+          Animated.timing(overlayOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+          Animated.timing(sheetTranslateY, { toValue: 0, duration: 300, useNativeDriver: true }),
+        ]).start();
+      });
     } else if (modalVisible) {
+      const fallback = setTimeout(() => setModalVisible(false), 250);
       Animated.parallel([
-        Animated.timing(overlayOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
-        Animated.timing(sheetTranslateY, { toValue: SCREEN_HEIGHT, duration: 250, useNativeDriver: true }),
+        Animated.timing(overlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(sheetTranslateY, { toValue: SCREEN_HEIGHT, duration: 200, useNativeDriver: true }),
       ]).start(() => {
+        clearTimeout(fallback);
         setModalVisible(false);
       });
+      return () => clearTimeout(fallback);
     }
   }, [visible]);
 
@@ -75,15 +84,17 @@ export function BottomSheetModal({
             { transform: [{ translateY: sheetTranslateY }] },
           ]}
         >
-          <Body style={[styles.sheet, fullHeight && styles.sheetFull]} {...bodyProps}>
+          {onClose && showCloseButton && (
+            <TouchableOpacity style={styles.closeBtnOverlay} onPress={onClose} activeOpacity={0.7} hitSlop={8}>
+              <Text style={styles.closeBtn}>✕</Text>
+            </TouchableOpacity>
+          )}
+          <View style={[styles.sheet, fullHeight && styles.sheetFull]}>
             {title ? <Text style={styles.title}>{title}</Text> : null}
-            {children}
-            {onClose && (
-              <TouchableOpacity style={styles.closeBtnOverlay} onPress={onClose} activeOpacity={0.7} hitSlop={8}>
-                <Text style={styles.closeBtn}>✕</Text>
-              </TouchableOpacity>
-            )}
-          </Body>
+            <Body style={scrollable ? styles.scrollBody : styles.viewBody} {...bodyProps}>
+              {children}
+            </Body>
+          </View>
         </Animated.View>
         <KeyboardDismiss />
       </Wrapper>
@@ -111,8 +122,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
+    paddingTop: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
     maxHeight: '100%',
+  },
+  scrollBody: {
+    flexShrink: 1,
+  },
+  viewBody: {
+    flexGrow: 1,
+    flexShrink: 1,
   },
   sheetFull: {
     flex: 1,
@@ -126,8 +146,8 @@ const styles = StyleSheet.create({
   },
   closeBtnOverlay: {
     position: 'absolute',
-    top: 24,
-    right: 24,
+    top: 16,
+    right: 16,
     zIndex: 10,
   },
   closeBtn: {

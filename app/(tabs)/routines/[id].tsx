@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
@@ -114,6 +115,28 @@ export default function RoutineDetailScreen() {
   const [swapDayId, setSwapDayId] = useState<string | null>(null);
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
+  const [autoOpenPicker, setAutoOpenPicker] = useState(false);
+  const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
+
+  useFocusEffect(useCallback(() => {
+    const which = pendingPickerReopenRef.current;
+    if (which) {
+      pendingPickerReopenRef.current = null;
+      if (which === 'swap') {
+        setShowSwapPicker(true);
+      } else if (which === 'add') {
+        setAutoOpenPicker(true);
+        setShowAddExercise(true);
+      }
+    }
+  }, []));
+
+  const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
+    if (source) pendingPickerReopenRef.current = source;
+    setShowSwapPicker(false);
+    setShowAddExercise(false);
+    setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
+  }, [router]);
 
   const { session: activeSession, startWorkout } = useWorkoutStore();
 
@@ -188,6 +211,8 @@ export default function RoutineDetailScreen() {
       target_reps_min: s.target_reps_min,
       target_reps_max: s.target_reps_max,
       target_rir: s.target_rir ?? null,
+      target_duration: s.target_duration ?? 0,
+      target_distance: s.target_distance ?? 0,
       is_warmup: s.is_warmup ?? false,
     }));
     try {
@@ -381,6 +406,7 @@ export default function RoutineDetailScreen() {
 
   const buildExerciseMenuItems = (day: RoutineDayWithExercises, ex: RoutineDayExercise, idx: number): OverflowMenuItem[] => {
     const items: OverflowMenuItem[] = [];
+    items.push({ label: 'Details', onPress: () => navigateToExerciseDetail(ex.exercise_id) });
     const myGroup = ex.superset_group ?? null;
     const prevGroup = idx > 0 ? (day.exercises[idx - 1].superset_group ?? null) : null;
     const nextGroup = idx < day.exercises.length - 1 ? (day.exercises[idx + 1].superset_group ?? null) : null;
@@ -535,7 +561,7 @@ export default function RoutineDetailScreen() {
       </ScrollView>
 
       {/* Add Day Modal */}
-      <BottomSheetModal visible={showAddDay} title="Add Training Day">
+      <BottomSheetModal visible={showAddDay} title="Add Training Day" onClose={() => setShowAddDay(false)} showCloseButton={false}>
             <Text style={styles.fieldLabel}>Day of Week (optional)</Text>
             <DayOfWeekPicker selected={selectedDay} onChange={setSelectedDay} />
 
@@ -561,17 +587,21 @@ export default function RoutineDetailScreen() {
         onClose={() => {
           setShowAddExercise(false);
           setEditingEntry(null);
+          setAutoOpenPicker(false);
         }}
         onConfirm={handleAddExerciseConfirm}
         weightUnit={wUnit}
         editingEntry={editingEntry}
         onDeleteExercise={handleDeleteExercise}
+        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
+        autoOpenPicker={autoOpenPicker}
       />
 
       <ExercisePickerModal
         visible={showSwapPicker}
         onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); setSwapDayId(null); }}
         onSelect={handleExSwapSelect}
+        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
       />
     </View>
   );

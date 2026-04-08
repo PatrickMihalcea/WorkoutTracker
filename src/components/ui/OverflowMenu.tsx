@@ -44,7 +44,7 @@ export function OverflowMenu({ items }: OverflowMenuProps) {
 
   const handleItemPress = useCallback((item: OverflowMenuItem) => {
     setOpen(false);
-    item.onPress();
+    requestAnimationFrame(() => item.onPress());
   }, []);
 
   return (

@@ -8,6 +8,8 @@ import {
   RefreshControl,
   Animated,
 } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import { PieChart } from 'react-native-gifted-charts';
 import { DashboardData, ExerciseProgression, TimeSeriesPoint } from '../../services';
@@ -74,10 +76,25 @@ export function Dashboard({
   chartMode = 'abs',
   onChangeChartMode,
 }: Dashboard2Props) {
+  const router = useRouter();
   const [selectedRange, setSelectedRange] = useState(12);
   const [granularityMode, setGranularityMode] = useState<GranularityMode>('W');
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const pendingPickerReopenRef = useRef(false);
+
+  useFocusEffect(useCallback(() => {
+    if (pendingPickerReopenRef.current) {
+      pendingPickerReopenRef.current = false;
+      setShowExercisePicker(true);
+    }
+  }, []));
+
+  const navigateToExerciseDetail = useCallback((exerciseId: string) => {
+    pendingPickerReopenRef.current = true;
+    setShowExercisePicker(false);
+    setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
+  }, [router]);
   const [spotlightMetric, setSpotlightMetric] = useState<SpotlightMetric>('weight');
 
   const { scrollEnabled } = useChartInteraction();
@@ -186,6 +203,7 @@ export function Dashboard({
           visible={showExercisePicker}
           onClose={() => setShowExercisePicker(false)}
           onSelect={handleExerciseSelect}
+          onExerciseDetails={navigateToExerciseDetail}
           selectedExerciseId={selectedExerciseId}
         />
       </ScrollView>

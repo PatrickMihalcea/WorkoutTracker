@@ -9,6 +9,7 @@ import { OverflowMenu } from '../ui/OverflowMenu';
 import type { OverflowMenuItem } from '../ui/OverflowMenu';
 import { SetRow } from './SetRow';
 import { weightUnitLabel, formatWeight } from '../../utils/units';
+import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
 import { useThemeColors } from '../../hooks/useThemeColors';
 
 const ANIM_DURATION = 500;
@@ -25,8 +26,8 @@ interface ExerciseCardProps {
   rows: WorkoutRow[];
   previousSets: SetLog[];
   weightUnit: WeightUnit;
-  onUpdateRowLocal?: (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => void;
-  onUpdateRow: (id: string, entryId: string, updates: { weight?: string; reps?: string; rir?: string }) => void;
+  onUpdateRowLocal?: (id: string, entryId: string, updates: Record<string, string>) => void;
+  onUpdateRow: (id: string, entryId: string, updates: Record<string, string>) => void;
   onToggleRow: (id: string, entryId: string) => void;
   onDeleteRow: (id: string, entryId: string, setNumber: number) => void;
   onAddRow: (entryId: string, exerciseId: string) => void;
@@ -45,6 +46,7 @@ interface ExerciseCardProps {
   onSeparate?: () => void;
   onSwap?: () => void;
   onDuplicate?: () => void;
+  onDetails?: () => void;
   noBottomMargin?: boolean;
 }
 
@@ -73,11 +75,14 @@ export function ExerciseCard({
   onSeparate,
   onSwap,
   onDuplicate,
+  onDetails,
   noBottomMargin,
 }: ExerciseCardProps) {
   const { setCompletion } = useThemeColors();
   const exerciseName = entry.exercise?.name ?? 'Unknown Exercise';
   const muscleGroup = entry.exercise?.muscle_group ?? '';
+  const exType = entry.exercise?.exercise_type;
+  const typeConfig = getExerciseTypeConfig(exType);
   const completedCount = rows.filter((r) => r.is_completed).length;
   const allDone = rows.length > 0 && rows.every((r) => r.is_completed);
   const templates = entry.sets ?? [];
@@ -130,6 +135,7 @@ export function ExerciseCard({
 
   const menuItems = useMemo((): OverflowMenuItem[] => {
     const items: OverflowMenuItem[] = [];
+    if (onDetails) items.push({ label: 'Details', onPress: onDetails });
     if (canSupersetPrev) items.push({ label: 'Superset Prev', onPress: () => onSupersetPrev?.() });
     if (canSupersetNext) items.push({ label: 'Superset Next', onPress: () => onSupersetNext?.() });
     if (supersetGroup) items.push({ label: 'Separate', onPress: () => onSeparate?.() });
@@ -137,7 +143,7 @@ export function ExerciseCard({
     if (onDuplicate) items.push({ label: 'Duplicate', onPress: onDuplicate });
     if (onRemove) items.push({ label: 'Delete', onPress: onRemove, destructive: true });
     return items;
-  }, [supersetGroup, canSupersetPrev, canSupersetNext, onSupersetPrev, onSupersetNext, onSeparate, onSwap, onDuplicate, onRemove]);
+  }, [onDetails, supersetGroup, canSupersetPrev, canSupersetNext, onSupersetPrev, onSupersetNext, onSeparate, onSwap, onDuplicate, onRemove]);
 
   const showMenu = !reorderCollapsed && (onSwap || onDuplicate || onRemove);
 
@@ -219,15 +225,18 @@ export function ExerciseCard({
           <View style={styles.previousCol}>
             <Text style={[styles.colHeader, doneTextColor && { color: doneTextColor }]}>PREV</Text>
           </View>
-          <View style={styles.weightCol}>
-            <Text style={[styles.colHeader, doneTextColor && { color: doneTextColor }]}>{weightUnitLabel(weightUnit)}</Text>
-          </View>
-          <View style={styles.inputCol}>
-            <Text style={[styles.colHeader, doneTextColor && { color: doneTextColor }]}>REPS</Text>
-          </View>
-          <View style={styles.rirCol}>
-            <Text style={[styles.colHeader, doneTextColor && { color: doneTextColor }]}>RIR</Text>
-          </View>
+          {typeConfig.fields.map((f) => (
+            <View key={f.key} style={styles.inputCol}>
+              <Text style={[styles.colHeader, doneTextColor && { color: doneTextColor }]}>
+                {f.key === 'weight' ? getWeightLabel(exType, weightUnitLabel(weightUnit)) : f.label}
+              </Text>
+            </View>
+          ))}
+          {typeConfig.showRir && (
+            <View style={styles.rirCol}>
+              <Text style={[styles.colHeader, doneTextColor && { color: doneTextColor }]}>RIR</Text>
+            </View>
+          )}
           <View style={styles.actionCol} />
         </View>
 
@@ -239,22 +248,39 @@ export function ExerciseCard({
           for (let j = origIndex - 1; j >= 0; j--) {
             if (rows[j].weight) { suggestedWeight = rows[j].weight; break; }
           }
-          if (!suggestedWeight) {
-            const tpl = templates[origIndex];
-            if (tpl?.target_weight > 0) suggestedWeight = formatWeight(tpl.target_weight, weightUnit);
+          if (!suggestedWeight && row.target_weight > 0) {
+            suggestedWeight = formatWeight(row.target_weight, weightUnit);
           }
 
           let suggestedReps: string | undefined;
           for (let j = origIndex - 1; j >= 0; j--) {
             if (rows[j].reps) { suggestedReps = rows[j].reps; break; }
           }
-          if (!suggestedReps) {
-            const tpl = templates[origIndex];
-            if (tpl) {
-              suggestedReps = tpl.target_reps_min === tpl.target_reps_max
-                ? String(tpl.target_reps_min)
-                : `${tpl.target_reps_min}-${tpl.target_reps_max}`;
-            }
+          if (!suggestedReps && row.target_reps_min > 0) {
+            suggestedReps = row.target_reps_min === row.target_reps_max
+              ? String(row.target_reps_min)
+              : `${row.target_reps_min}-${row.target_reps_max}`;
+          }
+
+          let suggestedDuration: string | undefined;
+          for (let j = origIndex - 1; j >= 0; j--) {
+            if (rows[j].duration) { suggestedDuration = rows[j].duration; break; }
+          }
+          if (!suggestedDuration && row.target_duration > 0) {
+            suggestedDuration = String(row.target_duration);
+          }
+
+          let suggestedDistance: string | undefined;
+          for (let j = origIndex - 1; j >= 0; j--) {
+            if (rows[j].distance) { suggestedDistance = rows[j].distance; break; }
+          }
+          if (!suggestedDistance && row.target_distance > 0) {
+            suggestedDistance = String(row.target_distance);
+          }
+
+          let suggestedRir: string | undefined;
+          for (let j = origIndex - 1; j >= 0; j--) {
+            if (rows[j].rir) { suggestedRir = rows[j].rir; break; }
           }
 
           return (
@@ -264,8 +290,12 @@ export function ExerciseCard({
               displaySetNumber={displayNum}
               previousSet={previousSets[origIndex]}
               weightUnit={weightUnit}
+              exerciseType={exType}
               suggestedWeight={suggestedWeight}
               suggestedReps={suggestedReps}
+              suggestedDuration={suggestedDuration}
+              suggestedDistance={suggestedDistance}
+              suggestedRir={suggestedRir}
               completionColor={setCompletion}
               onUpdateRowLocal={(updates) => onUpdateRowLocal?.(row.id, entry.id, updates)}
               onUpdateRow={(updates) => onUpdateRow(row.id, entry.id, updates)}
@@ -357,11 +387,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-  setLabelCol: { width: 28, alignItems: 'center' },
-  previousCol: { width: 72, alignItems: 'center' },
-  weightCol: { flex: 0.8, alignItems: 'center' },
-  inputCol: { flex: 0.8, alignItems: 'center' },
-  rirCol: { width: 40, alignItems: 'center' },
+  setLabelCol: { width: 28, alignItems: 'center', justifyContent: 'center' },
+  previousCol: { width: 72, alignItems: 'center', justifyContent: 'center' },
+  inputCol: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  rirCol: { width: 40, alignItems: 'center', justifyContent: 'center' },
   actionCol: { width: 32, marginLeft: 4 },
   addSetRow: {
     flexDirection: 'row',

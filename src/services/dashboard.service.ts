@@ -576,6 +576,10 @@ function computeMuscleGroupSplit(sessions: RawSession[]) {
       const group = set.exercise?.muscle_group ?? 'unknown';
       if (group === 'unknown') continue;
       counts.set(group, (counts.get(group) ?? 0) + 1);
+      const secondary: string[] = (set.exercise as Record<string, unknown>)?.secondary_muscles as string[] ?? [];
+      for (const sec of secondary) {
+        counts.set(sec, (counts.get(sec) ?? 0) + 0.5);
+      }
     }
   }
   const total = [...counts.values()].reduce((a, b) => a + b, 0);

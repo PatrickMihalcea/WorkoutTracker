@@ -11,6 +11,8 @@ import { getSupersetPosition, type SupersetGroups } from '../../../src/utils/sup
 import { colors, fonts } from '../../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
 import { weightUnitLabel, formatWeight } from '../../../src/utils/units';
+import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
+import { formatDurationValue } from '../../../src/utils/duration';
 import { DAY_LABELS, DayOfWeek, Routine, RoutineWithDays, RoutineDayWithExercises } from '../../../src/models';
 import { sessionService, routineService } from '../../../src/services';
 
@@ -234,13 +236,21 @@ export default function HomeScreen() {
                           </Text>
                           <Text style={styles.exerciseTarget}>{setsLabel}</Text>
                         </TouchableOpacity>
-                        {isExpanded && ex.sets && ex.sets.length > 0 && (
+                        {isExpanded && ex.sets && ex.sets.length > 0 && (() => {
+                          const exTypeCfg = getExerciseTypeConfig(ex.exercise?.exercise_type);
+                          const showWeight = exTypeCfg.fields.some((f) => f.key === 'weight');
+                          const showReps = exTypeCfg.fields.some((f) => f.key === 'reps');
+                          const showDuration = exTypeCfg.fields.some((f) => f.key === 'duration');
+                          const showDistance = exTypeCfg.fields.some((f) => f.key === 'distance');
+                          return (
                           <View style={styles.setDetails}>
                             <View style={styles.setDetailHeader}>
                               <View style={styles.setCol}><Text style={styles.setDetailCol}>SET</Text></View>
-                              <View style={styles.setCol}><Text style={styles.setDetailCol}>{weightUnitLabel(wUnit)}</Text></View>
-                              <View style={styles.setCol}><Text style={styles.setDetailCol}>REPS</Text></View>
-                              <View style={styles.setCol}><Text style={styles.setDetailCol}>RIR</Text></View>
+                              {showWeight && <View style={styles.setCol}><Text style={styles.setDetailCol}>{getWeightLabel(ex.exercise?.exercise_type, weightUnitLabel(wUnit))}</Text></View>}
+                              {showReps && <View style={styles.setCol}><Text style={styles.setDetailCol}>REPS</Text></View>}
+                              {showDuration && <View style={styles.setCol}><Text style={styles.setDetailCol}>TIME</Text></View>}
+                              {showDistance && <View style={styles.setCol}><Text style={styles.setDetailCol}>KM</Text></View>}
+                              {exTypeCfg.showRir && <View style={styles.setCol}><Text style={styles.setDetailCol}>RIR</Text></View>}
                             </View>
                             {(() => {
                               let workingCount = 0;
@@ -255,27 +265,48 @@ export default function HomeScreen() {
                                         <Text style={styles.setDetailCell}>{workingCount}</Text>
                                       )}
                                     </View>
-                                    <View style={styles.setCol}>
-                                      <Text style={styles.setDetailCell}>
-                                        {s.target_weight > 0 ? formatWeight(s.target_weight, wUnit) : '-'}
-                                      </Text>
-                                    </View>
-                                    <View style={styles.setCol}>
-                                      <Text style={styles.setDetailCell}>
-                                        {s.target_reps_min === s.target_reps_max
-                                          ? String(s.target_reps_min)
-                                          : `${s.target_reps_min}-${s.target_reps_max}`}
-                                      </Text>
-                                    </View>
-                                    <View style={styles.setCol}>
-                                      <RirCircle value={s.target_rir ?? null} size={22} />
-                                    </View>
+                                    {showWeight && (
+                                      <View style={styles.setCol}>
+                                        <Text style={styles.setDetailCell}>
+                                          {s.target_weight > 0 ? formatWeight(s.target_weight, wUnit) : '-'}
+                                        </Text>
+                                      </View>
+                                    )}
+                                    {showReps && (
+                                      <View style={styles.setCol}>
+                                        <Text style={styles.setDetailCell}>
+                                          {s.target_reps_min === s.target_reps_max
+                                            ? String(s.target_reps_min)
+                                            : `${s.target_reps_min}-${s.target_reps_max}`}
+                                        </Text>
+                                      </View>
+                                    )}
+                                    {showDuration && (
+                                      <View style={styles.setCol}>
+                                        <Text style={styles.setDetailCell}>
+                                          {s.target_duration > 0 ? formatDurationValue(s.target_duration) : '-'}
+                                        </Text>
+                                      </View>
+                                    )}
+                                    {showDistance && (
+                                      <View style={styles.setCol}>
+                                        <Text style={styles.setDetailCell}>
+                                          {s.target_distance > 0 ? `${s.target_distance}km` : '-'}
+                                        </Text>
+                                      </View>
+                                    )}
+                                    {exTypeCfg.showRir && (
+                                      <View style={styles.setCol}>
+                                        <RirCircle value={s.target_rir ?? null} size={22} />
+                                      </View>
+                                    )}
                                   </View>
                                 );
                               });
                             })()}
                           </View>
-                        )}
+                          );
+                        })()}
                       </View>
                     </SupersetBracket>
                   );
@@ -326,6 +357,7 @@ export default function HomeScreen() {
         visible={showChooseModal}
         title={chosenRoutine ? chosenRoutine.name : 'Pick a Routine'}
         onClose={() => setShowChooseModal(false)}
+        showCloseButton={false}
         scrollable
       >
         {!chosenRoutine ? (

@@ -9,15 +9,19 @@ import {
   Alert,
 } from 'react-native';
 import { colors, fonts } from '../../constants';
-import { WeightUnit } from '../../models';
+import { WeightUnit, ExerciseType } from '../../models';
 import { weightUnitLabel, parseWeightToKg } from '../../utils/units';
-import { RirCircle, RirPickerModal } from '../ui';
+import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
+import { formatDurationValue } from '../../utils/duration';
+import { RirCircle, RirPickerModal, DurationPickerModal } from '../ui';
 
 export interface TemplateSetRow {
   weight: string;
   repsMin: string;
   repsMax: string;
   rir: string;
+  duration: string;
+  distance: string;
   isWarmup: boolean;
   editedFields: Set<string>;
 }
@@ -27,11 +31,13 @@ export const defaultSetRow = (isWarmup = false): TemplateSetRow => ({
   repsMin: '',
   repsMax: '',
   rir: '',
+  duration: '',
+  distance: '',
   isWarmup,
   editedFields: new Set(),
 });
 
-type TemplateField = 'weight' | 'repsMin' | 'repsMax' | 'rir';
+type TemplateField = 'weight' | 'repsMin' | 'repsMax' | 'rir' | 'duration' | 'distance';
 
 export function getSuggestion(
   rows: TemplateSetRow[],
@@ -80,13 +86,15 @@ export function buildSetsPayload(
             || parseInt(resolveValue(rows, i, 'repsMin'), 10) || 10)
         : (parseInt(resolveValue(rows, i, 'repsMin'), 10) || 10),
       target_rir: rirVal ? parseFloat(rirVal) : null,
+      target_duration: parseFloat(resolveValue(rows, i, 'duration')) || 0,
+      target_distance: parseFloat(resolveValue(rows, i, 'distance')) || 0,
       is_warmup: row.isWarmup,
     };
   });
 }
 
 export function setsToTemplateRows(
-  sets: { target_weight: number; target_reps_min: number; target_reps_max: number; target_rir?: number | null; is_warmup?: boolean }[],
+  sets: { target_weight: number; target_reps_min: number; target_reps_max: number; target_rir?: number | null; target_duration?: number; target_distance?: number; is_warmup?: boolean }[],
   fallbackReps: number,
   wUnit: WeightUnit,
 ): { rows: TemplateSetRow[]; hasRepRange: boolean } {
@@ -97,6 +105,8 @@ export function setsToTemplateRows(
         repsMin: String(fallbackReps),
         repsMax: String(fallbackReps),
         rir: '',
+        duration: '',
+        distance: '',
         isWarmup: false,
         editedFields: new Set(['repsMin', 'repsMax']),
       }],
@@ -108,6 +118,10 @@ export function setsToTemplateRows(
     const edited = new Set(['weight', 'repsMin', 'repsMax']);
     const rirStr = s.target_rir != null ? String(s.target_rir) : '';
     if (rirStr) edited.add('rir');
+    const durStr = (s.target_duration ?? 0) > 0 ? String(s.target_duration) : '';
+    if (durStr) edited.add('duration');
+    const distStr = (s.target_distance ?? 0) > 0 ? String(s.target_distance) : '';
+    if (distStr) edited.add('distance');
     return {
       weight: s.target_weight > 0
         ? String(wUnit === 'lbs'
@@ -117,6 +131,8 @@ export function setsToTemplateRows(
       repsMin: String(s.target_reps_min),
       repsMax: String(s.target_reps_max),
       rir: rirStr,
+      duration: durStr,
+      distance: distStr,
       isWarmup: s.is_warmup ?? false,
       editedFields: edited,
     };
@@ -161,10 +177,18 @@ interface SetsTableEditorProps {
   repRange: boolean;
   setRepRange: (v: boolean) => void;
   wUnit: WeightUnit;
+  exerciseType?: ExerciseType | string;
 }
 
-export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }: SetsTableEditorProps) {
+export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, exerciseType }: SetsTableEditorProps) {
   const [rirPickerIndex, setRirPickerIndex] = useState<number | null>(null);
+  const [durationPickerIndex, setDurationPickerIndex] = useState<number | null>(null);
+  const config = getExerciseTypeConfig(exerciseType);
+
+  const showWeight = config.fields.some((f) => f.key === 'weight');
+  const showReps = config.fields.some((f) => f.key === 'reps');
+  const showDuration = config.fields.some((f) => f.key === 'duration');
+  const showDistance = config.fields.some((f) => f.key === 'distance');
 
   const handleRirSelect = (value: number | null) => {
     if (rirPickerIndex === null) return;
@@ -183,17 +207,29 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }:
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={[styles.colHeader, styles.colSet]}>SET</Text>
-        <Text style={[styles.colHeader, styles.colWeight]}>{weightUnitLabel(wUnit)}</Text>
-        <TouchableOpacity
-          style={styles.repsHeaderBtn}
-          onPress={() => setRepRange(!repRange)}
-        >
-          <Text style={styles.colHeader}>
-            {repRange ? 'REP RANGE' : 'REPS'}
+        {showWeight && (
+          <Text style={[styles.colHeader, styles.colWeight]}>
+            {getWeightLabel(exerciseType, weightUnitLabel(wUnit))}
           </Text>
-          <Text style={styles.repsToggleArrow}>▾</Text>
-        </TouchableOpacity>
-        <Text style={[styles.colHeader, styles.colRir]}>RIR</Text>
+        )}
+        {showReps && (
+          <TouchableOpacity
+            style={styles.repsHeaderBtn}
+            onPress={() => setRepRange(!repRange)}
+          >
+            <Text style={styles.colHeader}>
+              {repRange ? 'REP RANGE' : 'REPS'}
+            </Text>
+            <Text style={styles.repsToggleArrow}>▾</Text>
+          </TouchableOpacity>
+        )}
+        {showDuration && (
+          <Text style={[styles.colHeader, styles.colFlex]}>TIME</Text>
+        )}
+        {showDistance && (
+          <Text style={[styles.colHeader, styles.colFlex]}>KM</Text>
+        )}
+        {config.showRir && <Text style={[styles.colHeader, styles.colRir]}>RIR</Text>}
         {rows.length > 1 && <View style={styles.headerSpacer} />}
       </View>
 
@@ -202,6 +238,8 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }:
           const weightSugg = getSuggestion(rows, i, 'weight');
           const repsMinSugg = getSuggestion(rows, i, 'repsMin');
           const repsMaxSugg = getSuggestion(rows, i, 'repsMax');
+          const durationSugg = getSuggestion(rows, i, 'duration');
+          const distanceSugg = getSuggestion(rows, i, 'distance');
           const rirResolved = resolveValue(rows, i, 'rir');
           const rirNum = rirResolved ? parseFloat(rirResolved) : null;
           const workingIndex = rows.slice(0, i + 1).filter((r) => !r.isWarmup).length;
@@ -214,51 +252,93 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }:
               ) : (
                 <Text style={[styles.colCell, styles.colSet]}>{workingIndex}</Text>
               )}
-              <TextInput
-                style={[styles.input, styles.colWeight]}
-                value={row.editedFields.has('weight') ? row.weight : ''}
-                onChangeText={(v) => updateSetRow(rows, setRows, i, 'weight', v, repRange)}
-                keyboardType="decimal-pad"
-                placeholder={weightSugg || '0'}
-                placeholderTextColor={colors.textMuted}
-              />
-              {repRange ? (
-                <View style={styles.repRangeRow}>
-                  <TextInput
-                    style={[styles.input, styles.repRangeInput]}
-                    value={row.editedFields.has('repsMin') ? row.repsMin : ''}
-                    onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMin', v, repRange)}
-                    keyboardType="number-pad"
-                    placeholder={repsMinSugg || '8'}
-                    placeholderTextColor={colors.textMuted}
-                  />
-                  <Text style={styles.repRangeTo}>to</Text>
-                  <TextInput
-                    style={[styles.input, styles.repRangeInput]}
-                    value={row.editedFields.has('repsMax') ? row.repsMax : ''}
-                    onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMax', v, repRange)}
-                    keyboardType="number-pad"
-                    placeholder={repsMaxSugg || '12'}
-                    placeholderTextColor={colors.textMuted}
-                  />
-                </View>
-              ) : (
+
+              {showWeight && (
                 <TextInput
-                  style={[styles.input, styles.colReps]}
-                  value={row.editedFields.has('repsMin') ? row.repsMin : ''}
-                  onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMin', v, repRange)}
-                  keyboardType="number-pad"
-                  placeholder={repsMinSugg || '10'}
+                  style={[styles.input, styles.colWeight]}
+                  value={row.editedFields.has('weight') ? row.weight : ''}
+                  onChangeText={(v) => updateSetRow(rows, setRows, i, 'weight', v, repRange)}
+                  keyboardType="decimal-pad"
+                  placeholder={weightSugg || '0'}
                   placeholderTextColor={colors.textMuted}
                 />
               )}
-              <View style={styles.colRir}>
-                <RirCircle
-                  value={rirNum}
-                  size={28}
-                  onPress={() => setRirPickerIndex(i)}
+
+              {showReps && (
+                <View style={styles.repsCol}>
+                  {repRange ? (
+                    <>
+                      <TextInput
+                        style={styles.repsInner}
+                        value={row.editedFields.has('repsMin') ? row.repsMin : ''}
+                        onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMin', v, repRange)}
+                        keyboardType="number-pad"
+                        placeholder={repsMinSugg || '8'}
+                        placeholderTextColor={colors.textMuted}
+                        underlineColorAndroid="transparent"
+                      />
+                      <Text style={styles.repRangeTo}>to</Text>
+                      <TextInput
+                        style={styles.repsInner}
+                        value={row.editedFields.has('repsMax') ? row.repsMax : ''}
+                        onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMax', v, repRange)}
+                        keyboardType="number-pad"
+                        placeholder={repsMaxSugg || '12'}
+                        placeholderTextColor={colors.textMuted}
+                        underlineColorAndroid="transparent"
+                      />
+                    </>
+                  ) : (
+                    <TextInput
+                      style={styles.repsInner}
+                      value={row.editedFields.has('repsMin') ? row.repsMin : ''}
+                      onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMin', v, repRange)}
+                      keyboardType="number-pad"
+                      placeholder={repsMinSugg || '10'}
+                      placeholderTextColor={colors.textMuted}
+                      underlineColorAndroid="transparent"
+                    />
+                  )}
+                </View>
+              )}
+
+              {showDuration && (() => {
+                const durVal = row.editedFields.has('duration') ? row.duration : '';
+                const durNum = durVal ? parseFloat(durVal) || 0 : 0;
+                const suggNum = durationSugg ? parseFloat(durationSugg) || 0 : 0;
+                return (
+                  <TouchableOpacity
+                    style={[styles.input, styles.colFlex, styles.durationTouchable]}
+                    onPress={() => setDurationPickerIndex(i)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={durNum > 0 ? styles.durationText : styles.durationPlaceholder}>
+                      {durNum > 0 ? formatDurationValue(durNum) : (suggNum > 0 ? formatDurationValue(suggNum) : '0:00')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()}
+
+              {showDistance && (
+                <TextInput
+                  style={[styles.input, styles.colFlex]}
+                  value={row.editedFields.has('distance') ? row.distance : ''}
+                  onChangeText={(v) => updateSetRow(rows, setRows, i, 'distance', v, repRange)}
+                  keyboardType="decimal-pad"
+                  placeholder={distanceSugg || '0'}
+                  placeholderTextColor={colors.textMuted}
                 />
-              </View>
+              )}
+
+              {config.showRir && (
+                <View style={styles.colRir}>
+                  <RirCircle
+                    value={rirNum}
+                    size={28}
+                    onPress={() => setRirPickerIndex(i)}
+                  />
+                </View>
+              )}
               {rows.length > 1 && (
                 <TouchableOpacity
                   style={styles.removeSetBtn}
@@ -294,11 +374,25 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit }:
         </TouchableOpacity>
       </View>
 
-      <RirPickerModal
-        visible={rirPickerIndex !== null}
-        onClose={() => setRirPickerIndex(null)}
-        onSelect={handleRirSelect}
-        currentValue={currentRirValue}
+      {config.showRir && (
+        <RirPickerModal
+          visible={rirPickerIndex !== null}
+          onClose={() => setRirPickerIndex(null)}
+          onSelect={handleRirSelect}
+          currentValue={currentRirValue}
+        />
+      )}
+
+      <DurationPickerModal
+        visible={durationPickerIndex !== null}
+        onClose={() => setDurationPickerIndex(null)}
+        onConfirm={(totalSeconds) => {
+          if (durationPickerIndex !== null) {
+            updateSetRow(rows, setRows, durationPickerIndex, 'duration', String(totalSeconds), repRange);
+          }
+          setDurationPickerIndex(null);
+        }}
+        value={durationPickerIndex !== null ? (parseFloat(resolveValue(rows, durationPickerIndex, 'duration')) || 0) : 0}
       />
     </View>
   );
@@ -326,8 +420,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   colSet: { width: 36, alignItems: 'center', justifyContent: 'center' },
-  colWeight: { width: '25%', textAlign: 'center', marginHorizontal: 4 },
-  colReps: { flex: 1, textAlign: 'center' },
+  colWeight: { flex: 1, textAlign: 'center', marginHorizontal: 4 },
+  colFlex: { flex: 1, textAlign: 'center', marginHorizontal: 4 },
   colRir: { width: 36, alignItems: 'center' },
   repsHeaderBtn: {
     flex: 1,
@@ -368,20 +462,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 4,
   },
-  repRangeRow: {
+  repsCol: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginHorizontal: 4,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    gap: 2,
   },
-  repRangeInput: {
+  repsInner: {
     flex: 1,
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    textAlign: 'center' as const,
+    padding: 0,
+    margin: 0,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
   repRangeTo: {
     fontSize: 12,
     fontFamily: fonts.regular,
     color: colors.textMuted,
-    marginHorizontal: 4,
   },
   removeSetBtn: {
     width: 28,
@@ -415,6 +524,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: fonts.semiBold,
     color: '#D4A017',
+  },
+  durationTouchable: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  durationText: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  durationPlaceholder: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+    textAlign: 'center',
   },
   warmupCircle: {
     width: 22,

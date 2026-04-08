@@ -299,6 +299,8 @@ export const routineService = {
       target_reps_min: s.target_reps_min,
       target_reps_max: s.target_reps_max,
       target_rir: s.target_rir ?? null,
+      target_duration: s.target_duration ?? 0,
+      target_distance: s.target_distance ?? 0,
       is_warmup: s.is_warmup ?? false,
     }));
 
@@ -332,6 +334,8 @@ export const routineService = {
         target_reps_min: s.target_reps_min,
         target_reps_max: s.target_reps_max,
         target_rir: s.target_rir ?? null,
+        target_duration: s.target_duration ?? 0,
+        target_distance: s.target_distance ?? 0,
         is_warmup: s.is_warmup ?? false,
       }));
 

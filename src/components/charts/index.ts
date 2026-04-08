@@ -17,6 +17,9 @@ export type { ChartFilterBarProps } from './ChartFilterBar';
 export { MetricChips } from './MetricChips';
 export type { MetricChipsProps } from './MetricChips';
 
+export { RecordsBarChart } from './RecordsBarChart';
+export type { BarDataItem } from './RecordsBarChart';
+
 export {
   type GranularityMode,
   type ChartMode,

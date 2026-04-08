@@ -40,15 +40,15 @@ interface WorkoutState {
 
   startWorkout: (userId: string, routineDayId: string, exercises: RoutineDayExercise[]) => Promise<void>;
   resumeWorkout: (userId: string) => Promise<boolean>;
-  updateRowLocal: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir'>>) => void;
-  updateRow: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir'>>) => Promise<void>;
+  updateRowLocal: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'duration' | 'distance'>>) => void;
+  updateRow: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'duration' | 'distance'>>) => Promise<void>;
   toggleRow: (id: string, entryId: string) => Promise<void>;
   deleteRow: (id: string, entryId: string, setNumber: number) => Promise<void>;
   addRow: (entryId: string, exerciseId: string) => Promise<void>;
   addWarmupRow: (entryId: string, exerciseId: string) => Promise<void>;
   toggleWarmup: (id: string, entryId: string) => Promise<void>;
   removeExercise: (entryId: string) => Promise<void>;
-  addExercise: (exercise: Exercise, setsPayload: { set_number: number; target_weight: number; target_reps_min: number; target_reps_max: number }[]) => Promise<void>;
+  addExercise: (exercise: Exercise, setsPayload: { set_number: number; target_weight: number; target_reps_min: number; target_reps_max: number; target_duration?: number; target_distance?: number }[]) => Promise<void>;
   loadPreviousSets: (exerciseIds: string[], userId: string) => Promise<void>;
   reorderExercises: (newOrder: RoutineDayExercise[]) => Promise<void>;
   toggleCollapse: (entryId: string) => void;
@@ -299,6 +299,8 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         target_weight: sp.target_weight,
         target_reps_min: sp.target_reps_min,
         target_reps_max: sp.target_reps_max,
+        target_duration: sp.target_duration,
+        target_distance: sp.target_distance,
       }, exerciseOrder);
       newRows.push(row);
     }
@@ -476,6 +478,8 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           rir: row.rir ? parseInt(row.rir, 10) : null,
           is_warmup: row.is_warmup,
           exercise_order: order,
+          duration: parseFloat(row.duration) || 0,
+          distance: parseFloat(row.distance) || 0,
         });
       }
       order++;

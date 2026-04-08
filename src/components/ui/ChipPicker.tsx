@@ -54,6 +54,51 @@ export function ChipPicker<T extends string | number>({
   );
 }
 
+interface MultiChipPickerProps<T extends string | number> {
+  items: { key: string; label: string; value: T }[];
+  selected: T[];
+  onChange: (values: T[]) => void;
+  style?: ViewStyle;
+}
+
+export function MultiChipPicker<T extends string | number>({
+  items,
+  selected,
+  onChange,
+  style,
+}: MultiChipPickerProps<T>) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[styles.scroll, style]}
+    >
+      <View style={styles.row}>
+        {items.map((item) => {
+          const isSelected = selected.includes(item.value);
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.chip, isSelected && styles.chipSelected]}
+              onPress={() => {
+                if (isSelected) {
+                  onChange(selected.filter((v) => v !== item.value));
+                } else {
+                  onChange([...selected, item.value]);
+                }
+              }}
+            >
+              <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
+}
+
 const DAY_ITEMS = Object.entries(DAY_LABELS).map(([key, label]) => ({
   key,
   label: label.slice(0, 3),

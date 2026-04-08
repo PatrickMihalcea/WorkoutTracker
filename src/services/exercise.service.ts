@@ -11,6 +11,26 @@ export const exerciseService = {
     return data;
   },
 
+  async getLibrary(): Promise<Exercise[]> {
+    const { data, error } = await supabase
+      .from('exercises')
+      .select('*')
+      .is('user_id', null)
+      .order('name');
+    if (error) throw error;
+    return data;
+  },
+
+  async getUserExercises(userId: string): Promise<Exercise[]> {
+    const { data, error } = await supabase
+      .from('exercises')
+      .select('*')
+      .eq('user_id', userId)
+      .order('name');
+    if (error) throw error;
+    return data;
+  },
+
   async getById(id: string): Promise<Exercise> {
     const { data, error } = await supabase
       .from('exercises')
