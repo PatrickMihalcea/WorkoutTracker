@@ -15,6 +15,8 @@ import { PieChart } from 'react-native-gifted-charts';
 import { DashboardData, ExerciseProgression, TimeSeriesPoint } from '../../services';
 import { Card, ExercisePickerModal } from '../ui';
 import { Exercise } from '../../models';
+import { useProfileStore } from '../../stores/profile.store';
+import { weightUnitLabel } from '../../utils/units';
 import { colors, fonts, spacing } from '../../constants';
 
 import {
@@ -77,6 +79,9 @@ export function Dashboard({
   onChangeChartMode,
 }: Dashboard2Props) {
   const router = useRouter();
+  const { profile } = useProfileStore();
+  const wUnit = profile?.weight_unit ?? 'kg';
+  const wLabel = wUnit === 'lbs' ? 'lbs' : 'kg';
   const [selectedRange, setSelectedRange] = useState(12);
   const [granularityMode, setGranularityMode] = useState<GranularityMode>('W');
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
@@ -401,6 +406,9 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
   onMetricChange: (m: SpotlightMetric) => void;
   onPickExercise: () => void;
 }) {
+  const { profile: spotProfile } = useProfileStore();
+  const spotWLabel = spotProfile?.weight_unit === 'lbs' ? 'lbs' : 'kg';
+
   const pointsMap: Record<SpotlightMetric, TimeSeriesPoint[]> = {
     weight: active.weightPoints,
     volume: active.volumePoints,
@@ -417,10 +425,10 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
   };
 
   const tooltipSuffix: Record<SpotlightMetric, string> = {
-    weight: ' lbs',
+    weight: ` ${spotWLabel}`,
     volume: ' vol',
     reps: ' reps',
-    '1rm': ' 1RM',
+    '1rm': ` ${spotWLabel}`,
   };
 
   const minStepMap: Record<SpotlightMetric, number> = {
@@ -607,6 +615,9 @@ function PersonalRecordsSection({
 }: {
   data: DashboardData['personalRecords'];
 }) {
+  const { profile: prProfile } = useProfileStore();
+  const prWUnit = prProfile?.weight_unit ?? 'kg';
+
   if (data.length === 0) return null;
 
   return (
@@ -621,7 +632,7 @@ function PersonalRecordsSection({
           <View style={styles.prInfo}>
             <Text style={styles.prName}>{pr.exerciseName}</Text>
             <Text style={styles.prDetail}>
-              {pr.weight} lbs x {pr.reps} reps
+              {Math.round(pr.weight * 10) / 10} {weightUnitLabel(prWUnit).toLowerCase()} x {pr.reps} reps
             </Text>
           </View>
         </View>

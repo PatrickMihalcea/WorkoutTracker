@@ -9,8 +9,8 @@ import {
   Alert,
 } from 'react-native';
 import { colors, fonts } from '../../constants';
-import { WeightUnit, ExerciseType } from '../../models';
-import { weightUnitLabel, parseWeightToKg } from '../../utils/units';
+import { WeightUnit, DistanceUnit, ExerciseType } from '../../models';
+import { weightUnitLabel, distanceUnitLabel, parseWeightToKg } from '../../utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
 import { formatDurationValue } from '../../utils/duration';
 import { RirCircle, RirPickerModal, DurationPickerModal } from '../ui';
@@ -177,10 +177,11 @@ interface SetsTableEditorProps {
   repRange: boolean;
   setRepRange: (v: boolean) => void;
   wUnit: WeightUnit;
+  dUnit?: DistanceUnit;
   exerciseType?: ExerciseType | string;
 }
 
-export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, exerciseType }: SetsTableEditorProps) {
+export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, dUnit = 'km', exerciseType }: SetsTableEditorProps) {
   const [rirPickerIndex, setRirPickerIndex] = useState<number | null>(null);
   const [durationPickerIndex, setDurationPickerIndex] = useState<number | null>(null);
   const config = getExerciseTypeConfig(exerciseType);
@@ -227,7 +228,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, e
           <Text style={[styles.colHeader, styles.colFlex]}>TIME</Text>
         )}
         {showDistance && (
-          <Text style={[styles.colHeader, styles.colFlex]}>KM</Text>
+          <Text style={[styles.colHeader, styles.colFlex]}>{distanceUnitLabel(dUnit)}</Text>
         )}
         {config.showRir && <Text style={[styles.colHeader, styles.colRir]}>RIR</Text>}
         {rows.length > 1 && <View style={styles.headerSpacer} />}

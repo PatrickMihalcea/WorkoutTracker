@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
-import { MuscleGroup } from '../models';
+import { MuscleGroup, WeightUnit } from '../models';
+import { kgToLbs } from '../utils/units';
 
 export interface PRRecord {
   exerciseName: string;
@@ -297,7 +298,7 @@ function mapToPointsAvg(dataMap: Map<string, { total: number; count: number }>, 
 const SESSION_SELECT = 'id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group))';
 
 export const dashboardService = {
-  async getDashboardData(userId: string, weeks: number = 0, granularity: Granularity = 'week'): Promise<DashboardData> {
+  async getDashboardData(userId: string, weeks: number = 0, granularity: Granularity = 'week', wUnit: WeightUnit = 'kg'): Promise<DashboardData> {
     let query = supabase
       .from('workout_sessions')
       .select(SESSION_SELECT)
@@ -311,10 +312,12 @@ export const dashboardService = {
       query = query.gte('started_at', cutoff.toISOString());
     }
 
-    const { data: sessions, error } = await query;
+    const { data: rawData, error } = await query;
 
     if (error) throw error;
-    if (!sessions || sessions.length === 0) return emptyDashboard(granularity);
+    if (!rawData || rawData.length === 0) return emptyDashboard(granularity);
+
+    const sessions = convertSessionWeights(rawData as unknown as RawSession[], wUnit);
 
     const skeleton = weeks > 0 ? generateSkeleton(granularity, weeks) : null;
 
@@ -333,7 +336,7 @@ export const dashboardService = {
     };
   },
 
-  async getDashboardDataRaw(userId: string, weeks: number = 0): Promise<DashboardData> {
+  async getDashboardDataRaw(userId: string, weeks: number = 0, wUnit: WeightUnit = 'kg'): Promise<DashboardData> {
     let query = supabase
       .from('workout_sessions')
       .select(SESSION_SELECT)
@@ -347,10 +350,12 @@ export const dashboardService = {
       query = query.gte('started_at', cutoff.toISOString());
     }
 
-    const { data: sessions, error } = await query;
+    const { data: rawData, error } = await query;
 
     if (error) throw error;
-    if (!sessions || sessions.length === 0) return emptyDashboard('day');
+    if (!rawData || rawData.length === 0) return emptyDashboard('day');
+
+    const sessions = convertSessionWeights(rawData as unknown as RawSession[], wUnit);
 
     return {
       summaryStats: computeSummaryStats(sessions),
@@ -367,8 +372,8 @@ export const dashboardService = {
     };
   },
 
-  async getSummaryData(userId: string): Promise<SummaryData> {
-    const { data: sessions, error } = await supabase
+  async getSummaryData(userId: string, wUnit: WeightUnit = 'kg'): Promise<SummaryData> {
+    const { data: rawData, error } = await supabase
       .from('workout_sessions')
       .select(SESSION_SELECT)
       .eq('user_id', userId)
@@ -376,7 +381,9 @@ export const dashboardService = {
       .order('started_at', { ascending: true });
 
     if (error) throw error;
-    if (!sessions || sessions.length === 0) return emptySummary();
+    if (!rawData || rawData.length === 0) return emptySummary();
+
+    const sessions = convertSessionWeights(rawData as unknown as RawSession[], wUnit);
 
     return {
       summaryStats: computeSummaryStats(sessions),
@@ -394,6 +401,7 @@ export const dashboardService = {
     weeks: number = 0,
     granularity: Granularity = 'week',
     raw: boolean = false,
+    wUnit: WeightUnit = 'kg',
   ): Promise<RoutineChartData> {
     const { data: days, error: dayErr } = await supabase
       .from('routine_days')
@@ -419,10 +427,12 @@ export const dashboardService = {
       query = query.gte('started_at', cutoff.toISOString());
     }
 
-    const { data: sessions, error } = await query;
+    const { data: rawData, error } = await query;
 
     if (error) throw error;
-    if (!sessions || sessions.length === 0) return { volume: [], reps: [], duration: [] };
+    if (!rawData || rawData.length === 0) return { volume: [], reps: [], duration: [] };
+
+    const sessions = convertSessionWeights(rawData as unknown as RawSession[], wUnit);
 
     if (raw) {
       return {
@@ -516,6 +526,17 @@ type RawSession = {
   }[];
 };
 
+function convertSessionWeights(sessions: RawSession[], wUnit: WeightUnit): RawSession[] {
+  if (wUnit === 'kg') return sessions;
+  return sessions.map((s) => ({
+    ...s,
+    sets: s.sets.map((set) => ({
+      ...set,
+      weight: Math.round(kgToLbs(set.weight) * 10) / 10,
+    })),
+  }));
+}
+
 function computeSummaryStats(sessions: RawSession[]): SummaryStats {
   const totalWorkouts = sessions.length;
 
@@ -574,7 +595,7 @@ function computeMuscleGroupSplit(sessions: RawSession[]) {
   for (const s of sessions) {
     for (const set of s.sets) {
       const group = set.exercise?.muscle_group ?? 'unknown';
-      if (group === 'unknown') continue;
+      if (group === 'unknown' || group === 'full_body') continue;
       counts.set(group, (counts.get(group) ?? 0) + 1);
       const secondary: string[] = (set.exercise as Record<string, unknown>)?.secondary_muscles as string[] ?? [];
       for (const sec of secondary) {
@@ -600,6 +621,7 @@ function computeMuscleGroupExercises(sessions: RawSession[]): Record<string, { l
     for (const set of s.sets) {
       if (!set.exercise) continue;
       const group = set.exercise.muscle_group;
+      if (group === 'full_body') continue;
       const name = set.exercise.name;
       if (!groupExerciseCounts.has(group)) {
         groupExerciseCounts.set(group, new Map());

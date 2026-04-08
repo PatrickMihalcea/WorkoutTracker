@@ -99,7 +99,7 @@ export function ExercisePickerModal({
       >
         <Text style={styles.exerciseName}>{item.name}</Text>
         <Text style={styles.exerciseMeta}>
-          {item.muscle_group.replace('_', ' ')} · {item.equipment.replace('_', ' ')}
+          {item.muscle_group.replace(/_/g, ' ')} · {item.equipment.replace(/_/g, ' ')}
         </Text>
       </TouchableOpacity>
       {onExerciseDetails && (

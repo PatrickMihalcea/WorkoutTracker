@@ -50,6 +50,7 @@ export function WorkoutOverlay() {
   const { user } = useAuthStore();
   const { profile, updateProfile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
+  const distanceUnit = profile?.distance_unit ?? 'km';
   const restTimerDefault = profile?.rest_timer_seconds ?? 90;
   const {
     session,
@@ -175,7 +176,7 @@ export function WorkoutOverlay() {
     const totals = new Map<string, { completed: number; total: number }>();
     for (const ex of exercises) {
       const group = ex.exercise?.muscle_group;
-      if (!group) continue;
+      if (!group || group === 'full_body') continue;
       const exRows = rows[ex.id] ?? [];
       const done = exRows.filter((r) => r.is_completed).length;
       const entry = totals.get(group) ?? { completed: 0, total: 0 };
@@ -369,6 +370,7 @@ export function WorkoutOverlay() {
             rows={rows[item.entry.id] ?? []}
             previousSets={previousSets[item.entry.exercise_id] ?? []}
             weightUnit={weightUnit}
+            distanceUnit={distanceUnit}
             reorderCollapsed
             onUpdateRow={() => {}}
             onToggleRow={() => {}}
@@ -389,6 +391,7 @@ export function WorkoutOverlay() {
                     rows={rows[entry.id] ?? []}
                     previousSets={previousSets[entry.exercise_id] ?? []}
                     weightUnit={weightUnit}
+                    distanceUnit={distanceUnit}
                     reorderCollapsed
                     noBottomMargin={pos !== 'last'}
                     onUpdateRow={() => {}}
@@ -405,7 +408,7 @@ export function WorkoutOverlay() {
         )}
       </Pressable>
     </ScaleDecorator>
-  ), [rows, previousSets, weightUnit]);
+  ), [rows, previousSets, weightUnit, distanceUnit]);
 
   const renderNormalItem = useCallback(({ item, index }: { item: RoutineDayExercise; index: number }) => {
     const position = getSupersetPosition(exercises, index, supersetGroups);
@@ -421,6 +424,7 @@ export function WorkoutOverlay() {
         rows={rows[item.id] ?? []}
         previousSets={previousSets[item.exercise_id] ?? []}
         weightUnit={weightUnit}
+        distanceUnit={distanceUnit}
         isCollapsed={collapsedCards[item.id] ?? false}
         onToggleCollapse={() => toggleCollapse(item.id)}
         onLongPress={() => setReordering(true)}
@@ -445,7 +449,7 @@ export function WorkoutOverlay() {
       />
     );
     return <SupersetBracket position={position}>{card}</SupersetBracket>;
-  }, [rows, previousSets, weightUnit, collapsedCards, supersetGroups, exercises, toggleCollapse]);
+  }, [rows, previousSets, weightUnit, distanceUnit, collapsedCards, supersetGroups, exercises, toggleCollapse]);
 
   const keyExtractor = useCallback((item: RoutineDayExercise) => item.id, []);
 
@@ -573,6 +577,7 @@ export function WorkoutOverlay() {
               onClose={() => { setShowAddExercise(false); setAutoOpenPicker(false); }}
               onConfirm={handleAddExerciseConfirm}
               weightUnit={weightUnit}
+              distanceUnit={distanceUnit}
               onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
               autoOpenPicker={autoOpenPicker}
             />

@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAuthStore } from '../../stores/auth.store';
+import { useProfileStore } from '../../stores/profile.store';
 import { dashboardService, RoutineChartData } from '../../services';
 import { colors, fonts } from '../../constants';
 import {
@@ -35,6 +36,8 @@ interface RoutineStatsChartProps {
 
 export function RoutineStatsChart({ routineId }: RoutineStatsChartProps) {
   const { user } = useAuthStore();
+  const { profile } = useProfileStore();
+  const wUnit = profile?.weight_unit ?? 'kg';
 
   const [selectedRange, setSelectedRange] = useState(12);
   const [granularityMode, setGranularityMode] = useState<GranularityMode>('W');
@@ -60,6 +63,7 @@ export function RoutineStatsChart({ routineId }: RoutineStatsChartProps) {
         selectedRange,
         granularity,
         raw,
+        wUnit,
       );
       setChartData(data);
       setRenderedMode(chartMode);
@@ -70,7 +74,7 @@ export function RoutineStatsChart({ routineId }: RoutineStatsChartProps) {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, routineId, selectedRange, granularityMode, chartMode]);
+  }, [user?.id, routineId, selectedRange, granularityMode, chartMode, wUnit]);
 
   useEffect(() => {
     loadData();

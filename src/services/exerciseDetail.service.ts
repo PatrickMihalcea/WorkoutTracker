@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
-import { Exercise } from '../models';
+import { Exercise, WeightUnit, DistanceUnit } from '../models';
 import { TimeSeriesPoint } from './dashboard.service';
+import { kgToLbs, kmToMiles } from '../utils/units';
 
 export interface PersonalRecord {
   label: string;
@@ -222,7 +223,13 @@ function computeTimeSeries(
   }
 }
 
-function computePersonalRecords(exerciseType: string, allSets: RawSet[], sessions: Map<string, { startedAt: string; sets: RawSet[] }>): PersonalRecord[] {
+function computePersonalRecords(
+  exerciseType: string,
+  allSets: RawSet[],
+  sessions: Map<string, { startedAt: string; sets: RawSet[] }>,
+  wUnit: WeightUnit,
+  dUnit: DistanceUnit,
+): PersonalRecord[] {
   const records: PersonalRecord[] = [];
 
   const findBestSet = (valueFn: (s: RawSet) => number, compare: 'max' | 'min' = 'max') => {
@@ -263,21 +270,23 @@ function computePersonalRecords(exerciseType: string, allSets: RawSet[], session
     return `${m}:${String(sec).padStart(2, '0')}`;
   };
 
-  const fmtWeight = (w: number) => `${w} lbs`;
+  const wLabel = wUnit === 'lbs' ? 'lbs' : 'kg';
+  const dLabel = dUnit === 'miles' ? 'mi' : 'km';
+  const fmtWeight_ = (w: number) => `${Math.round(w * 10) / 10} ${wLabel}`;
   const fmtVolume = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v));
-  const fmtDistance = (d: number) => `${d} km`;
-  const fmtPace = (p: number) => `${p.toFixed(2)} km/min`;
+  const fmtDist = (d: number) => `${Math.round(d * 10) / 10} ${dLabel}`;
+  const fmtPace = (p: number) => `${p.toFixed(2)} ${dLabel}/min`;
 
   switch (exerciseType) {
     case 'weight_reps':
     case 'weighted_bodyweight': {
       const hw = findBestSet((s) => s.weight);
-      if (hw) records.push({ label: 'Heaviest Weight', value: hw.weight, formattedValue: fmtWeight(hw.weight), date: formatDate(hw.session.started_at) });
+      if (hw) records.push({ label: 'Heaviest Weight', value: hw.weight, formattedValue: fmtWeight_(hw.weight), date: formatDate(hw.session.started_at) });
 
       const best1RM = findBestSet((s) => epley1RM(s.weight, s.reps_performed, s.rir));
       if (best1RM) {
         const val = epley1RM(best1RM.weight, best1RM.reps_performed, best1RM.rir);
-        records.push({ label: 'Best Est. 1RM', value: val, formattedValue: fmtWeight(val), date: formatDate(best1RM.session.started_at) });
+        records.push({ label: 'Best Est. 1RM', value: val, formattedValue: fmtWeight_(val), date: formatDate(best1RM.session.started_at) });
       }
 
       const bsv = findBestSet((s) => s.weight * s.reps_performed);
@@ -300,7 +309,7 @@ function computePersonalRecords(exerciseType: string, allSets: RawSet[], session
     }
     case 'assisted_bodyweight': {
       const la = findBestSet((s) => s.weight, 'min');
-      if (la) records.push({ label: 'Lightest Assist', value: la.weight, formattedValue: fmtWeight(la.weight), date: formatDate(la.session.started_at) });
+      if (la) records.push({ label: 'Lightest Assist', value: la.weight, formattedValue: fmtWeight_(la.weight), date: formatDate(la.session.started_at) });
 
       const mr = findBestSet((s) => s.reps_performed);
       if (mr) records.push({ label: 'Max Reps', value: mr.reps_performed, formattedValue: `${mr.reps_performed} reps`, date: formatDate(mr.session.started_at) });
@@ -319,7 +328,7 @@ function computePersonalRecords(exerciseType: string, allSets: RawSet[], session
     }
     case 'duration_weight': {
       const hw = findBestSet((s) => s.weight);
-      if (hw) records.push({ label: 'Heaviest Weight', value: hw.weight, formattedValue: fmtWeight(hw.weight), date: formatDate(hw.session.started_at) });
+      if (hw) records.push({ label: 'Heaviest Weight', value: hw.weight, formattedValue: fmtWeight_(hw.weight), date: formatDate(hw.session.started_at) });
 
       const ld = findBestSet((s) => s.duration);
       if (ld) records.push({ label: 'Longest Duration', value: ld.duration, formattedValue: fmtDuration(ld.duration), date: formatDate(ld.session.started_at) });
@@ -330,7 +339,7 @@ function computePersonalRecords(exerciseType: string, allSets: RawSet[], session
     }
     case 'distance_duration': {
       const fd = findBestSet((s) => s.distance);
-      if (fd) records.push({ label: 'Farthest Distance', value: fd.distance, formattedValue: fmtDistance(fd.distance), date: formatDate(fd.session.started_at) });
+      if (fd) records.push({ label: 'Farthest Distance', value: fd.distance, formattedValue: fmtDist(fd.distance), date: formatDate(fd.session.started_at) });
 
       const ld = findBestSet((s) => s.duration);
       if (ld) records.push({ label: 'Longest Duration', value: ld.duration, formattedValue: fmtDuration(ld.duration), date: formatDate(ld.session.started_at) });
@@ -344,10 +353,10 @@ function computePersonalRecords(exerciseType: string, allSets: RawSet[], session
     }
     case 'weight_distance': {
       const hw = findBestSet((s) => s.weight);
-      if (hw) records.push({ label: 'Heaviest Weight', value: hw.weight, formattedValue: fmtWeight(hw.weight), date: formatDate(hw.session.started_at) });
+      if (hw) records.push({ label: 'Heaviest Weight', value: hw.weight, formattedValue: fmtWeight_(hw.weight), date: formatDate(hw.session.started_at) });
 
       const fd = findBestSet((s) => s.distance);
-      if (fd) records.push({ label: 'Farthest Distance', value: fd.distance, formattedValue: fmtDistance(fd.distance), date: formatDate(fd.session.started_at) });
+      if (fd) records.push({ label: 'Farthest Distance', value: fd.distance, formattedValue: fmtDist(fd.distance), date: formatDate(fd.session.started_at) });
       break;
     }
   }
@@ -408,7 +417,7 @@ function computeRepProgression(sessions: Map<string, { startedAt: string; sets: 
 }
 
 export const exerciseDetailService = {
-  async getData(userId: string, exerciseId: string): Promise<ExerciseDetailData> {
+  async getData(userId: string, exerciseId: string, wUnit: WeightUnit = 'kg', dUnit: DistanceUnit = 'km'): Promise<ExerciseDetailData> {
     const { data: exercise, error: exErr } = await supabase
       .from('exercises')
       .select('*')
@@ -427,15 +436,19 @@ export const exerciseDetailService = {
 
     if (setsErr) throw setsErr;
 
-    const sets: RawSet[] = (rawSets ?? []).map((r: Record<string, unknown>) => ({
-      weight: (r.weight as number) ?? 0,
-      reps_performed: (r.reps_performed as number) ?? 0,
-      rir: r.rir as number | null,
-      is_warmup: (r.is_warmup as boolean) ?? false,
-      duration: (r.duration as number) ?? 0,
-      distance: (r.distance as number) ?? 0,
-      session: r.session as { id: string; started_at: string },
-    }));
+    const sets: RawSet[] = (rawSets ?? []).map((r: Record<string, unknown>) => {
+      const rawWeight = (r.weight as number) ?? 0;
+      const rawDistance = (r.distance as number) ?? 0;
+      return {
+        weight: wUnit === 'lbs' ? Math.round(kgToLbs(rawWeight) * 10) / 10 : rawWeight,
+        reps_performed: (r.reps_performed as number) ?? 0,
+        rir: r.rir as number | null,
+        is_warmup: (r.is_warmup as boolean) ?? false,
+        duration: (r.duration as number) ?? 0,
+        distance: dUnit === 'miles' ? Math.round(kmToMiles(rawDistance) * 100) / 100 : rawDistance,
+        session: r.session as { id: string; started_at: string },
+      };
+    });
 
     const sessions = groupBySession(sets);
     const exerciseType = exercise.exercise_type ?? 'weight_reps';
@@ -443,7 +456,7 @@ export const exerciseDetailService = {
     return {
       exercise,
       timeSeries: computeTimeSeries(exerciseType, sessions),
-      personalRecords: computePersonalRecords(exerciseType, sets, sessions),
+      personalRecords: computePersonalRecords(exerciseType, sets, sessions, wUnit, dUnit),
       setRecords: computeSetRecords(sets),
       weightDurationRecords: computeWeightDurationRecords(sets),
       distanceRecords: computeDistanceRecords(sets),

@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
 import { colors, fonts, spacing } from '../../constants';
-import { Card } from '../ui/Card';
 import { computeYAxisInfo, CHART_HEIGHT, SVG_HEIGHT, YAxisInfo } from './chartUtils';
 
 export interface BarDataItem {
@@ -26,6 +25,7 @@ interface RecordsBarChartProps {
   toggleOptions?: { left: string; right: string };
   toggleValue?: 'left' | 'right';
   onToggle?: (value: 'left' | 'right') => void;
+  yLabelFormatter?: (value: number) => string;
 }
 
 const Y_AXIS_WIDTH = 40;
@@ -41,6 +41,7 @@ export function RecordsBarChart({
   toggleOptions,
   toggleValue = 'left',
   onToggle,
+  yLabelFormatter,
 }: RecordsBarChartProps) {
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
 
@@ -61,11 +62,11 @@ export function RecordsBarChart({
     () => data.map((d) => ({ key: d.label, label: d.label, value: d.value, date: 0 })),
     [data],
   );
-  const [yAxis, setYAxis] = useState<YAxisInfo>(() => computeYAxisInfo(fakePoints, 1));
+  const [yAxis, setYAxis] = useState<YAxisInfo>(() => computeYAxisInfo(fakePoints, 1, yLabelFormatter));
 
   useMemo(() => {
-    if (fakePoints.length > 0) setYAxis(computeYAxisInfo(fakePoints, 1));
-  }, [fakePoints]);
+    if (fakePoints.length > 0) setYAxis(computeYAxisInfo(fakePoints, 1, yLabelFormatter));
+  }, [fakePoints, yLabelFormatter]);
 
   const range = yAxis.maxValue - yAxis.minValue;
 
@@ -133,11 +134,13 @@ export function RecordsBarChart({
   );
 
   return (
-    <Card style={cardStyles.card}>
-      <Text style={cardStyles.title}>{title}</Text>
+    <View style={cardStyles.container}>
       {toggleOptions && onToggle ? (
-        <View style={cardStyles.toggleRow}>
-          <Text style={cardStyles.subtitle}>{subtitle}</Text>
+        <View style={cardStyles.headerRow}>
+          <View style={cardStyles.headerTextBlock}>
+            <Text style={cardStyles.title}>{title}</Text>
+            <Text style={[cardStyles.subtitle, { marginBottom: 0 }]}>{subtitle}</Text>
+          </View>
           <View style={cardStyles.toggleContainer}>
             <TouchableOpacity
               style={[cardStyles.toggleBtn, toggleValue === 'left' && cardStyles.toggleBtnActive]}
@@ -160,7 +163,10 @@ export function RecordsBarChart({
           </View>
         </View>
       ) : (
-        <Text style={cardStyles.subtitle}>{subtitle}</Text>
+        <>
+          <Text style={cardStyles.title}>{title}</Text>
+          <Text style={cardStyles.subtitle}>{subtitle}</Text>
+        </>
       )}
       <View style={cardStyles.chartRow} onLayout={handleLayout}>
         <View style={[cardStyles.yAxisColumn, { width: Y_AXIS_WIDTH, height: SVG_HEIGHT }]}>
@@ -178,15 +184,23 @@ export function RecordsBarChart({
           </View>
         )}
       </View>
-    </Card>
+    </View>
   );
 }
 
 const cardStyles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+  container: {
+    marginBottom: spacing.lg,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  headerTextBlock: {
+    flex: 1,
+    marginRight: spacing.sm,
   },
   title: {
     fontSize: 16,
@@ -198,12 +212,6 @@ const cardStyles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fonts.regular,
     color: colors.textMuted,
-    marginBottom: spacing.sm,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: spacing.sm,
   },
   toggleContainer: {

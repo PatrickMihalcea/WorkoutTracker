@@ -10,7 +10,7 @@ import { Button, Card, EmptyState, BottomSheetModal, RirCircle, SupersetBracket 
 import { getSupersetPosition, type SupersetGroups } from '../../../src/utils/superset';
 import { colors, fonts } from '../../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
-import { weightUnitLabel, formatWeight } from '../../../src/utils/units';
+import { weightUnitLabel, distanceUnitLabel, formatWeight, formatDistance } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
 import { formatDurationValue } from '../../../src/utils/duration';
 import { DAY_LABELS, DayOfWeek, Routine, RoutineWithDays, RoutineDayWithExercises } from '../../../src/models';
@@ -24,6 +24,7 @@ export default function HomeScreen() {
   const { profile } = useProfileStore();
   const { expand: expandWorkout } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
+  const dUnit = profile?.distance_unit ?? 'km';
   const [refreshing, setRefreshing] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [hasActiveSession, setHasActiveSession] = useState(!!activeSession);
@@ -249,7 +250,7 @@ export default function HomeScreen() {
                               {showWeight && <View style={styles.setCol}><Text style={styles.setDetailCol}>{getWeightLabel(ex.exercise?.exercise_type, weightUnitLabel(wUnit))}</Text></View>}
                               {showReps && <View style={styles.setCol}><Text style={styles.setDetailCol}>REPS</Text></View>}
                               {showDuration && <View style={styles.setCol}><Text style={styles.setDetailCol}>TIME</Text></View>}
-                              {showDistance && <View style={styles.setCol}><Text style={styles.setDetailCol}>KM</Text></View>}
+                              {showDistance && <View style={styles.setCol}><Text style={styles.setDetailCol}>{distanceUnitLabel(dUnit)}</Text></View>}
                               {exTypeCfg.showRir && <View style={styles.setCol}><Text style={styles.setDetailCol}>RIR</Text></View>}
                             </View>
                             {(() => {
@@ -291,7 +292,7 @@ export default function HomeScreen() {
                                     {showDistance && (
                                       <View style={styles.setCol}>
                                         <Text style={styles.setDetailCell}>
-                                          {s.target_distance > 0 ? `${s.target_distance}km` : '-'}
+                                          {s.target_distance > 0 ? formatDistance(s.target_distance, dUnit) : '-'}
                                         </Text>
                                       </View>
                                     )}

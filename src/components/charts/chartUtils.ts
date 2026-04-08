@@ -131,7 +131,7 @@ function formatYValue(val: number): string {
   return String(val);
 }
 
-export function computeYAxisInfo(data: { value: number }[], minStep: number = 1): YAxisInfo {
+export function computeYAxisInfo(data: { value: number }[], minStep: number = 1, labelFormatter?: (v: number) => string): YAxisInfo {
   let maxVal = 0;
   let rawMin = Infinity;
   for (let i = 0; i < data.length; i++) {
@@ -158,11 +158,12 @@ export function computeYAxisInfo(data: { value: number }[], minStep: number = 1)
   }
 
   const topVal = baseVal + step * sections;
+  const fmt = labelFormatter ?? formatYValue;
 
   const labels: string[] = [];
   let longestLen = 1;
   for (let i = 0; i <= sections; i++) {
-    const lbl = formatYValue(baseVal + step * i);
+    const lbl = fmt(baseVal + step * i);
     labels.push(lbl);
     if (lbl.length > longestLen) longestLen = lbl.length;
   }

@@ -41,6 +41,7 @@ export function MetricChips<K extends string>({
 const styles = StyleSheet.create({
   metricRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 6,
     marginBottom: 8,
   },

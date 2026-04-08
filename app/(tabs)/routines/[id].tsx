@@ -80,7 +80,7 @@ function SwipeableExerciseRow({
       >
         <View style={styles.exerciseInfo}>
           <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
-          <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group} · {ex.exercise?.equipment}</Text>
+          <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
         </View>
         <Text style={styles.exerciseTarget}>{setsLabel}</Text>
         {menuItems && <View style={styles.menuWrap}><OverflowMenu items={menuItems} /></View>}
@@ -97,6 +97,7 @@ export default function RoutineDetailScreen() {
   const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
   const { profile, updateProfile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
+  const dUnit = profile?.distance_unit ?? 'km';
 
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -146,7 +147,7 @@ export default function RoutineDetailScreen() {
     for (const day of currentRoutine.days) {
       for (const ex of day.exercises) {
         const group = ex.exercise?.muscle_group;
-        if (!group) continue;
+        if (!group || group === 'full_body') continue;
         counts.set(group, (counts.get(group) ?? 0) + (ex.sets?.length ?? ex.target_sets));
       }
     }
@@ -591,6 +592,7 @@ export default function RoutineDetailScreen() {
         }}
         onConfirm={handleAddExerciseConfirm}
         weightUnit={wUnit}
+        distanceUnit={dUnit}
         editingEntry={editingEntry}
         onDeleteExercise={handleDeleteExercise}
         onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}

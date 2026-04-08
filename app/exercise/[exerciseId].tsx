@@ -9,12 +9,12 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
+import { useProfileStore } from '../../src/stores/profile.store';
 import {
   exerciseDetailService,
   ExerciseDetailData,
 } from '../../src/services';
 import { colors, fonts, spacing } from '../../src/constants';
-import { Card } from '../../src/components/ui/Card';
 import {
   SimpleLineChart,
   MetricChips,
@@ -24,6 +24,7 @@ import {
 import type { BarDataItem } from '../../src/components/charts';
 import { getExerciseTypeConfig } from '../../src/utils/exerciseType';
 import { formatDurationValue } from '../../src/utils/duration';
+import { distanceUnitLabel } from '../../src/utils/units';
 import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
 
 type MetricKey = string;
@@ -89,18 +90,24 @@ function getMetricOptions(exerciseType: string): MetricOption[] {
   }
 }
 
-function getTooltipFormatter(metricKey: string): (v: number) => string {
+function isDurationMetric(metricKey: string): boolean {
+  return metricKey.includes('Duration') || metricKey === 'longestDuration' || metricKey === 'sessionDuration' || metricKey === 'totalDuration';
+}
+
+function getTooltipFormatter(metricKey: string, wUnit: string, dUnit: string): (v: number) => string {
+  const wLabel = wUnit === 'lbs' ? 'lbs' : 'kg';
+  const dLabel = dUnit === 'miles' ? 'mi' : 'km';
   if (metricKey.includes('Volume') || metricKey === 'bestSetVolume' || metricKey === 'sessionVolume')
     return (v) => `${formatVolume(v)} vol`;
-  if (metricKey.includes('Duration') || metricKey === 'longestDuration' || metricKey === 'sessionDuration' || metricKey === 'totalDuration')
+  if (isDurationMetric(metricKey))
     return (v) => formatDurationValue(v);
   if (metricKey.includes('Reps') || metricKey === 'maxReps' || metricKey === 'totalReps' || metricKey === 'sessionReps')
     return (v) => `${v} reps`;
   if (metricKey.includes('Pace') || metricKey === 'bestPace')
-    return (v) => `${v.toFixed(2)} km/min`;
+    return (v) => `${v.toFixed(2)} ${dLabel}/min`;
   if (metricKey.includes('Distance') || metricKey === 'farthestDistance')
-    return (v) => `${v} km`;
-  return (v) => `${v} lbs`;
+    return (v) => `${Math.round(v * 10) / 10} ${dLabel}`;
+  return (v) => `${v} ${wLabel}`;
 }
 
 function getMinYStep(metricKey: string): number {
@@ -124,7 +131,10 @@ function getChartColor(metricKey: string): string {
 function ExerciseDetailContent() {
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
   const { user } = useAuthStore();
+  const { profile } = useProfileStore();
   const { scrollEnabled } = useChartInteraction();
+  const wUnit = profile?.weight_unit ?? 'kg';
+  const dUnit = profile?.distance_unit ?? 'km';
 
   const [data, setData] = useState<ExerciseDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,7 +145,7 @@ function ExerciseDetailContent() {
   const loadData = useCallback(async () => {
     if (!user?.id || !exerciseId) return;
     try {
-      const result = await exerciseDetailService.getData(user.id, exerciseId);
+      const result = await exerciseDetailService.getData(user.id, exerciseId, wUnit, dUnit);
       setData(result);
       if (!selectedMetric) {
         const options = getMetricOptions(result.exercise.exercise_type);
@@ -147,7 +157,7 @@ function ExerciseDetailContent() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.id, exerciseId, selectedMetric]);
+  }, [user?.id, exerciseId, selectedMetric, wUnit, dUnit]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -172,19 +182,19 @@ function ExerciseDetailContent() {
         return data.setRecords.map((r) => ({
           label: `${r.reps}`,
           value: r.bestWeight,
-          formattedValue: `${r.bestWeight}`,
+          formattedValue: `${Math.round(r.bestWeight * 10) / 10}`,
         }));
 
       case 'duration_weight':
         return data.weightDurationRecords.map((r) => ({
-          label: `${r.weight}`,
+          label: `${Math.round(r.weight * 10) / 10}`,
           value: durationToggle === 'left' ? r.bestDuration : r.worstDuration,
           formattedValue: formatDurationValue(durationToggle === 'left' ? r.bestDuration : r.worstDuration),
         }));
 
       case 'distance_duration':
         return data.distanceRecords.map((r) => ({
-          label: `${r.distance}`,
+          label: `${Math.round(r.distance * 10) / 10}`,
           value: r.bestDuration,
           formattedValue: formatDurationValue(r.bestDuration),
         }));
@@ -199,24 +209,35 @@ function ExerciseDetailContent() {
       default:
         return [];
     }
-  }, [data, exerciseType, durationToggle]);
+  }, [data, exerciseType, durationToggle, wUnit, dUnit]);
 
   const barChartConfig = useMemo(() => {
+    const dLabel = distanceUnitLabel(dUnit).toLowerCase();
     switch (exerciseType) {
       case 'weight_reps':
       case 'weighted_bodyweight':
       case 'assisted_bodyweight':
-        return { title: 'Set Records', subtitle: 'Best weight at each rep count', color: '#FF6B6B' };
+        return { title: 'Set Records', subtitle: 'Best weight at each rep count', color: '#FF6B6B', isDuration: false };
       case 'duration_weight':
-        return { title: 'Weight Records', subtitle: 'Duration at each weight', color: '#DDA0DD' };
+        return { title: 'Weight Records', subtitle: 'Duration at each weight', color: '#DDA0DD', isDuration: true };
       case 'distance_duration':
-        return { title: 'Distance Records', subtitle: 'Best time at each distance', color: '#F7DC6F' };
+        return { title: 'Distance Records', subtitle: `Best time at each distance (${dLabel})`, color: '#F7DC6F', isDuration: true };
       case 'bodyweight_reps':
-        return { title: 'Rep Records', subtitle: 'Max reps per session (recent)', color: '#45B7D1' };
+        return { title: 'Rep Records', subtitle: 'Max reps per session (recent)', color: '#45B7D1', isDuration: false };
       default:
         return null;
     }
-  }, [exerciseType]);
+  }, [exerciseType, dUnit]);
+
+  const yLabelFmt = useMemo(() => {
+    if (isDurationMetric(selectedMetric)) return formatDurationValue;
+    return undefined;
+  }, [selectedMetric]);
+
+  const barYLabelFmt = useMemo(() => {
+    if (barChartConfig?.isDuration) return formatDurationValue;
+    return undefined;
+  }, [barChartConfig]);
 
   if (loading && !data) {
     return (
@@ -254,13 +275,18 @@ function ExerciseDetailContent() {
             <Text style={styles.badgeText}>{config.label}</Text>
           </View>
           <Text style={styles.metaText}>
-            {data.exercise.muscle_group.replace('_', ' ')} · {data.exercise.equipment.replace('_', ' ')}
+            {data.exercise.muscle_group.replace(/_/g, ' ')} · {data.exercise.equipment.replace(/_/g, ' ')}
           </Text>
         </View>
+        {data.exercise.secondary_muscles?.length > 0 && (
+          <Text style={styles.secondaryText}>
+            Also targets: {data.exercise.secondary_muscles.map((m) => m.replace(/_/g, ' ')).join(', ')}
+          </Text>
+        )}
       </View>
 
       {/* Progression Chart */}
-      <Card style={styles.chartCard}>
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Progression</Text>
         <MetricChips
           options={metricOptions}
@@ -274,19 +300,20 @@ function ExerciseDetailContent() {
             title=""
             subtitle={metricOptions.find((o) => o.key === selectedMetric)?.label ?? ''}
             frontColor={getChartColor(selectedMetric)}
-            formatTooltipValue={getTooltipFormatter(selectedMetric)}
+            formatTooltipValue={getTooltipFormatter(selectedMetric, wUnit, dUnit)}
             minYStep={getMinYStep(selectedMetric)}
+            yLabelFormatter={yLabelFmt}
           />
         ) : (
           <View style={styles.emptyChart}>
             <Text style={styles.emptyChartText}>No data yet for this metric.</Text>
           </View>
         )}
-      </Card>
+      </View>
 
       {/* Personal Records */}
       {data.personalRecords.length > 0 && (
-        <Card style={styles.prCard}>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Records</Text>
           <View style={styles.prGrid}>
             {data.personalRecords.map((pr, i) => (
@@ -297,7 +324,7 @@ function ExerciseDetailContent() {
               </View>
             ))}
           </View>
-        </Card>
+        </View>
       )}
 
       {/* Records Bar Chart */}
@@ -310,6 +337,7 @@ function ExerciseDetailContent() {
           toggleOptions={exerciseType === 'duration_weight' ? { left: 'Longest', right: 'Shortest' } : undefined}
           toggleValue={durationToggle}
           onToggle={exerciseType === 'duration_weight' ? setDurationToggle : undefined}
+          yLabelFormatter={barYLabelFmt}
         />
       )}
     </ScrollView>
@@ -380,10 +408,15 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textTransform: 'capitalize',
   },
-  chartCard: {
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+  secondaryText: {
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+    textTransform: 'capitalize',
+    marginTop: 6,
+  },
+  section: {
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
     fontSize: 16,
@@ -400,11 +433,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: fonts.regular,
     color: colors.textMuted,
-  },
-  prCard: {
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
   },
   prGrid: {
     flexDirection: 'row',

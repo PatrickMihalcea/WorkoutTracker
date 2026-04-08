@@ -15,6 +15,7 @@ import { Card, EmptyState } from '../../../src/components/ui';
 import { Dashboard, GranularityMode, ChartMode } from '../../../src/components/history/Dashboard';
 import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
 import { useAuthStore } from '../../../src/stores/auth.store';
+import { useProfileStore } from '../../../src/stores/profile.store';
 import { colors, fonts, spacing } from '../../../src/constants';
 import { WorkoutSessionWithRoutine } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
@@ -29,6 +30,8 @@ export default function HistoryScreen() {
   const router = useRouter();
   const { view, chartMode, setChartMode } = useHistoryView();
   const user = useAuthStore((s) => s.user);
+  const { profile } = useProfileStore();
+  const wUnit = profile?.weight_unit ?? 'kg';
 
   const [sessions, setSessions] = useState<WorkoutSessionWithRoutine[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,10 +58,10 @@ export default function HistoryScreen() {
     try {
       let data: DashboardData;
       if (cMode === 'rel') {
-        data = await dashboardService.getDashboardDataRaw(userId, w);
+        data = await dashboardService.getDashboardDataRaw(userId, w, wUnit);
       } else {
         const g = granularityModeToBackend(gMode);
-        data = await dashboardService.getDashboardData(userId, w, g);
+        data = await dashboardService.getDashboardData(userId, w, g, wUnit);
       }
       setDashboardData(data);
     } catch {
@@ -66,7 +69,7 @@ export default function HistoryScreen() {
     } finally {
       setDashboardLoading(false);
     }
-  }, [userId]);
+  }, [userId, wUnit]);
 
   useFocusEffect(
     useCallback(() => {

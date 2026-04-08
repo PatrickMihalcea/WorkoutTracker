@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { WorkoutRow, SetLog, WeightUnit, ExerciseType } from '../../models';
+import { WorkoutRow, SetLog, WeightUnit, DistanceUnit, ExerciseType } from '../../models';
 import { colors, fonts } from '../../constants';
-import { formatWeight } from '../../utils/units';
+import { formatWeight, formatDistance } from '../../utils/units';
 import { getExerciseTypeConfig } from '../../utils/exerciseType';
 import { formatDurationValue } from '../../utils/duration';
 import { SwipeToDeleteRow, RirCircle, RirPickerModal, DurationPickerModal } from '../ui';
@@ -12,6 +12,7 @@ interface SetRowProps {
   displaySetNumber: number | string;
   previousSet?: SetLog;
   weightUnit: WeightUnit;
+  distanceUnit?: DistanceUnit;
   exerciseType?: ExerciseType | string;
   suggestedWeight?: string;
   suggestedReps?: string;
@@ -31,6 +32,7 @@ export function SetRow({
   displaySetNumber,
   previousSet,
   weightUnit,
+  distanceUnit = 'km',
   exerciseType,
   suggestedWeight,
   suggestedReps,
@@ -135,7 +137,7 @@ export function SetRow({
       parts.push(formatDurationValue(previousSet.duration));
     }
     if (config.fields.some((f) => f.key === 'distance') && previousSet.distance > 0) {
-      parts.push(`${previousSet.distance}km`);
+      parts.push(formatDistance(previousSet.distance, distanceUnit));
     }
     let text = parts.join('x');
     if (config.showRir && previousSet.rir !== null) {

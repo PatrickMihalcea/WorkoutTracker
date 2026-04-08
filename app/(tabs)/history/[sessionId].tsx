@@ -18,7 +18,7 @@ import { Card, Input, Button, BottomSheetModal } from '../../../src/components/u
 import { colors, fonts } from '../../../src/constants';
 import { SessionWithSetsAndExercises, SetLogWithExercise } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
-import { formatWeight, weightUnitLabel } from '../../../src/utils/units';
+import { formatWeight, formatDistance, weightUnitLabel, distanceUnitLabel } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
 import { formatDurationValue } from '../../../src/utils/duration';
 
@@ -67,6 +67,7 @@ export default function SessionDetailScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const { profile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
+  const distUnit = profile?.distance_unit ?? 'km';
   const [session, setSession] = useState<SessionWithSetsAndExercises | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -210,7 +211,7 @@ export default function SessionDetailScreen() {
                     {showWeight && <Text style={[styles.tableCol, styles.colFlex]}>{getWeightLabel(group.exerciseType, weightUnitLabel(weightUnit))}</Text>}
                     {showReps && <Text style={[styles.tableCol, styles.colFlex]}>REPS</Text>}
                     {showDuration && <Text style={[styles.tableCol, styles.colFlex]}>TIME</Text>}
-                    {showDistance && <Text style={[styles.tableCol, styles.colFlex]}>KM</Text>}
+                    {showDistance && <Text style={[styles.tableCol, styles.colFlex]}>{distanceUnitLabel(distUnit)}</Text>}
                     {cfg.showRir && <Text style={[styles.tableCol, styles.colRir]}>RIR</Text>}
                   </View>
 
@@ -220,7 +221,7 @@ export default function SessionDetailScreen() {
                       {showWeight && <Text style={[styles.tableCell, styles.colFlex]}>{formatWeight(set.weight, weightUnit)}</Text>}
                       {showReps && <Text style={[styles.tableCell, styles.colFlex]}>{set.reps_performed}</Text>}
                       {showDuration && <Text style={[styles.tableCell, styles.colFlex]}>{set.duration > 0 ? formatDurationValue(set.duration) : '-'}</Text>}
-                      {showDistance && <Text style={[styles.tableCell, styles.colFlex]}>{set.distance > 0 ? `${set.distance}km` : '-'}</Text>}
+                      {showDistance && <Text style={[styles.tableCell, styles.colFlex]}>{set.distance > 0 ? formatDistance(set.distance, distUnit) : '-'}</Text>}
                       {cfg.showRir && (
                         <Text style={[styles.tableCell, styles.colRir]}>
                           {set.rir !== null ? set.rir : '-'}

@@ -27,6 +27,7 @@ export interface SimpleLineChartProps {
   frontColor: string;
   formatTooltipValue: (value: number) => string;
   minYStep?: number;
+  yLabelFormatter?: (value: number) => string;
 }
 
 function SectionTitle({ title, rightElement }: { title: string; rightElement?: React.ReactNode }) {
@@ -46,11 +47,12 @@ export function SimpleLineChart({
   frontColor,
   formatTooltipValue,
   minYStep,
+  yLabelFormatter,
 }: SimpleLineChartProps) {
   const { onChartTouchStart, onChartTouchEnd, pointerActiveRef } = useChartInteraction();
   const points = useMemo(() => data.filter((p) => p.value > 0), [data]);
   const yMinStep = minYStep ?? 1;
-  const [yAxis, setYAxis] = useState<YAxisInfo>(() => computeYAxisInfo(points, yMinStep));
+  const [yAxis, setYAxis] = useState<YAxisInfo>(() => computeYAxisInfo(points, yMinStep, yLabelFormatter));
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
   const [activeTooltip, setActiveTooltip] = useState<{ date: string; value: string; ptX: number } | null>(null);
   const tooltipWidthRef = useRef(0);
@@ -65,8 +67,8 @@ export function SimpleLineChart({
   const MOVE_THRESHOLD = 10;
 
   useEffect(() => {
-    setYAxis(computeYAxisInfo(points, yMinStep));
-  }, [points, yMinStep]);
+    setYAxis(computeYAxisInfo(points, yMinStep, yLabelFormatter));
+  }, [points, yMinStep, yLabelFormatter]);
 
   const padLeft = 16;
   const padRight = 16;

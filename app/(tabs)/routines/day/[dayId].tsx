@@ -23,6 +23,7 @@ import {
   RoutineDayWithExercises,
   Exercise,
   WeightUnit,
+  DistanceUnit,
 } from '../../../../src/models';
 import {
   TemplateSetRow,
@@ -82,7 +83,7 @@ function SwipeableExerciseRow({
             <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
             <Text style={styles.expandArrow}>{isExpanded ? '▾' : '▸'}</Text>
           </View>
-          <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group} · {ex.exercise?.equipment}</Text>
+          <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
         </View>
         <Text style={styles.exerciseTarget}>{setsLabel}</Text>
         {menuItems && <View style={styles.menuWrap}><OverflowMenu items={menuItems} /></View>}
@@ -95,10 +96,12 @@ function SwipeableExerciseRow({
 function ExerciseSetsEditor({
   entry,
   wUnit,
+  dUnit,
   onSave,
 }: {
   entry: RoutineDayExercise;
   wUnit: WeightUnit;
+  dUnit: DistanceUnit;
   onSave: () => void;
 }) {
   const initial = setsToTemplateRows(entry.sets ?? [], entry.target_reps, wUnit);
@@ -140,6 +143,7 @@ function ExerciseSetsEditor({
         repRange={useRepRange}
         setRepRange={setUseRepRange}
         wUnit={wUnit}
+        dUnit={dUnit}
         exerciseType={entry.exercise?.exercise_type}
       />
     </View>
@@ -153,6 +157,7 @@ export default function DayEditorScreen() {
   const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
   const { profile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
+  const dUnit = profile?.distance_unit ?? 'km';
 
   const [day, setDay] = useState<RoutineDayWithExercises | null>(null);
   const [editingLabel, setEditingLabel] = useState(false);
@@ -460,7 +465,7 @@ export default function DayEditorScreen() {
                   onLongPress={drag}
                   menuItems={buildExerciseMenuItems(item.entry, day.exercises.indexOf(item.entry))}
                 >
-                  <ExerciseSetsEditor entry={item.entry} wUnit={wUnit} onSave={refresh} />
+                  <ExerciseSetsEditor entry={item.entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} />
                 </SwipeableExerciseRow>
               ) : (
                 <View>
@@ -476,7 +481,7 @@ export default function DayEditorScreen() {
                           onLongPress={drag}
                           menuItems={buildExerciseMenuItems(entry, day.exercises.indexOf(entry))}
                         >
-                          <ExerciseSetsEditor entry={entry} wUnit={wUnit} onSave={refresh} />
+                          <ExerciseSetsEditor entry={entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} />
                         </SwipeableExerciseRow>
                       </SupersetBracket>
                     );
@@ -499,6 +504,7 @@ export default function DayEditorScreen() {
         onClose={() => { setShowAddExercise(false); setAutoOpenPicker(false); }}
         onConfirm={handleAddExerciseConfirm}
         weightUnit={wUnit}
+        distanceUnit={dUnit}
         onDeleteExercise={handleDeleteExercise}
         onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
         autoOpenPicker={autoOpenPicker}

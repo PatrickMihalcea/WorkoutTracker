@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation, Animated } from 'react-native';
 import type { LayoutAnimationConfig } from 'react-native';
-import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit } from '../../models';
+import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit, DistanceUnit } from '../../models';
 import { colors, fonts } from '../../constants';
 import { Card } from '../ui/Card';
 import { SwipeToDeleteRow } from '../ui/SwipeToDeleteRow';
 import { OverflowMenu } from '../ui/OverflowMenu';
 import type { OverflowMenuItem } from '../ui/OverflowMenu';
 import { SetRow } from './SetRow';
-import { weightUnitLabel, formatWeight } from '../../utils/units';
+import { weightUnitLabel, distanceUnitLabel, formatWeight } from '../../utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
 import { useThemeColors } from '../../hooks/useThemeColors';
 
@@ -26,6 +26,7 @@ interface ExerciseCardProps {
   rows: WorkoutRow[];
   previousSets: SetLog[];
   weightUnit: WeightUnit;
+  distanceUnit?: DistanceUnit;
   onUpdateRowLocal?: (id: string, entryId: string, updates: Record<string, string>) => void;
   onUpdateRow: (id: string, entryId: string, updates: Record<string, string>) => void;
   onToggleRow: (id: string, entryId: string) => void;
@@ -55,6 +56,7 @@ export function ExerciseCard({
   rows,
   previousSets,
   weightUnit,
+  distanceUnit = 'km',
   onUpdateRowLocal,
   onUpdateRow,
   onToggleRow,
@@ -80,7 +82,7 @@ export function ExerciseCard({
 }: ExerciseCardProps) {
   const { setCompletion } = useThemeColors();
   const exerciseName = entry.exercise?.name ?? 'Unknown Exercise';
-  const muscleGroup = entry.exercise?.muscle_group ?? '';
+  const muscleGroup = (entry.exercise?.muscle_group ?? '').replace(/_/g, ' ');
   const exType = entry.exercise?.exercise_type;
   const typeConfig = getExerciseTypeConfig(exType);
   const completedCount = rows.filter((r) => r.is_completed).length;
@@ -228,7 +230,7 @@ export function ExerciseCard({
           {typeConfig.fields.map((f) => (
             <View key={f.key} style={styles.inputCol}>
               <Text style={[styles.colHeader, doneTextColor && { color: doneTextColor }]}>
-                {f.key === 'weight' ? getWeightLabel(exType, weightUnitLabel(weightUnit)) : f.label}
+                {f.key === 'weight' ? getWeightLabel(exType, weightUnitLabel(weightUnit)) : f.key === 'distance' ? distanceUnitLabel(distanceUnit) : f.label}
               </Text>
             </View>
           ))}
@@ -290,6 +292,7 @@ export function ExerciseCard({
               displaySetNumber={displayNum}
               previousSet={previousSets[origIndex]}
               weightUnit={weightUnit}
+              distanceUnit={distanceUnit}
               exerciseType={exType}
               suggestedWeight={suggestedWeight}
               suggestedReps={suggestedReps}

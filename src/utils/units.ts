@@ -66,3 +66,12 @@ export function formatDistance(km: number, unit: DistanceUnit): string {
 export function weightUnitLabel(unit: WeightUnit): string {
   return unit === 'lbs' ? 'LBS' : 'KG';
 }
+
+export function distanceUnitLabel(unit: DistanceUnit): string {
+  return unit === 'miles' ? 'MI' : 'KM';
+}
+
+export function formatDistanceValue(km: number, unit: DistanceUnit): string {
+  if (unit === 'miles') return `${kmToMiles(km)}`;
+  return `${Math.round(km * 10) / 10}`;
+}

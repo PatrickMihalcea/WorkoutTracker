@@ -16,6 +16,7 @@ import {
   MuscleGroup,
   Equipment,
   WeightUnit,
+  DistanceUnit,
   RoutineDayExercise,
 } from '../../models';
 import { EXERCISE_TYPE_ITEMS } from '../../utils/exerciseType';
@@ -56,6 +57,7 @@ interface AddExerciseModalProps {
   onClose: () => void;
   onConfirm: (exercise: Exercise, setsPayload: SetsPayloadItem[]) => void;
   weightUnit: WeightUnit;
+  distanceUnit?: DistanceUnit;
   editingEntry?: RoutineDayExercise | null;
   onDeleteExercise?: (exercise: Exercise) => void;
   onExerciseDetails?: (exerciseId: string) => void;
@@ -67,6 +69,7 @@ export function AddExerciseModal({
   onClose,
   onConfirm,
   weightUnit,
+  distanceUnit = 'km',
   editingEntry,
   onDeleteExercise,
   onExerciseDetails,
@@ -209,6 +212,7 @@ export function AddExerciseModal({
             repRange={useRepRange}
             setRepRange={setUseRepRange}
             wUnit={weightUnit}
+            dUnit={distanceUnit}
             exerciseType={selectedExercise?.exercise_type}
           />
         </View>
