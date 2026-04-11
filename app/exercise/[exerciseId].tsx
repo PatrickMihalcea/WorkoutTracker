@@ -216,8 +216,9 @@ function ExerciseDetailContent() {
     switch (exerciseType) {
       case 'weight_reps':
       case 'weighted_bodyweight':
-      case 'assisted_bodyweight':
         return { title: 'Set Records', subtitle: 'Best weight at each rep count', color: '#FF6B6B', isDuration: false };
+      case 'assisted_bodyweight':
+        return { title: 'Set Records', subtitle: 'Lightest assist at each rep count', color: '#FF6B6B', isDuration: false };
       case 'duration_weight':
         return { title: 'Weight Records', subtitle: 'Duration at each weight', color: '#DDA0DD', isDuration: true };
       case 'distance_duration':

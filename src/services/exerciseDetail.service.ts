@@ -364,12 +364,20 @@ function computePersonalRecords(
   return records;
 }
 
-function computeSetRecords(allSets: RawSet[]): SetRecord[] {
+function computeSetRecords(allSets: RawSet[], mode: 'max' | 'min' = 'max'): SetRecord[] {
   const map = new Map<number, number>();
   for (const s of allSets) {
     if (s.weight <= 0 || s.reps_performed <= 0) continue;
-    const existing = map.get(s.reps_performed) ?? 0;
-    if (s.weight > existing) map.set(s.reps_performed, s.weight);
+    if (!map.has(s.reps_performed)) {
+      map.set(s.reps_performed, s.weight);
+      continue;
+    }
+    const existing = map.get(s.reps_performed)!;
+    if (mode === 'min') {
+      if (s.weight < existing) map.set(s.reps_performed, s.weight);
+    } else if (s.weight > existing) {
+      map.set(s.reps_performed, s.weight);
+    }
   }
   return [...map.entries()]
     .sort(([a], [b]) => a - b)
@@ -453,11 +461,13 @@ export const exerciseDetailService = {
     const sessions = groupBySession(sets);
     const exerciseType = exercise.exercise_type ?? 'weight_reps';
 
+    const setRecordMode: 'max' | 'min' = exerciseType === 'assisted_bodyweight' ? 'min' : 'max';
+
     return {
       exercise,
       timeSeries: computeTimeSeries(exerciseType, sessions),
       personalRecords: computePersonalRecords(exerciseType, sets, sessions, wUnit, dUnit),
-      setRecords: computeSetRecords(sets),
+      setRecords: computeSetRecords(sets, setRecordMode),
       weightDurationRecords: computeWeightDurationRecords(sets),
       distanceRecords: computeDistanceRecords(sets),
       repProgressionRecords: computeRepProgression(sessions),

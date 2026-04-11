@@ -7,6 +7,7 @@ import {
   StyleSheet,
   RefreshControl,
   Animated,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -14,7 +15,7 @@ import { BlurView } from 'expo-blur';
 import { PieChart } from 'react-native-gifted-charts';
 import { DashboardData, ExerciseProgression, TimeSeriesPoint } from '../../services';
 import { Card, ExercisePickerModal } from '../ui';
-import { Exercise } from '../../models';
+import { BODY_MEASUREMENT_METRICS, Exercise, MeasurementMetricKey } from '../../models';
 import { useProfileStore } from '../../stores/profile.store';
 import { weightUnitLabel } from '../../utils/units';
 import { colors, fonts, spacing } from '../../constants';
@@ -32,6 +33,12 @@ import {
   formatVolume,
 } from '../charts';
 import { MuscleHeatmap } from './MuscleHeatmap';
+import {
+  MonthCalendarGrid,
+  buildFilledDaySet,
+  buildMonthCalendars,
+  getActivityRangeStartDate,
+} from './ActivityCalendar';
 
 export type { GranularityMode, ChartMode } from '../charts';
 
@@ -67,6 +74,11 @@ const METRIC_OPTIONS: { key: SpotlightMetric; label: string }[] = [
   { key: '1rm', label: '1RM' },
 ];
 
+const MEASUREMENT_OPTIONS = BODY_MEASUREMENT_METRICS.map((m) => ({
+  key: m.key,
+  label: m.label,
+}));
+
 /* ── Main Dashboard ── */
 
 export function Dashboard({
@@ -81,10 +93,11 @@ export function Dashboard({
   const router = useRouter();
   const { profile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
-  const wLabel = wUnit === 'lbs' ? 'lbs' : 'kg';
+  const hUnit = profile?.height_unit ?? 'cm';
   const [selectedRange, setSelectedRange] = useState(12);
   const [granularityMode, setGranularityMode] = useState<GranularityMode>('W');
-  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const [measurementMetric, setMeasurementMetric] = useState<MeasurementMetricKey>('body_weight');
+  const [selectedExercise, setSelectedExercise] = useState<{ id: string; name: string } | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const pendingPickerReopenRef = useRef(false);
 
@@ -101,20 +114,33 @@ export function Dashboard({
     setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
   }, [router]);
   const [spotlightMetric, setSpotlightMetric] = useState<SpotlightMetric>('weight');
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const filterAnim = useRef(new Animated.Value(1)).current;
+  const FILTER_BAR_HEIGHT = 40;
 
   const { scrollEnabled } = useChartInteraction();
 
   const hasData =
     data.volume.length > 0 ||
-    data.muscleGroupSplit.length > 0;
+    data.muscleGroupSplit.length > 0 ||
+    Object.values(data.measurementSeries ?? {}).some((series) => series.length > 0);
 
   const activeExercise = useMemo(() => {
-    if (data.exerciseProgressions.length === 0) return null;
-    if (selectedExerciseId) {
-      return data.exerciseProgressions.find((e) => e.exerciseId === selectedExerciseId) ?? data.exerciseProgressions[0];
+    if (selectedExercise) {
+      const matched = data.exerciseProgressions.find((e) => e.exerciseId === selectedExercise.id);
+      if (matched) return matched;
+      return {
+        exerciseId: selectedExercise.id,
+        exerciseName: selectedExercise.name,
+        weightPoints: [],
+        volumePoints: [],
+        repsPoints: [],
+        oneRMPoints: [],
+      };
     }
+    if (data.exerciseProgressions.length === 0) return null;
     return data.exerciseProgressions[0];
-  }, [data.exerciseProgressions, selectedExerciseId]);
+  }, [data.exerciseProgressions, selectedExercise]);
 
   if (!hasData) {
     return (
@@ -140,7 +166,7 @@ export function Dashboard({
   };
 
   const handleExerciseSelect = (exercise: Exercise) => {
-    setSelectedExerciseId(exercise.id);
+    setSelectedExercise({ id: exercise.id, name: exercise.name });
   };
 
   const chartConfig: ChartConfigProps = {
@@ -148,10 +174,6 @@ export function Dashboard({
     weeks: selectedRange,
     chartMode,
   };
-
-  const [filtersOpen, setFiltersOpen] = useState(true);
-  const filterAnim = useRef(new Animated.Value(1)).current;
-  const FILTER_BAR_HEIGHT = 40;
 
   const toggleFilters = useCallback(() => {
     const toValue = filtersOpen ? 0 : 1;
@@ -185,7 +207,20 @@ export function Dashboard({
         }
       >
         <HeroStatsRow stats={data.summaryStats} />
-        <ContributionGrid workoutDays={data.workoutDays} streakWeeks={data.weeklyStreak} />
+        <ContributionGrid
+          workoutDays={data.workoutDays}
+          streakWeeks={data.weeklyStreak}
+          selectedRange={selectedRange}
+          onOpenActivity={() => router.push(`/(tabs)/history/activity?initialRange=${selectedRange}`)}
+        />
+        <MeasurementsSection
+          measurementSeries={data.measurementSeries}
+          metric={measurementMetric}
+          onMetricChange={setMeasurementMetric}
+          weightUnit={wUnit}
+          heightUnit={hUnit}
+          {...chartConfig}
+        />
         <VolumeSection data={data.volume} {...chartConfig} />
         <DurationTrendSection data={data.duration} {...chartConfig} />
         {activeExercise && (
@@ -209,7 +244,7 @@ export function Dashboard({
           onClose={() => setShowExercisePicker(false)}
           onSelect={handleExerciseSelect}
           onExerciseDetails={navigateToExerciseDetail}
-          selectedExerciseId={selectedExerciseId}
+          selectedExerciseId={selectedExercise?.id}
         />
       </ScrollView>
       <Animated.View style={[styles.filterBarOuter, { height: filterBarHeight }]}>
@@ -277,11 +312,15 @@ function HeroStatsRow({ stats }: { stats: DashboardData['summaryStats'] }) {
 function ContributionGrid({
   workoutDays,
   streakWeeks,
+  selectedRange,
+  onOpenActivity,
 }: {
   workoutDays: string[];
   streakWeeks: DashboardData['weeklyStreak'];
+  selectedRange: number;
+  onOpenActivity: () => void;
 }) {
-  const daySet = useMemo(() => new Set(workoutDays), [workoutDays]);
+  const daySet = useMemo(() => buildFilledDaySet(workoutDays), [workoutDays]);
 
   const currentStreak = useMemo(() => {
     let count = 0;
@@ -292,64 +331,183 @@ function ContributionGrid({
     return count;
   }, [streakWeeks]);
 
-  const grid = useMemo(() => {
-    const rows: { key: string; filled: boolean }[][] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const todayDay = today.getDay();
-    const mondayOffset = todayDay === 0 ? -6 : 1 - todayDay;
-    const thisMonday = new Date(today);
-    thisMonday.setDate(today.getDate() + mondayOffset);
-
-    const startMonday = new Date(thisMonday);
-    startMonday.setDate(thisMonday.getDate() - 11 * 7);
-
-    for (let dow = 0; dow < 7; dow++) {
-      const row: { key: string; filled: boolean }[] = [];
-      for (let week = 0; week < 12; week++) {
-        const d = new Date(startMonday);
-        d.setDate(startMonday.getDate() + week * 7 + dow);
-        const key = d.toISOString().split('T')[0];
-        row.push({ key, filled: daySet.has(key) });
-      }
-      rows.push(row);
-    }
-    return rows;
-  }, [daySet]);
-
-  const dayLabels = ['M', '', 'W', '', 'F', '', 'S'];
+  const months = useMemo(() => {
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    const start = getActivityRangeStartDate(selectedRange);
+    return buildMonthCalendars(start, end);
+  }, [selectedRange]);
 
   return (
     <Card style={styles.card}>
       <View style={styles.streakHeader}>
-        <SectionTitle title="Activity" />
+        <TouchableOpacity onPress={onOpenActivity} activeOpacity={0.7} style={styles.activityTitleButton}>
+          <Text style={styles.activityTitleText}>Activity</Text>
+          <Text style={styles.activityChevron}>▸</Text>
+        </TouchableOpacity>
         <Text style={styles.streakBadge}>
           {currentStreak} {currentStreak === 1 ? 'week' : 'weeks'}
         </Text>
       </View>
-      <View style={styles.gridContainer}>
-        <View style={styles.gridDayLabels}>
-          {dayLabels.map((l, i) => (
-            <Text key={i} style={styles.gridDayLabel}>{l}</Text>
-          ))}
-        </View>
-        <View style={styles.gridBody}>
-          {grid.map((row, rowIdx) => (
-            <View key={rowIdx} style={styles.gridRow}>
-              {row.map((cell) => (
-                <View
-                  key={cell.key}
-                  style={[styles.gridCell, cell.filled && styles.gridCellFilled]}
-                />
-              ))}
-            </View>
-          ))}
-        </View>
+      <View style={styles.activityPreviewWrap}>
+        <MonthCalendarGrid
+          months={months}
+          filledDays={daySet}
+          numColumns={2}
+          compact
+          tallCells
+          scrollEnabled
+          virtualized={false}
+          style={styles.activityPreviewList}
+        />
       </View>
     </Card>
   );
 }
+
+function MeasurementMetricDropdown({
+  selected,
+  onChange,
+}: {
+  selected: MeasurementMetricKey;
+  onChange: (next: MeasurementMetricKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedLabel = MEASUREMENT_OPTIONS.find((m) => m.key === selected)?.label ?? 'Metric';
+
+  return (
+    <View>
+      <TouchableOpacity
+        style={styles.metricDropdownTrigger}
+        onPress={() => setOpen(true)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.metricDropdownText}>{selectedLabel}</Text>
+        <Text style={styles.metricDropdownChevron}>▾</Text>
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.metricDropdownOverlay}
+          activeOpacity={1}
+          onPress={() => setOpen(false)}
+        >
+          <View style={styles.metricDropdownMenu}>
+            <ScrollView
+              style={styles.metricDropdownScroll}
+              contentContainerStyle={styles.metricDropdownScrollContent}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+            >
+              {MEASUREMENT_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.metricDropdownItem,
+                    option.key === selected && styles.metricDropdownItemActive,
+                  ]}
+                  onPress={() => {
+                    onChange(option.key);
+                    setOpen(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.metricDropdownItemText,
+                      option.key === selected && styles.metricDropdownItemTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
+const MeasurementsSection = React.memo(function MeasurementsSection({
+  measurementSeries,
+  metric,
+  onMetricChange,
+  weightUnit,
+  heightUnit,
+  mode,
+  weeks,
+  chartMode,
+}: ChartConfigProps & {
+  measurementSeries: DashboardData['measurementSeries'];
+  metric: MeasurementMetricKey;
+  onMetricChange: (m: MeasurementMetricKey) => void;
+  weightUnit: 'kg' | 'lbs';
+  heightUnit: 'cm' | 'in';
+}) {
+  const metricDef = BODY_MEASUREMENT_METRICS.find((m) => m.key === metric);
+  const points = measurementSeries[metric] ?? [];
+  const wLabel = weightUnit === 'lbs' ? 'lbs' : 'kg';
+  const hLabel = heightUnit === 'in' ? 'in' : 'cm';
+
+  const subtitle = chartMode === 'rel'
+    ? `${metricDef?.label ?? 'Measurement'} per log`
+    : `${metricDef?.label ?? 'Measurement'} average by period`;
+
+  const formatTooltip = useCallback((v: number) => {
+    const rounded = Math.round(v * 10) / 10;
+    if (metricDef?.unitKind === 'weight') return `${rounded} ${wLabel}`;
+    if (metricDef?.unitKind === 'circumference') return `${rounded} ${hLabel}`;
+    return `${rounded}%`;
+  }, [metricDef?.unitKind, wLabel, hLabel]);
+
+  const minStep = metricDef?.unitKind === 'percent' ? 1 : 0.5;
+  const frontColor = metricDef?.color ?? '#4ECDC4';
+  const header = (
+    <MeasurementMetricDropdown selected={metric} onChange={onMetricChange} />
+  );
+
+  if (points.length === 0) {
+    return (
+      <Card style={styles.card}>
+        <SectionTitle title="Measurements" rightElement={header} />
+        <Text style={styles.chartSubtitle}>{subtitle}</Text>
+        <Text style={styles.chartEmptyText}>
+          No measurement data for this metric in the selected range.
+        </Text>
+      </Card>
+    );
+  }
+
+  if (chartMode === 'rel') {
+    return (
+      <SimpleLineChart
+        data={points}
+        title="Measurements"
+        subtitle={subtitle}
+        headerContent={header}
+        frontColor={frontColor}
+        formatTooltipValue={formatTooltip}
+        minYStep={minStep}
+      />
+    );
+  }
+
+  return (
+    <SimpleScrollableChart
+      data={points}
+      mode={mode}
+      weeks={weeks}
+      title="Measurements"
+      subtitle={subtitle}
+      headerContent={header}
+      frontColor={frontColor}
+      formatTooltipValue={formatTooltip}
+      minYStep={minStep}
+    />
+  );
+});
 
 /* ── Volume Over Time ── */
 
@@ -463,6 +621,19 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
       />
     </>
   );
+
+  if (points.length === 0) {
+    return (
+      <Card style={styles.card}>
+        <SectionTitle title="Exercise Spotlight" />
+        {header}
+        <Text style={styles.chartSubtitle}>{subtitleMap[metric]}</Text>
+        <Text style={styles.chartEmptyText}>
+          No logged sessions for this exercise in the selected range.
+        </Text>
+      </Card>
+    );
+  }
 
   if (chartMode === 'rel') {
     return (
@@ -733,6 +904,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.textMuted,
   },
+  chartEmptyText: {
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
 
   filterBarOuter: {
     position: 'absolute',
@@ -812,39 +989,87 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     color: '#4ECDC4',
   },
-  gridContainer: {
+  activityTitleButton: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  gridDayLabels: {
-    marginRight: 6,
-    justifyContent: 'space-between',
+  activityTitleText: {
+    fontSize: 16,
+    fontFamily: fonts.bold,
+    color: colors.text,
   },
-  gridDayLabel: {
-    fontSize: 9,
-    fontFamily: fonts.light,
+  activityChevron: {
     color: colors.textMuted,
-    height: 14,
-    lineHeight: 14,
+    fontSize: 12,
+    marginTop: 1,
   },
-  gridBody: {
-    flex: 1,
+  activityPreviewWrap: {
+    maxHeight: 230,
   },
-  gridRow: {
+  activityPreviewList: {
+    flexGrow: 0,
+  },
+  metricDropdownTrigger: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  gridCell: {
-    flex: 1,
-    aspectRatio: 1,
-    maxWidth: 14,
-    maxHeight: 14,
-    borderRadius: 3,
+    alignItems: 'center',
+    alignSelf: 'flex-start',
     backgroundColor: colors.surfaceLight,
-    marginHorizontal: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: spacing.xs,
   },
-  gridCellFilled: {
-    backgroundColor: '#4ECDC4',
+  metricDropdownText: {
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+    marginRight: 6,
+  },
+  metricDropdownChevron: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  metricDropdownOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  metricDropdownMenu: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxHeight: 420,
+    minWidth: 220,
+    overflow: 'hidden',
+  },
+  metricDropdownScroll: {
+    maxHeight: 420,
+  },
+  metricDropdownScrollContent: {
+    paddingVertical: 6,
+  },
+  metricDropdownItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  metricDropdownItemActive: {
+    backgroundColor: colors.text,
+  },
+  metricDropdownItemText: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+  },
+  metricDropdownItemTextActive: {
+    color: colors.background,
+    fontFamily: fonts.semiBold,
   },
 
   exerciseSelectBtn: {

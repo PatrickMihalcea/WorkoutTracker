@@ -1,6 +1,14 @@
 import { supabase } from './supabase';
-import { MuscleGroup, WeightUnit } from '../models';
-import { kgToLbs } from '../utils/units';
+import {
+  BodyMeasurement,
+  HeightUnit,
+  MeasurementMetricKey,
+  MeasurementValueColumn,
+  MuscleGroup,
+  WeightUnit,
+  BODY_MEASUREMENT_METRICS,
+} from '../models';
+import { cmToIn, kgToLbs } from '../utils/units';
 
 export interface PRRecord {
   exerciseName: string;
@@ -46,6 +54,7 @@ export interface DashboardData {
   weeklyStreak: { weekLabel: string; completed: boolean }[];
   workoutDays: string[];
   exerciseProgressions: ExerciseProgression[];
+  measurementSeries: Record<MeasurementMetricKey, TimeSeriesPoint[]>;
 }
 
 export interface SummaryData {
@@ -251,12 +260,21 @@ function stampValues(skeleton: TimeSeriesPoint[], dataMap: Map<string, number>):
   });
 }
 
-function stampValuesAvg(skeleton: TimeSeriesPoint[], dataMap: Map<string, { total: number; count: number }>): TimeSeriesPoint[] {
+function stampValuesAvg(
+  skeleton: TimeSeriesPoint[],
+  dataMap: Map<string, { total: number; count: number }>,
+  precision: number = 0,
+): TimeSeriesPoint[] {
   if (dataMap.size === 0) return skeleton;
   return skeleton.map((pt) => {
     const entry = dataMap.get(pt.key);
-    return entry ? { ...pt, value: Math.round(entry.total / entry.count) } : pt;
+    return entry ? { ...pt, value: roundTo(entry.total / entry.count, precision) } : pt;
   });
+}
+
+function roundTo(value: number, precision: number): number {
+  const factor = 10 ** precision;
+  return Math.round(value * factor) / factor;
 }
 
 function keyToLabel(key: string, granularity: Granularity): string {
@@ -284,21 +302,173 @@ function mapToPoints(dataMap: Map<string, number>, granularity: Granularity): Ti
     }));
 }
 
-function mapToPointsAvg(dataMap: Map<string, { total: number; count: number }>, granularity: Granularity): TimeSeriesPoint[] {
+function mapToPointsAvg(
+  dataMap: Map<string, { total: number; count: number }>,
+  granularity: Granularity,
+  precision: number = 0,
+): TimeSeriesPoint[] {
   return [...dataMap.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, entry]) => ({
       key,
       label: keyToLabel(key, granularity),
-      value: Math.round(entry.total / entry.count),
+      value: roundTo(entry.total / entry.count, precision),
       date: keyToDate(key, granularity),
     }));
 }
 
-const SESSION_SELECT = 'id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group))';
+const SESSION_SELECT = 'id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group, exercise_type))';
+const BODY_MEASUREMENT_SELECT = ['logged_on', ...BODY_MEASUREMENT_METRICS.map((m) => m.column)].join(', ');
+
+type RawMeasurement = Pick<BodyMeasurement, 'logged_on' | MeasurementValueColumn>;
+
+function emptyMeasurementSeries(): Record<MeasurementMetricKey, TimeSeriesPoint[]> {
+  const out = {} as Record<MeasurementMetricKey, TimeSeriesPoint[]>;
+  for (const metric of BODY_MEASUREMENT_METRICS) {
+    out[metric.key] = [];
+  }
+  return out;
+}
+
+function convertMeasurementForUnits(
+  value: number,
+  unitKind: 'weight' | 'circumference' | 'percent',
+  wUnit: WeightUnit,
+  hUnit: HeightUnit,
+): number {
+  if (unitKind === 'weight') {
+    return wUnit === 'lbs' ? roundTo(kgToLbs(value), 1) : roundTo(value, 1);
+  }
+  if (unitKind === 'circumference') {
+    return hUnit === 'in' ? roundTo(cmToIn(value), 1) : roundTo(value, 1);
+  }
+  return roundTo(value, 1);
+}
+
+function buildMeasurementSeriesRaw(
+  rows: RawMeasurement[],
+  wUnit: WeightUnit,
+  hUnit: HeightUnit,
+): Record<MeasurementMetricKey, TimeSeriesPoint[]> {
+  const out = emptyMeasurementSeries();
+
+  for (const row of rows) {
+    const date = new Date(`${row.logged_on}T00:00:00`);
+    const label = `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`;
+    const ts = date.getTime();
+
+    for (const metric of BODY_MEASUREMENT_METRICS) {
+      const rawValue = row[metric.column];
+      if (rawValue === null || rawValue === undefined || !Number.isFinite(rawValue) || rawValue < 0) continue;
+      const value = convertMeasurementForUnits(rawValue, metric.unitKind, wUnit, hUnit);
+      out[metric.key].push({
+        key: row.logged_on,
+        label,
+        value,
+        date: ts,
+      });
+    }
+  }
+
+  return out;
+}
+
+function buildMeasurementSeriesAggregated(
+  rows: RawMeasurement[],
+  granularity: Granularity,
+  skeleton: TimeSeriesPoint[] | null,
+  wUnit: WeightUnit,
+  hUnit: HeightUnit,
+): Record<MeasurementMetricKey, TimeSeriesPoint[]> {
+  const out = emptyMeasurementSeries();
+  const maps = new Map<MeasurementMetricKey, Map<string, { total: number; count: number }>>();
+
+  for (const metric of BODY_MEASUREMENT_METRICS) {
+    maps.set(metric.key, new Map());
+  }
+
+  for (const row of rows) {
+    const date = new Date(`${row.logged_on}T00:00:00`);
+    const bucket = getBucketKey(date, granularity);
+
+    for (const metric of BODY_MEASUREMENT_METRICS) {
+      const rawValue = row[metric.column];
+      if (rawValue === null || rawValue === undefined || !Number.isFinite(rawValue) || rawValue < 0) continue;
+      const value = convertMeasurementForUnits(rawValue, metric.unitKind, wUnit, hUnit);
+      const map = maps.get(metric.key)!;
+      const existing = map.get(bucket) ?? { total: 0, count: 0 };
+      existing.total += value;
+      existing.count += 1;
+      map.set(bucket, existing);
+    }
+  }
+
+  for (const metric of BODY_MEASUREMENT_METRICS) {
+    const map = maps.get(metric.key)!;
+    out[metric.key] = skeleton
+      ? stampValuesAvg(skeleton, map, 1)
+      : mapToPointsAvg(map, granularity, 1);
+  }
+
+  return out;
+}
+
+async function fetchMeasurementRows(userId: string, weeks: number): Promise<RawMeasurement[]> {
+  let query = supabase
+    .from('body_measurements')
+    .select(BODY_MEASUREMENT_SELECT)
+    .eq('user_id', userId)
+    .order('logged_on', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (weeks > 0) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - weeks * 7);
+    query = query.gte('logged_on', cutoff.toISOString().split('T')[0]);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as unknown as RawMeasurement[];
+}
+
+function buildRoutineChartData(
+  rawData: RawSession[] | null,
+  weeks: number,
+  granularity: Granularity,
+  raw: boolean,
+  wUnit: WeightUnit,
+): RoutineChartData {
+  if (!rawData || rawData.length === 0) {
+    return { volume: [], reps: [], duration: [] };
+  }
+
+  const sessions = convertSessionWeights(rawData, wUnit);
+
+  if (raw) {
+    return {
+      volume: computeVolumeRaw(sessions),
+      reps: computeRepsRaw(sessions),
+      duration: computeDurationRaw(sessions),
+    };
+  }
+
+  const skeleton = weeks > 0 ? generateSkeleton(granularity, weeks) : null;
+  return {
+    volume: computeVolume(sessions, granularity, skeleton),
+    reps: computeReps(sessions, granularity, skeleton),
+    duration: computeDuration(sessions, granularity, skeleton),
+  };
+}
 
 export const dashboardService = {
-  async getDashboardData(userId: string, weeks: number = 0, granularity: Granularity = 'week', wUnit: WeightUnit = 'kg'): Promise<DashboardData> {
+  async getDashboardData(
+    userId: string,
+    weeks: number = 0,
+    granularity: Granularity = 'week',
+    wUnit: WeightUnit = 'kg',
+    hUnit: HeightUnit = 'cm',
+  ): Promise<DashboardData> {
     let query = supabase
       .from('workout_sessions')
       .select(SESSION_SELECT)
@@ -312,14 +482,20 @@ export const dashboardService = {
       query = query.gte('started_at', cutoff.toISOString());
     }
 
-    const { data: rawData, error } = await query;
+    const [sessionRes, measurementRows] = await Promise.all([
+      query,
+      fetchMeasurementRows(userId, weeks),
+    ]);
+
+    const { data: rawData, error } = sessionRes;
 
     if (error) throw error;
-    if (!rawData || rawData.length === 0) return emptyDashboard(granularity);
+    if ((!rawData || rawData.length === 0) && measurementRows.length === 0) return emptyDashboard(granularity);
 
-    const sessions = convertSessionWeights(rawData as unknown as RawSession[], wUnit);
+    const sessions = rawData ? convertSessionWeights(rawData as unknown as RawSession[], wUnit) : [];
 
     const skeleton = weeks > 0 ? generateSkeleton(granularity, weeks) : null;
+    const measurementSeries = buildMeasurementSeriesAggregated(measurementRows, granularity, skeleton, wUnit, hUnit);
 
     return {
       summaryStats: computeSummaryStats(sessions),
@@ -333,10 +509,16 @@ export const dashboardService = {
       weeklyStreak: computeWeeklyStreak(sessions),
       workoutDays: computeWorkoutDays(sessions),
       exerciseProgressions: computeExerciseProgressions(sessions, granularity, skeleton),
+      measurementSeries,
     };
   },
 
-  async getDashboardDataRaw(userId: string, weeks: number = 0, wUnit: WeightUnit = 'kg'): Promise<DashboardData> {
+  async getDashboardDataRaw(
+    userId: string,
+    weeks: number = 0,
+    wUnit: WeightUnit = 'kg',
+    hUnit: HeightUnit = 'cm',
+  ): Promise<DashboardData> {
     let query = supabase
       .from('workout_sessions')
       .select(SESSION_SELECT)
@@ -350,12 +532,18 @@ export const dashboardService = {
       query = query.gte('started_at', cutoff.toISOString());
     }
 
-    const { data: rawData, error } = await query;
+    const [sessionRes, measurementRows] = await Promise.all([
+      query,
+      fetchMeasurementRows(userId, weeks),
+    ]);
+
+    const { data: rawData, error } = sessionRes;
 
     if (error) throw error;
-    if (!rawData || rawData.length === 0) return emptyDashboard('day');
+    if ((!rawData || rawData.length === 0) && measurementRows.length === 0) return emptyDashboard('day');
 
-    const sessions = convertSessionWeights(rawData as unknown as RawSession[], wUnit);
+    const sessions = rawData ? convertSessionWeights(rawData as unknown as RawSession[], wUnit) : [];
+    const measurementSeries = buildMeasurementSeriesRaw(measurementRows, wUnit, hUnit);
 
     return {
       summaryStats: computeSummaryStats(sessions),
@@ -369,6 +557,7 @@ export const dashboardService = {
       weeklyStreak: computeWeeklyStreak(sessions),
       workoutDays: computeWorkoutDays(sessions),
       exerciseProgressions: computeExerciseProgressionsRaw(sessions),
+      measurementSeries,
     };
   },
 
@@ -430,24 +619,47 @@ export const dashboardService = {
     const { data: rawData, error } = await query;
 
     if (error) throw error;
-    if (!rawData || rawData.length === 0) return { volume: [], reps: [], duration: [] };
+    return buildRoutineChartData(
+      rawData as unknown as RawSession[] | null,
+      weeks,
+      granularity,
+      raw,
+      wUnit,
+    );
+  },
 
-    const sessions = convertSessionWeights(rawData as unknown as RawSession[], wUnit);
+  async getRoutineDayChartData(
+    userId: string,
+    dayId: string,
+    weeks: number = 0,
+    granularity: Granularity = 'week',
+    raw: boolean = false,
+    wUnit: WeightUnit = 'kg',
+  ): Promise<RoutineChartData> {
+    let query = supabase
+      .from('workout_sessions')
+      .select(SESSION_SELECT)
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .eq('routine_day_id', dayId)
+      .order('started_at', { ascending: true });
 
-    if (raw) {
-      return {
-        volume: computeVolumeRaw(sessions),
-        reps: computeRepsRaw(sessions),
-        duration: computeDurationRaw(sessions),
-      };
+    if (weeks > 0) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - weeks * 7);
+      query = query.gte('started_at', cutoff.toISOString());
     }
 
-    const skeleton = weeks > 0 ? generateSkeleton(granularity, weeks) : null;
-    return {
-      volume: computeVolume(sessions, granularity, skeleton),
-      reps: computeReps(sessions, granularity, skeleton),
-      duration: computeDuration(sessions, granularity, skeleton),
-    };
+    const { data: rawData, error } = await query;
+
+    if (error) throw error;
+    return buildRoutineChartData(
+      rawData as unknown as RawSession[] | null,
+      weeks,
+      granularity,
+      raw,
+      wUnit,
+    );
   },
 
   async getTimeSeriesWindow(
@@ -474,7 +686,7 @@ export const dashboardService = {
       new Date(clampedStart),
       new Date(endDate),
     );
-    const safeSessions = sessions ?? [];
+    const safeSessions = (sessions ?? []) as unknown as RawSession[];
 
     return {
       frequency: computeFrequency(safeSessions, granularity, skeleton),
@@ -498,6 +710,7 @@ function emptyDashboard(granularity: Granularity = 'week'): DashboardData {
     weeklyStreak: [],
     workoutDays: [],
     exerciseProgressions: [],
+    measurementSeries: emptyMeasurementSeries(),
   };
 }
 
@@ -522,9 +735,19 @@ type RawSession = {
     reps_performed: number;
     rir: number | null;
     exercise_id: string;
-    exercise: { name: string; muscle_group: string } | null;
+    exercise: { name: string; muscle_group: string; exercise_type?: string } | null;
   }[];
 };
+
+function estimateOneRepFromSet(set: RawSession['sets'][number]): number {
+  const effectiveReps = set.reps_performed + (set.rir ?? 0);
+  if (effectiveReps < 0) return 0;
+  // Assisted load is inverse: lower assistance at 1 rep is better.
+  if (set.exercise?.exercise_type === 'assisted_bodyweight') {
+    return Math.round(set.weight / (1 + effectiveReps / 30));
+  }
+  return Math.round(set.weight * (1 + effectiveReps / 30));
+}
 
 function convertSessionWeights(sessions: RawSession[], wUnit: WeightUnit): RawSession[] {
   if (wUnit === 'kg') return sessions;
@@ -734,10 +957,13 @@ function computeExerciseProgressions(sessions: RawSession[], granularity: Granul
       const existingReps = entry.reps.get(key) ?? 0;
       entry.reps.set(key, existingReps + set.reps_performed);
 
-      const effectiveReps = set.reps_performed + (set.rir ?? 0);
-      const estimated1RM = Math.round(set.weight * (1 + effectiveReps / 30));
-      const existing1RM = entry.oneRM.get(key) ?? 0;
-      if (estimated1RM > existing1RM) {
+      const estimated1RM = estimateOneRepFromSet(set);
+      const existing1RM = entry.oneRM.get(key);
+      if (set.exercise?.exercise_type === 'assisted_bodyweight') {
+        if (existing1RM === undefined || estimated1RM < existing1RM) {
+          entry.oneRM.set(key, estimated1RM);
+        }
+      } else if (estimated1RM > (existing1RM ?? 0)) {
         entry.oneRM.set(key, estimated1RM);
       }
     }
@@ -775,7 +1001,7 @@ function computeReps(sessions: RawSession[], granularity: Granularity, skeleton:
     const key = getBucketKey(new Date(s.started_at), granularity);
     map.set(key, (map.get(key) ?? 0) + reps);
   }
-  return mapToPoints(map, skeleton, granularity);
+  return skeleton ? stampValues(skeleton, map) : mapToPoints(map, granularity);
 }
 
 function computeRepsRaw(sessions: RawSession[]): TimeSeriesPoint[] {
@@ -852,9 +1078,12 @@ function computeExerciseProgressionsRaw(sessions: RawSession[]): ExerciseProgres
       existing.maxWeight = Math.max(existing.maxWeight, set.weight);
       existing.totalVol += set.weight * set.reps_performed;
       existing.totalReps += set.reps_performed;
-      const effectiveReps = set.reps_performed + (set.rir ?? 0);
-      const est1RM = Math.round(set.weight * (1 + effectiveReps / 30));
-      existing.best1RM = Math.max(existing.best1RM, est1RM);
+      const est1RM = estimateOneRepFromSet(set);
+      if (set.exercise?.exercise_type === 'assisted_bodyweight') {
+        existing.best1RM = existing.best1RM > 0 ? Math.min(existing.best1RM, est1RM) : est1RM;
+      } else {
+        existing.best1RM = Math.max(existing.best1RM, est1RM);
+      }
       sessionExercises.set(id, existing);
     }
 

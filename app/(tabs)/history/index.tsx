@@ -32,6 +32,7 @@ export default function HistoryScreen() {
   const user = useAuthStore((s) => s.user);
   const { profile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
+  const hUnit = profile?.height_unit ?? 'cm';
 
   const [sessions, setSessions] = useState<WorkoutSessionWithRoutine[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -58,10 +59,10 @@ export default function HistoryScreen() {
     try {
       let data: DashboardData;
       if (cMode === 'rel') {
-        data = await dashboardService.getDashboardDataRaw(userId, w, wUnit);
+        data = await dashboardService.getDashboardDataRaw(userId, w, wUnit, hUnit);
       } else {
         const g = granularityModeToBackend(gMode);
-        data = await dashboardService.getDashboardData(userId, w, g, wUnit);
+        data = await dashboardService.getDashboardData(userId, w, g, wUnit, hUnit);
       }
       setDashboardData(data);
     } catch {
@@ -69,7 +70,7 @@ export default function HistoryScreen() {
     } finally {
       setDashboardLoading(false);
     }
-  }, [userId, wUnit]);
+  }, [userId, wUnit, hUnit]);
 
   useFocusEffect(
     useCallback(() => {

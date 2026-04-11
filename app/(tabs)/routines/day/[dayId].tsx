@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRoutineStore } from '../../../../src/stores/routine.store';
 import { useAuthStore } from '../../../../src/stores/auth.store';
@@ -45,6 +45,7 @@ import {
   type ReorderItem,
   type SupersetGroups,
 } from '../../../../src/utils/superset';
+import { DayViewHeaderDropdown } from '../../../../src/components/routine/DayViewHeaderDropdown';
 
 function SwipeableExerciseRow({
   ex,
@@ -420,6 +421,11 @@ export default function DayEditorScreen() {
 
   return (
     <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          headerTitle: () => <DayViewHeaderDropdown dayId={dayId ?? ''} currentView="edit" />,
+        }}
+      />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         {editingLabel ? (
           <InlineEditRow

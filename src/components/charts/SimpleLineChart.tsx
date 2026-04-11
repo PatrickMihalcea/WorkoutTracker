@@ -26,6 +26,10 @@ export interface SimpleLineChartProps {
   headerContent?: React.ReactNode;
   frontColor: string;
   formatTooltipValue: (value: number) => string;
+  targetValue?: number;
+  formatTargetTooltipValue?: (value: number) => string;
+  targetLabel?: string;
+  targetLineColor?: string;
   minYStep?: number;
   yLabelFormatter?: (value: number) => string;
 }
@@ -46,15 +50,24 @@ export function SimpleLineChart({
   headerContent,
   frontColor,
   formatTooltipValue,
+  targetValue,
+  formatTargetTooltipValue,
+  targetLabel = 'Target',
+  targetLineColor = colors.textMuted,
   minYStep,
   yLabelFormatter,
 }: SimpleLineChartProps) {
   const { onChartTouchStart, onChartTouchEnd, pointerActiveRef } = useChartInteraction();
   const points = useMemo(() => data.filter((p) => p.value > 0), [data]);
+  const hasTarget = (targetValue ?? 0) > 0;
+  const yAxisSource = useMemo(
+    () => (hasTarget ? [...points, { value: targetValue as number }] : points),
+    [points, hasTarget, targetValue],
+  );
   const yMinStep = minYStep ?? 1;
-  const [yAxis, setYAxis] = useState<YAxisInfo>(() => computeYAxisInfo(points, yMinStep, yLabelFormatter));
+  const [yAxis, setYAxis] = useState<YAxisInfo>(() => computeYAxisInfo(yAxisSource, yMinStep, yLabelFormatter));
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
-  const [activeTooltip, setActiveTooltip] = useState<{ date: string; value: string; ptX: number } | null>(null);
+  const [activeTooltip, setActiveTooltip] = useState<{ date: string; value: string; target?: string; ptX: number } | null>(null);
   const tooltipWidthRef = useRef(0);
   const [tooltipReady, setTooltipReady] = useState(false);
 
@@ -67,8 +80,8 @@ export function SimpleLineChart({
   const MOVE_THRESHOLD = 10;
 
   useEffect(() => {
-    setYAxis(computeYAxisInfo(points, yMinStep, yLabelFormatter));
-  }, [points, yMinStep, yLabelFormatter]);
+    setYAxis(computeYAxisInfo(yAxisSource, yMinStep, yLabelFormatter));
+  }, [yAxisSource, yMinStep, yLabelFormatter]);
 
   const padLeft = 16;
   const padRight = 16;
@@ -88,6 +101,12 @@ export function SimpleLineChart({
     if (range <= 0) return points.map(() => CHART_HEIGHT);
     return points.map((p) => CHART_HEIGHT - ((p.value - yAxis.minValue) / range) * CHART_HEIGHT);
   }, [points, yAxis.maxValue, yAxis.minValue]);
+  const targetY = useMemo(() => {
+    if (!hasTarget) return null;
+    const range = yAxis.maxValue - yAxis.minValue;
+    if (range <= 0) return CHART_HEIGHT;
+    return CHART_HEIGHT - (((targetValue as number) - yAxis.minValue) / range) * CHART_HEIGHT;
+  }, [hasTarget, targetValue, yAxis.maxValue, yAxis.minValue]);
 
   const polylinePoints = useMemo(() => {
     return pointPositions.map((pos, i) => `${pos.x},${pointYs[i]}`).join(' ');
@@ -148,9 +167,21 @@ export function SimpleLineChart({
     setActiveTooltip({
       date: formatPointDate(pt.date),
       value: formatTooltipValue(pt.value),
+      target: hasTarget
+        ? `${targetLabel}: ${(formatTargetTooltipValue ?? formatTooltipValue)(targetValue as number)}`
+        : undefined,
       ptX: pointPositions[idx].x,
     });
-  }, [findNearestPoint, points, pointPositions, formatTooltipValue]);
+  }, [
+    findNearestPoint,
+    points,
+    pointPositions,
+    formatTooltipValue,
+    hasTarget,
+    targetLabel,
+    formatTargetTooltipValue,
+    targetValue,
+  ]);
 
   const handleTouchStart = useCallback((e: GestureResponderEvent) => {
     const { pageX, pageY } = e.nativeEvent;
@@ -226,6 +257,9 @@ export function SimpleLineChart({
               }}
             >
               <Text style={styles.tooltipValue} numberOfLines={1}>{activeTooltip.value}</Text>
+              {activeTooltip.target ? (
+                <Text style={styles.tooltipTarget} numberOfLines={1}>{activeTooltip.target}</Text>
+              ) : null}
               <Text style={styles.tooltipDate} numberOfLines={1}>{activeTooltip.date}</Text>
             </View>
           );
@@ -263,6 +297,18 @@ export function SimpleLineChart({
                 fill="none"
                 stroke={frontColor}
                 strokeWidth={2}
+              />
+            )}
+            {targetY !== null && (
+              <Line
+                x1={padLeft}
+                y1={targetY}
+                x2={padLeft + plotWidth}
+                y2={targetY}
+                stroke={targetLineColor}
+                strokeWidth={1.5}
+                strokeDasharray="5 4"
+                opacity={0.9}
               />
             )}
             {pointPositions.map((pos, i) => (
@@ -347,6 +393,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.bold,
     color: colors.text,
+  },
+  tooltipTarget: {
+    fontSize: 10,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+    marginTop: 1,
   },
   tooltipDate: {
     fontSize: 10,

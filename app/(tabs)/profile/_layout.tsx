@@ -14,6 +14,7 @@ export default function ProfileLayout() {
       <Stack.Screen name="units" options={{ title: 'Units' }} />
       <Stack.Screen name="colour-customization" options={{ title: 'Colour Customization' }} />
       <Stack.Screen name="workouts" options={{ title: 'Workouts' }} />
+      <Stack.Screen name="measurements" options={{ title: 'Measurements' }} />
     </AppStack>
   );
 }

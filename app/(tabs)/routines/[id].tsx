@@ -425,6 +425,10 @@ export default function RoutineDetailScreen() {
 
   const buildDayMenuItems = useCallback((day: RoutineDayWithExercises): OverflowMenuItem[] => [
     {
+      label: 'Details',
+      onPress: () => router.push(`/(tabs)/routines/day-details/${day.id}`),
+    },
+    {
       label: 'Start Day',
       onPress: () => handleStartDay(day),
       disabled: !!activeSession,
@@ -438,7 +442,7 @@ export default function RoutineDetailScreen() {
       onPress: () => handleDeleteDay(day.id, day.label),
       destructive: true,
     },
-  ], [activeSession, handleStartDay, handleDuplicateDay, handleDeleteDay]);
+  ], [activeSession, handleStartDay, handleDuplicateDay, handleDeleteDay, router]);
 
   if (!currentRoutine) return null;
 

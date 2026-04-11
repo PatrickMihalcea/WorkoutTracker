@@ -60,6 +60,15 @@ export default function ProfileScreen() {
           </View>
         </Card>
 
+        <TouchableOpacity
+          style={styles.measurementsButton}
+          onPress={() => router.push('/(tabs)/profile/measurements')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.measurementsButtonText}>Measurements</Text>
+          <Text style={styles.measurementsButtonArrow}>›</Text>
+        </TouchableOpacity>
+
         <Card style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Sex</Text>
@@ -132,6 +141,28 @@ const styles = StyleSheet.create({
   },
   statsCard: {
     marginBottom: 16,
+  },
+  measurementsButton: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  measurementsButtonText: {
+    fontSize: 16,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+  },
+  measurementsButtonArrow: {
+    fontSize: 20,
+    fontFamily: fonts.light,
+    color: colors.textMuted,
   },
   statRow: {
     flexDirection: 'row',

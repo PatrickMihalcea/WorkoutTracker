@@ -17,3 +17,5 @@ export { RirCircle, getRirColor, formatRir } from './RirCircle';
 export { RirPickerModal } from './RirPickerModal';
 export { SupersetBracket } from './SupersetBracket';
 export { DurationPickerModal } from './DurationPickerModal';
+export { HeaderDropdown } from './HeaderDropdown';
+export type { HeaderDropdownOption } from './HeaderDropdown';
