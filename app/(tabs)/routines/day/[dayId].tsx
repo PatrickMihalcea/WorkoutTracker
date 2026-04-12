@@ -51,6 +51,7 @@ function SwipeableExerciseRow({
   ex,
   isExpanded,
   onToggle,
+  onDetails,
   onDelete,
   onLongPress,
   menuItems,
@@ -59,6 +60,7 @@ function SwipeableExerciseRow({
   ex: RoutineDayExercise;
   isExpanded: boolean;
   onToggle: () => void;
+  onDetails?: () => void;
   onDelete: () => void;
   onLongPress?: () => void;
   menuItems?: OverflowMenuItem[];
@@ -69,6 +71,11 @@ function SwipeableExerciseRow({
     ex.sets && ex.sets.length > 0
       ? `${setsCount} sets`
       : `${ex.target_sets}×${ex.target_reps}`;
+
+  const handleDetailsPress = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    onDetails?.();
+  };
 
   return (
     <SwipeToDeleteRow onDelete={onDelete} expandedHeight={500}>
@@ -81,7 +88,13 @@ function SwipeableExerciseRow({
       >
         <View style={styles.exerciseInfo}>
           <View style={styles.nameRow}>
-            <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+            {onDetails ? (
+              <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7} style={styles.exerciseNameTapTarget}>
+                <Text style={[styles.exerciseName, styles.exerciseNameLink]}>{ex.exercise?.name ?? 'Exercise'}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+            )}
             <Text style={styles.expandArrow}>{isExpanded ? '▾' : '▸'}</Text>
           </View>
           <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
@@ -384,7 +397,6 @@ export default function DayEditorScreen() {
   const buildExerciseMenuItems = (ex: RoutineDayExercise, idx: number): OverflowMenuItem[] => {
     if (!day) return [];
     const items: OverflowMenuItem[] = [];
-    items.push({ label: 'Details', onPress: () => navigateToExerciseDetail(ex.exercise_id) });
     const myGroup = ex.superset_group ?? null;
     const prevGroup = idx > 0 ? (day.exercises[idx - 1].superset_group ?? null) : null;
     const nextGroup = idx < day.exercises.length - 1 ? (day.exercises[idx + 1].superset_group ?? null) : null;
@@ -468,6 +480,7 @@ export default function DayEditorScreen() {
                   ex={item.entry}
                   isExpanded={expandedIds.has(item.entry.id)}
                   onToggle={() => toggleExpand(item.entry.id)}
+                  onDetails={() => navigateToExerciseDetail(item.entry.exercise_id)}
                   onDelete={() => handleExRemove(item.entry.id)}
                   onLongPress={drag}
                   menuItems={buildExerciseMenuItems(item.entry, day.exercises.indexOf(item.entry))}
@@ -484,6 +497,7 @@ export default function DayEditorScreen() {
                           ex={entry}
                           isExpanded={expandedIds.has(entry.id)}
                           onToggle={() => toggleExpand(entry.id)}
+                          onDetails={() => navigateToExerciseDetail(entry.exercise_id)}
                           onDelete={() => handleExRemove(entry.id)}
                           onLongPress={drag}
                           menuItems={buildExerciseMenuItems(entry, day.exercises.indexOf(entry))}
@@ -578,6 +592,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.text,
+  },
+  exerciseNameLink: {
+    textDecorationLine: 'underline',
+  },
+  exerciseNameTapTarget: {
+    alignSelf: 'flex-start',
   },
   expandArrow: {
     fontSize: 12,

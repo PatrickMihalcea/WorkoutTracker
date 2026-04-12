@@ -209,7 +209,6 @@ export function Dashboard({
         <HeroStatsRow stats={data.summaryStats} />
         <ContributionGrid
           workoutDays={data.workoutDays}
-          streakWeeks={data.weeklyStreak}
           selectedRange={selectedRange}
           onOpenActivity={() => router.push(`/(tabs)/history/activity?initialRange=${selectedRange}`)}
         />
@@ -311,25 +310,14 @@ function HeroStatsRow({ stats }: { stats: DashboardData['summaryStats'] }) {
 
 function ContributionGrid({
   workoutDays,
-  streakWeeks,
   selectedRange,
   onOpenActivity,
 }: {
   workoutDays: string[];
-  streakWeeks: DashboardData['weeklyStreak'];
   selectedRange: number;
   onOpenActivity: () => void;
 }) {
   const daySet = useMemo(() => buildFilledDaySet(workoutDays), [workoutDays]);
-
-  const currentStreak = useMemo(() => {
-    let count = 0;
-    for (let i = streakWeeks.length - 1; i >= 0; i--) {
-      if (streakWeeks[i].completed) count++;
-      else break;
-    }
-    return count;
-  }, [streakWeeks]);
 
   const months = useMemo(() => {
     const end = new Date();
@@ -345,9 +333,6 @@ function ContributionGrid({
           <Text style={styles.activityTitleText}>Activity</Text>
           <Text style={styles.activityChevron}>▸</Text>
         </TouchableOpacity>
-        <Text style={styles.streakBadge}>
-          {currentStreak} {currentStreak === 1 ? 'week' : 'weeks'}
-        </Text>
       </View>
       <View style={styles.activityPreviewWrap}>
         <MonthCalendarGrid
@@ -983,11 +968,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.sm,
-  },
-  streakBadge: {
-    fontSize: 14,
-    fontFamily: fonts.bold,
-    color: '#4ECDC4',
   },
   activityTitleButton: {
     flexDirection: 'row',
