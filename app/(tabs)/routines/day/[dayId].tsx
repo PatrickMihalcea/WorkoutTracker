@@ -440,6 +440,7 @@ export default function DayEditorScreen() {
             style={styles.labelRow}
           >
             <Text style={styles.labelTitle}>{day.label}</Text>
+            <Text style={styles.weekMeta}>Week {day.week_index}</Text>
           </TouchableOpacity>
         )}
 
@@ -542,6 +543,12 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontFamily: fonts.bold,
     color: colors.text,
+  },
+  weekMeta: {
+    marginTop: 4,
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
   },
   sectionLabel: {
     fontSize: 14,

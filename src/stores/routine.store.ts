@@ -11,7 +11,7 @@ interface RoutineState {
   fetchRoutines: () => Promise<void>;
   fetchActiveRoutine: () => Promise<void>;
   fetchRoutineDetail: (id: string) => Promise<void>;
-  createRoutine: (name: string, userId: string) => Promise<Routine>;
+  createRoutine: (name: string, userId: string, weekCount?: number) => Promise<Routine>;
   setActive: (id: string, userId: string) => Promise<void>;
   deleteRoutine: (id: string) => Promise<void>;
 }
@@ -51,11 +51,13 @@ export const useRoutineStore = create<RoutineState>((set) => ({
     }
   },
 
-  createRoutine: async (name, userId) => {
+  createRoutine: async (name, userId, weekCount = 1) => {
     const routine = await routineService.create({
       name,
       user_id: userId,
       is_active: false,
+      week_count: weekCount,
+      current_week: 1,
     });
     set((state) => ({ routines: [routine, ...state.routines] }));
     return routine;

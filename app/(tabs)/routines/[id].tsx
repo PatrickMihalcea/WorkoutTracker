@@ -19,7 +19,7 @@ import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { routineService } from '../../../src/services';
 import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
-import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast, ExercisePickerModal, SupersetBracket } from '../../../src/components/ui';
+import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast, ExercisePickerModal, SupersetBracket, ChipPicker } from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { colors, fonts, spacing } from '../../../src/constants';
 import {
@@ -105,6 +105,8 @@ export default function RoutineDetailScreen() {
   const [showAddDay, setShowAddDay] = useState(false);
   const [selectedDay, setSelectedDay] = useState<DayOfWeek | null>(null);
   const [dayLabel, setDayLabel] = useState('');
+  const [selectedWeek, setSelectedWeek] = useState<number>(0);
+  const [updatingWeeks, setUpdatingWeeks] = useState(false);
 
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [addExerciseDayId, setAddExerciseDayId] = useState<string | null>(null);
@@ -161,9 +163,31 @@ export default function RoutineDetailScreen() {
       }));
   }, [currentRoutine]);
 
+  const weekItems = useMemo(() => {
+    if (!currentRoutine) return [];
+    return Array.from({ length: currentRoutine.week_count }, (_, index) => {
+      const week = index + 1;
+      return { key: String(week), label: `Week ${week}`, value: week };
+    });
+  }, [currentRoutine]);
+
+  const selectedWeekDays = useMemo(() => {
+    if (!currentRoutine) return [];
+    return currentRoutine.days.filter((d) => d.week_index === selectedWeek);
+  }, [currentRoutine, selectedWeek]);
+
   useEffect(() => {
     if (id) fetchRoutineDetail(id);
   }, [id, fetchRoutineDetail]);
+
+  useEffect(() => {
+    if (!currentRoutine) return;
+    setSelectedWeek((prev) => {
+      if (prev < 1) return currentRoutine.current_week;
+      if (prev > currentRoutine.week_count) return currentRoutine.current_week;
+      return prev;
+    });
+  }, [currentRoutine]);
 
   const handleAddDay = async () => {
     if (!id || !dayLabel.trim()) {
@@ -175,6 +199,7 @@ export default function RoutineDetailScreen() {
         routine_id: id,
         day_of_week: selectedDay,
         label: dayLabel.trim(),
+        week_index: selectedWeek,
       });
       setShowAddDay(false);
       setDayLabel('');
@@ -306,7 +331,7 @@ export default function RoutineDetailScreen() {
     }
     if (!user) return;
     try {
-      await startWorkout(user.id, day.id, day.exercises);
+      await startWorkout(user.id, day.id, day.exercises, day.week_index);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
@@ -321,6 +346,59 @@ export default function RoutineDetailScreen() {
       Alert.alert('Error', (error as Error).message);
     }
   }, [id, fetchRoutineDetail, router]);
+
+  const handleAddWeek = useCallback(async () => {
+    if (!currentRoutine || !id || updatingWeeks) return;
+    setUpdatingWeeks(true);
+    try {
+      await routineService.setWeekCount(id, currentRoutine.week_count + 1);
+      setSelectedWeek(currentRoutine.week_count + 1);
+      await fetchRoutineDetail(id);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    } finally {
+      setUpdatingWeeks(false);
+    }
+  }, [currentRoutine, id, fetchRoutineDetail, updatingWeeks]);
+
+  const handleDeleteSelectedWeek = useCallback(async () => {
+    if (!currentRoutine || !id || currentRoutine.week_count <= 1 || updatingWeeks) return;
+    const deletingWeek = selectedWeek;
+    Alert.alert(
+      'Delete Week',
+      `Delete week ${deletingWeek} from this routine?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setUpdatingWeeks(true);
+            try {
+              await routineService.deleteWeek(id, deletingWeek);
+              setSelectedWeek(Math.min(deletingWeek, currentRoutine.week_count - 1));
+              await fetchRoutineDetail(id);
+            } catch (error: unknown) {
+              Alert.alert('Error', (error as Error).message);
+            } finally {
+              setUpdatingWeeks(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [currentRoutine, id, selectedWeek, fetchRoutineDetail, updatingWeeks]);
+
+  const handleSetActiveWeek = useCallback(async () => {
+    if (!currentRoutine || !id) return;
+    if (currentRoutine.current_week === selectedWeek) return;
+    try {
+      await routineService.setCurrentWeek(id, selectedWeek);
+      await fetchRoutineDetail(id);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  }, [currentRoutine, id, selectedWeek, fetchRoutineDetail]);
 
   const applySupersetChanges = async (dayExercises: RoutineDayExercise[], updated: SupersetGroups) => {
     for (const ex of dayExercises) {
@@ -461,7 +539,7 @@ export default function RoutineDetailScreen() {
           >
             <Text style={styles.dayLabel}>{day.label}</Text>
             <Text style={styles.dayOfWeek}>
-              {day.day_of_week ? DAY_LABELS[day.day_of_week as DayOfWeek] : 'No day assigned'}
+              {day.day_of_week ? DAY_LABELS[day.day_of_week as DayOfWeek] : 'No day assigned'} · Week {day.week_index}
             </Text>
           </TouchableOpacity>
           <OverflowMenu items={buildDayMenuItems(day)} />
@@ -530,6 +608,42 @@ export default function RoutineDetailScreen() {
           </TouchableOpacity>
         )}
 
+        <Text style={styles.weekMeta}>
+          Active Week: {currentRoutine.current_week} / {currentRoutine.week_count}
+        </Text>
+        <ChipPicker
+          items={weekItems}
+          selected={selectedWeek}
+          onChange={(week) => setSelectedWeek(week ?? currentRoutine.current_week)}
+          allowDeselect={false}
+          keyboardPersistTaps
+        />
+        <View style={styles.weekActions}>
+          <Button
+            title="Delete Week"
+            variant="danger"
+            onPress={handleDeleteSelectedWeek}
+            loading={updatingWeeks}
+            disabled={currentRoutine.week_count <= 1}
+            style={styles.weekActionBtn}
+          />
+          <Button
+            title="+ Week"
+            variant="secondary"
+            onPress={handleAddWeek}
+            loading={updatingWeeks}
+            style={styles.weekActionBtn}
+          />
+        </View>
+        {selectedWeek !== currentRoutine.current_week && (
+          <Button
+            title={`Set Week ${selectedWeek} Active`}
+            variant="secondary"
+            onPress={handleSetActiveWeek}
+            style={styles.activeWeekBtn}
+          />
+        )}
+
         <TouchableOpacity
           style={styles.subHeaderRow}
           activeOpacity={0.7}
@@ -554,9 +668,15 @@ export default function RoutineDetailScreen() {
           </>
         )}
 
-        <Text style={styles.subHeader}>Routine</Text>
+        <Text style={styles.subHeader}>Routine · Week {selectedWeek}</Text>
 
-        {currentRoutine.days.map(renderDay)}
+        {selectedWeekDays.length > 0 ? (
+          selectedWeekDays.map(renderDay)
+        ) : (
+          <Card style={styles.emptyWeekCard}>
+            <Text style={styles.emptyWeekText}>No days in Week {selectedWeek} yet.</Text>
+          </Card>
+        )}
 
         <Button
           title="+ Add Day"
@@ -567,6 +687,7 @@ export default function RoutineDetailScreen() {
 
       {/* Add Day Modal */}
       <BottomSheetModal visible={showAddDay} title="Add Training Day" onClose={() => setShowAddDay(false)} showCloseButton={false}>
+            <Text style={styles.fieldLabel}>Week {selectedWeek}</Text>
             <Text style={styles.fieldLabel}>Day of Week (optional)</Text>
             <DayOfWeekPicker selected={selectedDay} onChange={setSelectedDay} />
 
@@ -653,12 +774,39 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 8,
   },
+  weekMeta: {
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  weekActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  weekActionBtn: {
+    flex: 1,
+  },
+  activeWeekBtn: {
+    marginBottom: 6,
+  },
   chevron: {
     fontSize: 12,
     color: colors.textMuted,
   },
   dayCard: {
     marginBottom: 16,
+  },
+  emptyWeekCard: {
+    marginBottom: 16,
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  emptyWeekText: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
   },
   dayHeader: {
     flexDirection: 'row',

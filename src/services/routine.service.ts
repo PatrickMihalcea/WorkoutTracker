@@ -11,6 +11,38 @@ import {
 } from '../models';
 import { supabase } from './supabase';
 
+function daySortValue(dayOfWeek: number | null): number {
+  return dayOfWeek ?? 99;
+}
+
+function compareRoutineDays(a: RoutineDay, b: RoutineDay): number {
+  if (a.week_index !== b.week_index) return a.week_index - b.week_index;
+  const dowDiff = daySortValue(a.day_of_week) - daySortValue(b.day_of_week);
+  if (dowDiff !== 0) return dowDiff;
+  return a.label.localeCompare(b.label);
+}
+
+function normalizeRoutineDays(routine: RoutineWithDays): RoutineWithDays {
+  routine.days.sort(compareRoutineDays);
+  routine.days.forEach((day) => {
+    day.exercises.sort((a, b) => a.sort_order - b.sort_order);
+    day.exercises.forEach((ex) => {
+      ex.sets?.sort((a, b) => a.set_number - b.set_number);
+    });
+  });
+  return routine;
+}
+
+function generateGroupId(): string {
+  const hex = '0123456789abcdef';
+  let id = '';
+  for (let i = 0; i < 32; i++) {
+    id += hex[Math.floor(Math.random() * 16)];
+    if (i === 7 || i === 11 || i === 15 || i === 19) id += '-';
+  }
+  return id;
+}
+
 export const routineService = {
   async getAll(): Promise<Routine[]> {
     const { data, error } = await supabase
@@ -48,16 +80,7 @@ export const routineService = {
       .eq('id', id)
       .single();
     if (error) throw error;
-
-    const routine = data as RoutineWithDays;
-    routine.days.sort((a, b) => a.day_of_week - b.day_of_week);
-    routine.days.forEach((day) => {
-      day.exercises.sort((a, b) => a.sort_order - b.sort_order);
-      day.exercises.forEach((ex) => {
-        ex.sets?.sort((a, b) => a.set_number - b.set_number);
-      });
-    });
-    return routine;
+    return normalizeRoutineDays(data as RoutineWithDays);
   },
 
   async getActive(): Promise<RoutineWithDays | null> {
@@ -78,16 +101,7 @@ export const routineService = {
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
-
-    const routine = data as RoutineWithDays;
-    routine.days.sort((a, b) => a.day_of_week - b.day_of_week);
-    routine.days.forEach((day) => {
-      day.exercises.sort((a, b) => a.sort_order - b.sort_order);
-      day.exercises.forEach((ex) => {
-        ex.sets?.sort((a, b) => a.set_number - b.set_number);
-      });
-    });
-    return routine;
+    return normalizeRoutineDays(data as RoutineWithDays);
   },
 
   async getDayWithExercises(dayId: string): Promise<RoutineDayWithExercises> {
@@ -112,6 +126,26 @@ export const routineService = {
     return day;
   },
 
+  async getDay(dayId: string): Promise<RoutineDay> {
+    const { data, error } = await supabase
+      .from('routine_days')
+      .select('*')
+      .eq('id', dayId)
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getDaysForWeek(routineId: string, weekIndex: number): Promise<RoutineDay[]> {
+    const { data, error } = await supabase
+      .from('routine_days')
+      .select('*')
+      .eq('routine_id', routineId)
+      .eq('week_index', weekIndex);
+    if (error) throw error;
+    return (data as RoutineDay[]).sort(compareRoutineDays);
+  },
+
   async create(routine: RoutineInsert): Promise<Routine> {
     const { data, error } = await supabase
       .from('routines')
@@ -127,6 +161,122 @@ export const routineService = {
       .from('routines')
       .update(updates)
       .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async setCurrentWeek(id: string, weekIndex: number): Promise<Routine> {
+    const routine = await this.getById(id);
+    if (weekIndex < 1 || weekIndex > routine.week_count) {
+      throw new Error(`Week must be between 1 and ${routine.week_count}`);
+    }
+    const { data, error } = await supabase
+      .from('routines')
+      .update({
+        current_week: weekIndex,
+        current_week_started_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async setWeekCount(id: string, weekCount: number): Promise<Routine> {
+    if (!Number.isInteger(weekCount) || weekCount < 1) {
+      throw new Error('Week count must be at least 1');
+    }
+
+    const routine = await this.getById(id);
+    if (weekCount === routine.week_count) return routine;
+
+    if (weekCount > routine.week_count) {
+      for (let nextWeek = routine.week_count + 1; nextWeek <= weekCount; nextWeek++) {
+        await this.duplicateWeekTemplate(id, nextWeek - 1, nextWeek);
+      }
+    } else {
+      const { error: deleteError } = await supabase
+        .from('routine_days')
+        .delete()
+        .eq('routine_id', id)
+        .gt('week_index', weekCount);
+      if (deleteError) throw deleteError;
+    }
+
+    const updates: Partial<RoutineInsert> = { week_count: weekCount };
+    if (routine.current_week > weekCount) {
+      updates.current_week = weekCount;
+      updates.current_week_started_at = new Date().toISOString();
+    }
+
+    const { data, error } = await supabase
+      .from('routines')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteWeek(routineId: string, weekIndex: number): Promise<Routine> {
+    const routine = await this.getById(routineId);
+    if (routine.week_count <= 1) {
+      throw new Error('A routine must have at least one week');
+    }
+    if (weekIndex < 1 || weekIndex > routine.week_count) {
+      throw new Error(`Week must be between 1 and ${routine.week_count}`);
+    }
+
+    const { error: deleteError } = await supabase
+      .from('routine_days')
+      .delete()
+      .eq('routine_id', routineId)
+      .eq('week_index', weekIndex);
+    if (deleteError) throw deleteError;
+
+    const { data: toShift, error: fetchShiftError } = await supabase
+      .from('routine_days')
+      .select('id, week_index')
+      .eq('routine_id', routineId)
+      .gt('week_index', weekIndex)
+      .order('week_index', { ascending: true });
+    if (fetchShiftError) throw fetchShiftError;
+
+    for (const day of toShift ?? []) {
+      const { error: shiftError } = await supabase
+        .from('routine_days')
+        .update({ week_index: day.week_index - 1 })
+        .eq('id', day.id);
+      if (shiftError) throw shiftError;
+    }
+
+    const nextWeekCount = routine.week_count - 1;
+    let nextCurrentWeek = routine.current_week;
+    let resetWeekAnchor = false;
+
+    if (routine.current_week > weekIndex) {
+      nextCurrentWeek = routine.current_week - 1;
+    } else if (routine.current_week === weekIndex) {
+      nextCurrentWeek = Math.min(weekIndex, nextWeekCount);
+      resetWeekAnchor = true;
+    }
+
+    const updates: Partial<RoutineInsert> = {
+      week_count: nextWeekCount,
+      current_week: nextCurrentWeek,
+    };
+    if (resetWeekAnchor) {
+      updates.current_week_started_at = new Date().toISOString();
+    }
+
+    const { data, error } = await supabase
+      .from('routines')
+      .update(updates)
+      .eq('id', routineId)
       .select()
       .single();
     if (error) throw error;
@@ -275,6 +425,68 @@ export const routineService = {
     if (error) throw error;
   },
 
+  async duplicateWeekTemplate(routineId: string, sourceWeekIndex: number, targetWeekIndex: number): Promise<void> {
+    if (sourceWeekIndex < 1 || targetWeekIndex < 1) return;
+
+    const { data, error } = await supabase
+      .from('routine_days')
+      .select(`
+        *,
+        exercises:routine_day_exercises (
+          *,
+          sets:routine_day_exercise_sets (*)
+        )
+      `)
+      .eq('routine_id', routineId)
+      .eq('week_index', sourceWeekIndex);
+    if (error) throw error;
+
+    const sourceDays = (data as RoutineDayWithExercises[]).sort(compareRoutineDays);
+    for (const sourceDay of sourceDays) {
+      const newDay = await this.addDay({
+        routine_id: routineId,
+        day_of_week: sourceDay.day_of_week,
+        label: sourceDay.label,
+        week_index: targetWeekIndex,
+      });
+
+      const groupMap = new Map<string, string>();
+      const exercises = [...sourceDay.exercises].sort((a, b) => a.sort_order - b.sort_order);
+      for (const ex of exercises) {
+        const setsPayload = (ex.sets ?? [])
+          .sort((a, b) => a.set_number - b.set_number)
+          .map((s) => ({
+            set_number: s.set_number,
+            target_weight: s.target_weight,
+            target_reps_min: s.target_reps_min,
+            target_reps_max: s.target_reps_max,
+            target_rir: s.target_rir ?? null,
+            target_duration: s.target_duration ?? 0,
+            target_distance: s.target_distance ?? 0,
+            is_warmup: s.is_warmup ?? false,
+          }));
+
+        const newEntry = await this.addExerciseToDay(
+          {
+            routine_day_id: newDay.id,
+            exercise_id: ex.exercise_id,
+            sort_order: ex.sort_order,
+            target_sets: ex.target_sets,
+            target_reps: ex.target_reps,
+          },
+          setsPayload,
+        );
+
+        if (ex.superset_group) {
+          if (!groupMap.has(ex.superset_group)) {
+            groupMap.set(ex.superset_group, generateGroupId());
+          }
+          await this.setSupersetGroup(newEntry.id, groupMap.get(ex.superset_group)!);
+        }
+      }
+    }
+  },
+
   async duplicateExercise(entryId: string, dayId: string): Promise<void> {
     const day = await this.getDayWithExercises(dayId);
     const source = day.exercises.find((e) => e.id === entryId);
@@ -321,8 +533,9 @@ export const routineService = {
 
     const newDay = await this.addDay({
       routine_id: source.routine_id,
-      day_of_week: null,
+      day_of_week: source.day_of_week,
       label: `${source.label} (copy)`,
+      week_index: source.week_index,
     });
 
     const groupMap = new Map<string, string>();
@@ -352,13 +565,7 @@ export const routineService = {
 
       if (ex.superset_group) {
         if (!groupMap.has(ex.superset_group)) {
-          const hex = '0123456789abcdef';
-          let id = '';
-          for (let i = 0; i < 32; i++) {
-            id += hex[Math.floor(Math.random() * 16)];
-            if (i === 7 || i === 11 || i === 15 || i === 19) id += '-';
-          }
-          groupMap.set(ex.superset_group, id);
+          groupMap.set(ex.superset_group, generateGroupId());
         }
         await this.setSupersetGroup(newEntry.id, groupMap.get(ex.superset_group)!);
       }

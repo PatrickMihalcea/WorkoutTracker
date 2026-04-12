@@ -5,19 +5,35 @@ export interface Routine {
   user_id: string;
   name: string;
   is_active: boolean;
+  week_count: number;
+  current_week: number;
+  current_week_started_at: string;
   created_at: string;
 }
 
-export type RoutineInsert = Omit<Routine, 'id' | 'created_at'>;
+export interface RoutineInsert {
+  user_id: string;
+  name: string;
+  is_active: boolean;
+  week_count?: number;
+  current_week?: number;
+  current_week_started_at?: string;
+}
 
 export interface RoutineDay {
   id: string;
   routine_id: string;
   day_of_week: DayOfWeek | null;
   label: string;
+  week_index: number;
 }
 
-export type RoutineDayInsert = Omit<RoutineDay, 'id'>;
+export interface RoutineDayInsert {
+  routine_id: string;
+  day_of_week: DayOfWeek | null;
+  label: string;
+  week_index?: number;
+}
 
 export interface RoutineDayExerciseSet {
   id: string;
