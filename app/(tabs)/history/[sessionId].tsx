@@ -12,13 +12,14 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { sessionService } from '../../../src/services';
+import { routineService, sessionService } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { Card, Input, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle } from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { SetRow } from '../../../src/components/workout/SetRow';
+import { MetricRing } from '../../../src/components/history/MetricRing';
 import { colors, fonts, spacing } from '../../../src/constants';
-import { SessionWithSetsAndExercises, SetLogWithExercise, WorkoutRow, Exercise, RoutineDayExercise } from '../../../src/models';
+import { SessionWithSetsAndExercises, SetLogWithExercise, WorkoutRow, Exercise, RoutineDayExercise, RoutineDayWithExercises } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 import { formatWeight, formatDistance, formatDistanceValue, parseWeightToKg, weightUnitLabel, distanceUnitLabel, milesToKm } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
@@ -171,6 +172,74 @@ function buildSupersetGroupMap(groups: ExerciseGroup[]): SupersetGroups {
   return mapped;
 }
 
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function formatStatNumber(value: number): string {
+  if (!Number.isFinite(value)) return '--';
+  const rounded = Math.round(value);
+  return rounded.toLocaleString();
+}
+
+function formatCompactStat(value: number): string {
+  if (!Number.isFinite(value)) return '--';
+  const abs = Math.abs(value);
+  const trimmed = (n: number) => {
+    const rounded = Math.round(n * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  };
+  if (abs >= 1_000_000) {
+    if (abs >= 10_000_000) return `${Math.round(value / 1_000_000)}m`;
+    return `${trimmed(value / 1_000_000)}m`;
+  }
+  if (abs >= 1_000) {
+    if (abs >= 10_000) return `${Math.round(value / 1_000)}k`;
+    return `${trimmed(value / 1_000)}k`;
+  }
+  return formatStatNumber(value);
+}
+
+function computeTemplateTargets(day: RoutineDayWithExercises): {
+  exerciseTarget: number;
+  setTarget: number;
+  volumeTarget: number;
+} {
+  let setTarget = 0;
+  let volumeTarget = 0;
+
+  for (const ex of day.exercises) {
+    const templateSets = ex.sets && ex.sets.length > 0 ? ex.sets : null;
+    if (!templateSets) {
+      setTarget += ex.target_sets ?? 0;
+      continue;
+    }
+
+    setTarget += templateSets.length;
+    for (const set of templateSets) {
+      const min = set.target_reps_min > 0 ? set.target_reps_min : 0;
+      const max = set.target_reps_max > 0 ? set.target_reps_max : 0;
+      const reps = min > 0 && max > 0
+        ? Math.round((min + max) / 2)
+        : min > 0
+          ? min
+          : max > 0
+            ? max
+            : ex.target_reps > 0
+              ? ex.target_reps
+              : 0;
+      volumeTarget += (set.target_weight ?? 0) * reps;
+    }
+  }
+
+  return {
+    exerciseTarget: day.exercises.length,
+    setTarget,
+    volumeTarget,
+  };
+}
+
 export default function SessionDetailScreen() {
   const router = useRouter();
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
@@ -192,6 +261,8 @@ export default function SessionDetailScreen() {
   const [swapGroupKey, setSwapGroupKey] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [updatingGroups, setUpdatingGroups] = useState(false);
+  const [routineDayTemplate, setRoutineDayTemplate] = useState<RoutineDayWithExercises | null>(null);
+  const [templateResolved, setTemplateResolved] = useState(false);
 
   const loadSession = async () => {
     if (!sessionId) return;
@@ -208,6 +279,37 @@ export default function SessionDetailScreen() {
   useEffect(() => {
     loadSession();
   }, [sessionId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!session?.routine_day_id) {
+      setRoutineDayTemplate(null);
+      setTemplateResolved(true);
+      return () => {
+        active = false;
+      };
+    }
+
+    setRoutineDayTemplate(null);
+    setTemplateResolved(false);
+    routineService.getDayWithExercises(session.routine_day_id)
+      .then((day) => {
+        if (active) {
+          setRoutineDayTemplate(day);
+          setTemplateResolved(true);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setRoutineDayTemplate(null);
+          setTemplateResolved(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [session?.routine_day_id]);
 
   const openEditModal = () => {
     if (!session) return;
@@ -597,6 +699,45 @@ export default function SessionDetailScreen() {
   const groups = groupSetsByExercise(session.sets);
   const supersetEntries = buildSupersetEntries(groups);
   const supersetMap = buildSupersetGroupMap(groups);
+  const actualExercises = groups.length;
+  const actualSets = session.sets.length;
+  const actualVolume = session.sets.reduce((sum, set) => sum + ((set.weight ?? 0) * (set.reps_performed ?? 0)), 0);
+  const hasRoutineDayLink = !!session.routine_day_id;
+  const waitingForTemplate = hasRoutineDayLink && !templateResolved;
+  const hasRoutineTemplate = hasRoutineDayLink && !!routineDayTemplate;
+  const targets = hasRoutineTemplate && routineDayTemplate
+    ? computeTemplateTargets(routineDayTemplate)
+    : null;
+
+  const exercisesProgress = waitingForTemplate
+    ? 0
+    : hasRoutineTemplate && targets
+      ? (targets.exerciseTarget > 0 ? clamp01(actualExercises / targets.exerciseTarget) : 1)
+    : 1;
+  const setsProgress = waitingForTemplate
+    ? 0
+    : hasRoutineTemplate && targets
+      ? (targets.setTarget > 0 ? clamp01(actualSets / targets.setTarget) : 1)
+    : 1;
+  const volumeAvailable = waitingForTemplate
+    ? false
+    : hasRoutineTemplate && targets
+      ? targets.volumeTarget > 0
+    : actualVolume > 0;
+  const volumeProgress = waitingForTemplate
+    ? 0
+    : hasRoutineTemplate && targets
+      ? (targets.volumeTarget > 0 ? clamp01(actualVolume / targets.volumeTarget) : 0)
+    : (actualVolume > 0 ? 1 : 0);
+  const exerciseTargetText = hasRoutineTemplate && targets && targets.exerciseTarget > 0
+    ? formatStatNumber(targets.exerciseTarget)
+    : '--';
+  const setsTargetText = hasRoutineTemplate && targets && targets.setTarget > 0
+    ? formatStatNumber(targets.setTarget)
+    : '--';
+  const volumeTargetText = hasRoutineTemplate && targets && targets.volumeTarget > 0
+    ? formatCompactStat(targets.volumeTarget)
+    : '--';
 
   return (
     <View style={styles.flex}>
@@ -620,15 +761,36 @@ export default function SessionDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.summary}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{groups.length}</Text>
-            <Text style={styles.summaryLabel}>Exercises</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{session.sets.length}</Text>
-            <Text style={styles.summaryLabel}>Total Sets</Text>
-          </View>
+        <View style={styles.summaryRingsRow}>
+          <MetricRing
+            label="Exercises"
+            valueText={formatStatNumber(actualExercises)}
+            targetText={exerciseTargetText}
+            progress={exercisesProgress}
+            color="#4ECDC4"
+            gradientToColor="#9FF5D7"
+            delay={0}
+          />
+          <MetricRing
+            label="Sets"
+            valueText={formatStatNumber(actualSets)}
+            targetText={setsTargetText}
+            progress={setsProgress}
+            color="#F5A65B"
+            gradientToColor="#FFD892"
+            delay={120}
+          />
+          <MetricRing
+            label="Volume"
+            valueText={volumeAvailable ? formatCompactStat(actualVolume) : '--'}
+            targetText={volumeTargetText}
+            progress={volumeProgress}
+            color={volumeAvailable ? '#7AA2FF' : '#5C677D'}
+            gradientToColor={volumeAvailable ? '#B2C9FF' : '#7C869C'}
+            delay={240}
+            muted={!volumeAvailable}
+            compact
+          />
         </View>
 
         {groups.map((group, idx) => {
@@ -907,31 +1069,12 @@ const styles = StyleSheet.create({
     height: 22,
     tintColor: colors.textSecondary,
   },
-  summary: {
+  summaryRingsRow: {
     flexDirection: 'row',
-    gap: 16,
-    marginBottom: 24,
-  },
-  summaryItem: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-  },
-  summaryValue: {
-    fontSize: 28,
-    fontFamily: fonts.bold,
-    color: colors.text,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-    marginTop: 4,
+    gap: 10,
+    marginBottom: 24,
   },
   exerciseCard: {
     marginBottom: 6,
