@@ -6,7 +6,7 @@ type MeasurementValues = Partial<Pick<BodyMeasurement, MeasurementValueColumn>>;
 function normalizeValue(value: number | null | undefined): number | null {
   if (value === null || value === undefined || Number.isNaN(value)) return null;
   if (!Number.isFinite(value)) return null;
-  return Math.round(value * 10) / 10;
+  return Math.round(value * 10000) / 10000;
 }
 
 function sanitizeValues(values: MeasurementValues): MeasurementValues {
@@ -117,4 +117,3 @@ export const measurementService = {
 
   hasAnyMeasurementValue,
 };
-

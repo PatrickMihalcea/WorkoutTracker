@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   content: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
   },
@@ -498,6 +498,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     backgroundColor: '#171D1D',
     borderColor: '#244343',
+    paddingHorizontal: spacing.md,
   },
   heroTopRow: {
     flexDirection: 'row',
@@ -541,6 +542,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     backgroundColor: '#171717',
     borderColor: '#2E2E2E',
+    paddingHorizontal: spacing.md,
   },
   dayLabel: {
     fontSize: 19,
@@ -646,6 +648,7 @@ const styles = StyleSheet.create({
   restDayCard: {
     alignItems: 'center',
     paddingVertical: 34,
+    paddingHorizontal: spacing.md,
     backgroundColor: '#171717',
   },
   restDayTitle: {

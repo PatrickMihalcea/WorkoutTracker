@@ -1,0 +1,18 @@
+alter table user_profiles
+  add column body_weight_kg_goal real,
+  add column waist_cm_goal real,
+  add column body_fat_pct_goal real,
+  add column lean_body_mass_kg_goal real,
+  add column neck_cm_goal real,
+  add column shoulder_cm_goal real,
+  add column chest_cm_goal real,
+  add column left_bicep_cm_goal real,
+  add column right_bicep_cm_goal real,
+  add column left_forearm_cm_goal real,
+  add column right_forearm_cm_goal real,
+  add column abdomen_cm_goal real,
+  add column hips_cm_goal real,
+  add column left_thigh_cm_goal real,
+  add column right_thigh_cm_goal real,
+  add column left_calf_cm_goal real,
+  add column right_calf_cm_goal real;

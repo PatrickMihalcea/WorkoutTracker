@@ -1,3 +1,5 @@
+import type { MeasurementGoalColumn } from './measurement';
+
 export type Sex = 'male' | 'female' | 'other';
 export type WeightUnit = 'kg' | 'lbs';
 export type HeightUnit = 'cm' | 'in';
@@ -24,8 +26,26 @@ export interface UserProfile {
   rest_timer_seconds: number;
   show_routine_performance: boolean;
   onboarding_complete: boolean;
+  body_weight_kg_goal?: number | null;
+  waist_cm_goal?: number | null;
+  body_fat_pct_goal?: number | null;
+  lean_body_mass_kg_goal?: number | null;
+  neck_cm_goal?: number | null;
+  shoulder_cm_goal?: number | null;
+  chest_cm_goal?: number | null;
+  left_bicep_cm_goal?: number | null;
+  right_bicep_cm_goal?: number | null;
+  left_forearm_cm_goal?: number | null;
+  right_forearm_cm_goal?: number | null;
+  abdomen_cm_goal?: number | null;
+  hips_cm_goal?: number | null;
+  left_thigh_cm_goal?: number | null;
+  right_thigh_cm_goal?: number | null;
+  left_calf_cm_goal?: number | null;
+  right_calf_cm_goal?: number | null;
   created_at: string;
 }
 
 export type UserProfileInsert = Omit<UserProfile, 'created_at'>;
 export type UserProfileUpdate = Partial<Omit<UserProfile, 'id' | 'created_at'>>;
+export type UserProfileMeasurementGoalField = MeasurementGoalColumn;

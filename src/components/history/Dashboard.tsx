@@ -17,6 +17,7 @@ import { DashboardData, ExerciseProgression, TimeSeriesPoint } from '../../servi
 import { Card, ExercisePickerModal } from '../ui';
 import { BODY_MEASUREMENT_METRICS, Exercise, MeasurementMetricKey } from '../../models';
 import { useProfileStore } from '../../stores/profile.store';
+import { getMeasurementGoalFromProfile, measurementGoalToDisplay } from '../../utils/measurementGoals';
 import { weightUnitLabel } from '../../utils/units';
 import { colors, fonts, spacing } from '../../constants';
 
@@ -175,6 +176,12 @@ export function Dashboard({
     chartMode,
   };
 
+  const selectedMeasurementGoal = useMemo(() => {
+    const storedGoal = getMeasurementGoalFromProfile(profile, measurementMetric);
+    if (storedGoal == null) return null;
+    return measurementGoalToDisplay(measurementMetric, storedGoal, wUnit, hUnit);
+  }, [profile, measurementMetric, wUnit, hUnit]);
+
   const toggleFilters = useCallback(() => {
     const toValue = filtersOpen ? 0 : 1;
     setFiltersOpen(!filtersOpen);
@@ -218,6 +225,7 @@ export function Dashboard({
           onMetricChange={setMeasurementMetric}
           weightUnit={wUnit}
           heightUnit={hUnit}
+          goalValue={selectedMeasurementGoal}
           {...chartConfig}
         />
         <VolumeSection data={data.volume} {...chartConfig} />
@@ -421,6 +429,7 @@ const MeasurementsSection = React.memo(function MeasurementsSection({
   onMetricChange,
   weightUnit,
   heightUnit,
+  goalValue,
   mode,
   weeks,
   chartMode,
@@ -430,6 +439,7 @@ const MeasurementsSection = React.memo(function MeasurementsSection({
   onMetricChange: (m: MeasurementMetricKey) => void;
   weightUnit: 'kg' | 'lbs';
   heightUnit: 'cm' | 'in';
+  goalValue: number | null;
 }) {
   const metricDef = BODY_MEASUREMENT_METRICS.find((m) => m.key === metric);
   const points = measurementSeries[metric] ?? [];
@@ -474,6 +484,10 @@ const MeasurementsSection = React.memo(function MeasurementsSection({
         headerContent={header}
         frontColor={frontColor}
         formatTooltipValue={formatTooltip}
+        targetValue={goalValue ?? undefined}
+        formatTargetTooltipValue={formatTooltip}
+        targetLabel="Goal"
+        targetLineColor={colors.textSecondary}
         minYStep={minStep}
       />
     );

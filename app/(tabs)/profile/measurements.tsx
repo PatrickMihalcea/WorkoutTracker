@@ -222,7 +222,7 @@ export default function MeasurementsScreen() {
         return;
       }
 
-      canonical[metric.column] = Math.round(toStoredValue(metric.key, parsed) * 10) / 10;
+      canonical[metric.column] = Math.round(toStoredValue(metric.key, parsed) * 10000) / 10000;
       hasAny = true;
     }
 

@@ -36,6 +36,8 @@ export type MeasurementValueColumn =
   | 'left_calf_cm'
   | 'right_calf_cm';
 
+export type MeasurementGoalColumn = `${MeasurementValueColumn}_goal`;
+
 export interface BodyMeasurement {
   id: string;
   user_id: string;
@@ -94,4 +96,3 @@ export const BODY_MEASUREMENT_METRICS: MeasurementMetricDef[] = [
 ];
 
 export const BODY_MEASUREMENT_COLUMNS: MeasurementValueColumn[] = BODY_MEASUREMENT_METRICS.map((m) => m.column);
-

@@ -32,7 +32,7 @@ export default function MeasurementsScreen() {
   const [heightInches, setHeightInches] = useState(7);
 
   const handleContinue = async () => {
-    const weightKg = isLbs ? Math.round((weightValue / 2.20462) * 10) / 10 : weightValue;
+    const weightKg = isLbs ? Math.round((weightValue / 2.20462) * 10000) / 10000 : weightValue;
     const finalHeightCm = isInches ? feetInchesToCm(heightFeet, heightInches) : heightCm;
 
     await updateProfile({

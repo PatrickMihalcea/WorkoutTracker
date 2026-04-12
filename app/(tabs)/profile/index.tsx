@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { Card } from '../../../src/components/ui';
-import { colors, fonts } from '../../../src/constants';
+import { colors, fonts, spacing } from '../../../src/constants';
 import { formatHeight } from '../../../src/utils/units';
 
 export default function ProfileScreen() {
@@ -27,26 +27,23 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.topRow}>
-          <Text style={styles.displayName} numberOfLines={1} ellipsizeMode="tail">
-            @{profile?.display_name ?? 'user'}
-          </Text>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => router.push('/(tabs)/profile/settings')}
-          >
-            <Image source={require('../../../assets/icons/setting.png')} style={styles.settingsIcon} />
-          </TouchableOpacity>
-        </View>
+        <Card style={styles.heroCard}>
+          <View style={styles.topRow}>
+            <Text style={styles.displayName} numberOfLines={1} ellipsizeMode="tail">
+              @{profile?.display_name ?? 'user'}
+            </Text>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => router.push('/(tabs)/profile/settings')}
+              activeOpacity={0.8}
+            >
+              <Image source={require('../../../assets/icons/setting.png')} style={styles.settingsIcon} />
+            </TouchableOpacity>
+          </View>
 
-        {profile?.name && (
-          <Text style={styles.name}>{profile.name}</Text>
-        )}
-        {profile?.bio && (
-          <Text style={styles.bio}>{profile.bio}</Text>
-        )}
+          {profile?.name ? <Text style={styles.name}>{profile.name}</Text> : null}
+          {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
 
-        <Card style={styles.statsCard}>
           <View style={styles.statRow}>
             <View style={styles.stat}>
               <Text style={styles.statValue}>{displayWeight()}</Text>
@@ -60,15 +57,28 @@ export default function ProfileScreen() {
           </View>
         </Card>
 
-        <TouchableOpacity
-          style={styles.measurementsButton}
-          onPress={() => router.push('/(tabs)/profile/measurements')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.measurementsButtonText}>Measurements</Text>
-          <Text style={styles.measurementsButtonArrow}>›</Text>
-        </TouchableOpacity>
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push('/(tabs)/profile/measurements')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.quickActionTitle}>Measurements</Text>
+            <Text style={styles.quickActionSub}>Track body metrics</Text>
+            <Text style={styles.quickActionArrow}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickActionCard, styles.quickActionCardAccent]}
+            onPress={() => router.push('/(tabs)/profile/goals')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.quickActionTitle}>Goals</Text>
+            <Text style={styles.quickActionSub}>Set your targets</Text>
+            <Text style={styles.quickActionArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
 
+        <Text style={styles.sectionLabel}>Profile Info</Text>
         <Card style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Sex</Text>
@@ -88,7 +98,7 @@ export default function ProfileScreen() {
                 : '--'}
             </Text>
           </View>
-          <View style={styles.infoRow}>
+          <View style={[styles.infoRow, styles.infoRowLast]}>
             <Text style={styles.infoLabel}>Email</Text>
             <Text style={styles.infoValue}>{user?.email ?? '--'}</Text>
           </View>
@@ -104,93 +114,130 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: 20,
-    paddingBottom: 40,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl + spacing.md,
+  },
+  heroCard: {
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderColor: '#2D6666',
+    backgroundColor: '#171D1D',
   },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.sm,
   },
   displayName: {
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: fonts.bold,
-    color: colors.text,
+    color: '#D9F6F2',
     flexShrink: 1,
   },
   iconBtn: {
-    padding: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#2D6666',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(78, 205, 196, 0.08)',
   },
   settingsIcon: {
-    width: 24,
-    height: 24,
-    tintColor: colors.text,
+    width: 18,
+    height: 18,
+    tintColor: '#8FE2DA',
   },
   name: {
     fontSize: 16,
     fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-    marginBottom: 4,
+    color: colors.text,
+    marginBottom: spacing.xs,
   },
   bio: {
     fontSize: 14,
     fontFamily: fonts.regular,
-    color: colors.textMuted,
-    marginBottom: 16,
+    color: '#88A2A2',
+    marginBottom: spacing.sm,
   },
-  statsCard: {
-    marginBottom: 16,
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
-  measurementsButton: {
+  quickActionCard: {
+    flex: 1,
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
   },
-  measurementsButtonText: {
-    fontSize: 16,
+  quickActionCardAccent: {
+    borderColor: '#2D6666',
+    backgroundColor: '#152020',
+  },
+  quickActionTitle: {
+    fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.text,
   },
-  measurementsButtonArrow: {
+  quickActionSub: {
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  quickActionArrow: {
     fontSize: 20,
     fontFamily: fonts.light,
     color: colors.textMuted,
+    marginTop: spacing.xs,
   },
   statRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: '#2D6666',
+    paddingTop: spacing.sm,
   },
   stat: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.xs,
   },
   statDivider: {
     width: 1,
     height: 40,
-    backgroundColor: colors.border,
+    backgroundColor: '#2D6666',
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 19,
     fontFamily: fonts.bold,
     color: colors.text,
   },
   statLabel: {
     fontSize: 12,
     fontFamily: fonts.regular,
+    color: '#88A2A2',
+    marginTop: spacing.xs,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
     color: colors.textMuted,
-    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: spacing.sm,
   },
   infoCard: {
-    marginBottom: 16,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
   },
   infoRow: {
     flexDirection: 'row',
@@ -199,6 +246,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  infoRowLast: {
+    borderBottomWidth: 0,
   },
   infoLabel: {
     fontSize: 14,
