@@ -13,7 +13,7 @@ export const sessionService = {
   async getAll(): Promise<WorkoutSessionWithRoutine[]> {
     const { data, error } = await supabase
       .from('workout_sessions')
-      .select('*, routine_day:routine_days(label, routine:routines(name))')
+      .select('*, routine_day:routine_days(label, week_index, routine:routines(name))')
       .order('started_at', { ascending: false });
     if (error) throw error;
     return data as WorkoutSessionWithRoutine[];
@@ -22,7 +22,7 @@ export const sessionService = {
   async getById(id: string): Promise<SessionWithSets> {
     const { data, error } = await supabase
       .from('workout_sessions')
-      .select('*, sets:set_logs(*)')
+      .select('*, routine_day:routine_days(label, week_index, routine:routines(name)), sets:set_logs(*)')
       .eq('id', id)
       .single();
     if (error) throw error;
@@ -40,7 +40,7 @@ export const sessionService = {
   async getByIdWithExercises(id: string): Promise<SessionWithSetsAndExercises> {
     const { data, error } = await supabase
       .from('workout_sessions')
-      .select('*, sets:set_logs(*, exercise:exercises(*))')
+      .select('*, routine_day:routine_days(label, week_index, routine:routines(name)), sets:set_logs(*, exercise:exercises(*))')
       .eq('id', id)
       .single();
     if (error) throw error;
@@ -182,6 +182,22 @@ export const sessionService = {
       .order('set_number');
     if (error) throw error;
     return data ?? [];
+  },
+
+  async getCompletedDayIdsSince(userId: string, dayIds: string[], sinceIso: string): Promise<string[]> {
+    if (dayIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('workout_sessions')
+      .select('routine_day_id')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .in('routine_day_id', dayIds)
+      .gte('completed_at', sinceIso);
+    if (error) throw error;
+
+    return [...new Set((data ?? [])
+      .map((row) => row.routine_day_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0))];
   },
 
   async getLastSessionSets(exerciseId: string, userId: string): Promise<SetLog[]> {

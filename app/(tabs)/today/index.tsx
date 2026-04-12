@@ -6,7 +6,7 @@ import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
-import { Button, Card, EmptyState, BottomSheetModal, RirCircle, SupersetBracket } from '../../../src/components/ui';
+import { Button, Card, EmptyState, BottomSheetModal, RirCircle, SupersetBracket, ChipPicker } from '../../../src/components/ui';
 import { getSupersetPosition, type SupersetGroups } from '../../../src/utils/superset';
 import { colors, fonts, spacing } from '../../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
@@ -32,6 +32,7 @@ export default function HomeScreen() {
   const [showChooseModal, setShowChooseModal] = useState(false);
   const [allRoutines, setAllRoutines] = useState<Routine[]>([]);
   const [chosenRoutine, setChosenRoutine] = useState<RoutineWithDays | null>(null);
+  const [chosenRoutineWeek, setChosenRoutineWeek] = useState<number>(1);
   const [loadingRoutines, setLoadingRoutines] = useState(false);
   const [chosenDay, setChosenDay] = useState<RoutineDayWithExercises | null>(null);
 
@@ -64,7 +65,8 @@ export default function HomeScreen() {
   }, [fetchActiveRoutine]);
 
   const currentDay = getCurrentDayOfWeek();
-  const todaysWorkouts = activeRoutine?.days.filter((d) => d.day_of_week === currentDay) ?? [];
+  const activeWeek = activeRoutine?.current_week ?? 1;
+  const todaysWorkouts = activeRoutine?.days.filter((d) => d.week_index === activeWeek && d.day_of_week === currentDay) ?? [];
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const todaysWorkout = todaysWorkouts.length > 0 ? todaysWorkouts[selectedDayIndex] ?? todaysWorkouts[0] : null;
 
@@ -72,7 +74,7 @@ export default function HomeScreen() {
     const target = chosenDay ?? todaysWorkout;
     if (!user || !target) return;
     try {
-      await startWorkout(user.id, target.id, target.exercises);
+      await startWorkout(user.id, target.id, target.exercises, target.week_index);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
@@ -90,6 +92,7 @@ export default function HomeScreen() {
   const openChooseModal = async () => {
     setShowChooseModal(true);
     setChosenRoutine(null);
+    setChosenRoutineWeek(1);
     setLoadingRoutines(true);
     try {
       const list = await routineService.getAll();
@@ -106,6 +109,7 @@ export default function HomeScreen() {
     try {
       const full = await routineService.getWithDays(routine.id);
       setChosenRoutine(full);
+      setChosenRoutineWeek(full.current_week);
     } catch {
       Alert.alert('Error', 'Could not load routine days');
     } finally {
@@ -165,7 +169,11 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.routineName}>{activeRoutine.name}</Text>
           <Text style={styles.heroSubtext}>
-            {chosenDay ? `Custom: ${chosenDay.label}` : todaysWorkout ? todaysWorkout.label : 'Recovery Day'}
+            {chosenDay
+              ? `Custom: Week ${chosenDay.week_index} · ${chosenDay.label}`
+              : todaysWorkout
+                ? `Week ${activeWeek} · ${todaysWorkout.label}`
+                : `Week ${activeWeek} · Recovery Day`}
           </Text>
         </Card>
       </TouchableOpacity>
@@ -236,7 +244,7 @@ export default function HomeScreen() {
               >
                 <Text style={styles.dayLabel}>{displayWorkout.label}</Text>
                 <Text style={styles.exerciseCount}>
-                  {displayWorkout.exercises.length} exercises
+                  Week {displayWorkout.week_index} · {displayWorkout.exercises.length} exercises
                 </Text>
               </TouchableOpacity>
 
@@ -431,18 +439,28 @@ export default function HomeScreen() {
         ) : (
           <>
             <Text style={styles.chooseSubtitle}>Pick a workout</Text>
+            <ChipPicker
+              items={Array.from({ length: chosenRoutine.week_count }, (_, idx) => ({
+                key: String(idx + 1),
+                label: `Week ${idx + 1}`,
+                value: idx + 1,
+              }))}
+              selected={chosenRoutineWeek}
+              onChange={(value) => setChosenRoutineWeek(value ?? chosenRoutine.current_week)}
+              allowDeselect={false}
+            />
             {loadingRoutines ? (
               <ActivityIndicator color={colors.text} style={{ marginVertical: 24 }} />
             ) : (
               <>
-                {chosenRoutine.days.map((d) => (
+                {chosenRoutine.days.filter((d) => d.week_index === chosenRoutineWeek).map((d) => (
                   <TouchableOpacity key={d.id} style={styles.chooseRow} onPress={() => handlePickDay(d)}>
                     <Text style={styles.chooseRowText}>{d.label}</Text>
-                    <Text style={styles.chooseRowSub}>{d.exercises.length} exercises</Text>
+                    <Text style={styles.chooseRowSub}>Week {d.week_index} · {d.exercises.length} exercises</Text>
                   </TouchableOpacity>
                 ))}
-                {chosenRoutine.days.length === 0 && (
-                  <Text style={styles.chooseEmpty}>No days in this routine</Text>
+                {chosenRoutine.days.filter((d) => d.week_index === chosenRoutineWeek).length === 0 && (
+                  <Text style={styles.chooseEmpty}>No days in Week {chosenRoutineWeek}</Text>
                 )}
               </>
             )}

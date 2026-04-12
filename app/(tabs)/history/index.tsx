@@ -182,6 +182,9 @@ export default function HistoryScreen() {
         {item.routine_day?.label && (
           <Text style={styles.routineDayLabel}>{item.routine_day.label}</Text>
         )}
+        {(item.routine_week_index ?? item.routine_day?.week_index) != null && (
+          <Text style={styles.routineWeekLabel}>Week {item.routine_week_index ?? item.routine_day?.week_index}</Text>
+        )}
         {item.routine_day?.routine?.name && (
           <Text style={styles.routineName}>{item.routine_day.routine.name}</Text>
         )}
@@ -250,6 +253,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: fonts.regular,
     color: colors.textMuted,
+    marginTop: 1,
+  },
+  routineWeekLabel: {
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   sessionDetailsRow: {

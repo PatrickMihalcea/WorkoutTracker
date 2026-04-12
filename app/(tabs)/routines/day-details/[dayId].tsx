@@ -265,7 +265,7 @@ function DayDetailsContent() {
       />
       <View style={styles.header}>
         <Text style={styles.dayLabel}>{day.label}</Text>
-        <Text style={styles.dayMeta}>{dayOfWeekLabel}</Text>
+        <Text style={styles.dayMeta}>Week {day.week_index} · {dayOfWeekLabel}</Text>
         {routineName ? <Text style={styles.daySubtle}>Routine: {routineName}</Text> : null}
       </View>
 

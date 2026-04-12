@@ -607,6 +607,13 @@ export default function SessionDetailScreen() {
             <Text style={styles.time}>
               {formatTime(session.started_at)} · {formatDuration(session.started_at, session.completed_at)}
             </Text>
+            {(session.routine_week_index ?? session.routine_day?.week_index) != null && (
+              <Text style={styles.sessionWeek}>
+                Week {session.routine_week_index ?? session.routine_day?.week_index}
+                {session.routine_day?.label ? ` · ${session.routine_day.label}` : ''}
+                {session.routine_day?.routine?.name ? ` · ${session.routine_day.routine.name}` : ''}
+              </Text>
+            )}
           </View>
           <TouchableOpacity onPress={openEditModal} style={styles.editBtn}>
             <Image source={require('../../../assets/icons/edit.png')} style={styles.editIcon} />
@@ -885,6 +892,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.light,
     color: colors.textMuted,
+  },
+  sessionWeek: {
+    marginTop: 6,
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
   },
   editBtn: {
     padding: 8,

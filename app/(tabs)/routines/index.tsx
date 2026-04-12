@@ -64,7 +64,12 @@ export default function RoutineListScreen() {
     >
       <Card style={StyleSheet.flatten([styles.routineCard, item.is_active ? styles.activeCard : undefined])}>
         <View style={styles.routineHeader}>
-          <Text style={styles.routineName}>{item.name}</Text>
+          <View>
+            <Text style={styles.routineName}>{item.name}</Text>
+            <Text style={styles.routineMeta}>
+              {item.week_count} {item.week_count === 1 ? 'week' : 'weeks'} · Current {item.current_week}
+            </Text>
+          </View>
           {item.is_active ? (
             <View style={styles.activeBadge}>
               <Text style={styles.activeBadgeText}>Active</Text>
@@ -139,6 +144,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: fonts.bold,
     color: colors.text,
+  },
+  routineMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
   },
   activeBadge: {
     backgroundColor: colors.text,

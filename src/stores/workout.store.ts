@@ -38,7 +38,7 @@ interface WorkoutState {
   loading: boolean;
   restTimer: RestTimer | null;
 
-  startWorkout: (userId: string, routineDayId: string | null, exercises: RoutineDayExercise[]) => Promise<void>;
+  startWorkout: (userId: string, routineDayId: string | null, exercises: RoutineDayExercise[], routineWeekIndex?: number | null) => Promise<void>;
   resumeWorkout: (userId: string) => Promise<boolean>;
   updateRowLocal: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'duration' | 'distance'>>) => void;
   updateRow: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'duration' | 'distance'>>) => Promise<void>;
@@ -83,7 +83,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   loading: false,
   restTimer: null,
 
-  startWorkout: async (userId, routineDayId, exercises) => {
+  startWorkout: async (userId, routineDayId, exercises, routineWeekIndex = null) => {
     set({ loading: true });
     try {
       const stale = await sessionService.getActiveSession(userId);
@@ -94,6 +94,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       const session = await sessionService.create({
         user_id: userId,
         routine_day_id: routineDayId,
+        routine_week_index: routineWeekIndex,
         started_at: new Date().toISOString(),
         completed_at: null,
         status: 'in_progress',
@@ -142,6 +143,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
             target_weight: r.target_weight,
             target_reps_min: r.target_reps_min,
             target_reps_max: r.target_reps_max,
+            target_rir: null,
+            target_duration: r.target_duration ?? 0,
+            target_distance: r.target_distance ?? 0,
+            is_warmup: r.is_warmup ?? false,
           })),
         });
       }
@@ -320,6 +325,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         target_weight: sp.target_weight,
         target_reps_min: sp.target_reps_min,
         target_reps_max: sp.target_reps_max,
+        target_rir: null,
+        target_duration: sp.target_duration ?? 0,
+        target_distance: sp.target_distance ?? 0,
+        is_warmup: false,
       })),
     };
     set((state) => ({
@@ -488,6 +497,36 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
     await workoutRowService.deleteBySession(session.id);
     await sessionService.complete(session.id);
+
+    if (session.routine_day_id && session.routine_week_index != null) {
+      try {
+        const day = await routineService.getDay(session.routine_day_id);
+        const routine = await routineService.getById(day.routine_id);
+        if (routine.current_week === session.routine_week_index) {
+          const weekDays = await routineService.getDaysForWeek(routine.id, routine.current_week);
+          const scheduledDays = weekDays.filter((d) => d.day_of_week != null);
+
+          if (scheduledDays.length > 0) {
+            const completedDayIds = await sessionService.getCompletedDayIdsSince(
+              session.user_id,
+              scheduledDays.map((d) => d.id),
+              routine.current_week_started_at,
+            );
+
+            const allDone = scheduledDays.every((d) => completedDayIds.includes(d.id));
+            if (allDone) {
+              const nextWeek = routine.current_week >= routine.week_count
+                ? 1
+                : routine.current_week + 1;
+              await routineService.setCurrentWeek(routine.id, nextWeek);
+            }
+          }
+        }
+      } catch {
+        // Do not block completion on progression updates
+      }
+    }
+
     set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {}, supersetGroups: {}, restTimer: null });
   },
 

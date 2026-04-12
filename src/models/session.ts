@@ -6,12 +6,27 @@ export interface WorkoutSession {
   id: string;
   user_id: string;
   routine_day_id: string | null;
+  routine_week_index: number | null;
+  started_at: string;
+  completed_at: string | null;
+  status: SessionStatus;
+  routine_day?: {
+    label: string;
+    week_index: number;
+    routine?: {
+      name: string;
+    };
+  } | null;
+}
+
+export interface WorkoutSessionInsert {
+  user_id: string;
+  routine_day_id: string | null;
+  routine_week_index?: number | null;
   started_at: string;
   completed_at: string | null;
   status: SessionStatus;
 }
-
-export type WorkoutSessionInsert = Omit<WorkoutSession, 'id'>;
 
 export interface SetLog {
   id: string;
@@ -64,11 +79,4 @@ export interface WorkoutRow {
   superset_group: string | null;
 }
 
-export interface WorkoutSessionWithRoutine extends WorkoutSession {
-  routine_day?: {
-    label: string;
-    routine?: {
-      name: string;
-    };
-  } | null;
-}
+export interface WorkoutSessionWithRoutine extends WorkoutSession {}
