@@ -8,7 +8,7 @@ import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
 import { Button, Card, EmptyState, BottomSheetModal, RirCircle, SupersetBracket } from '../../../src/components/ui';
 import { getSupersetPosition, type SupersetGroups } from '../../../src/utils/superset';
-import { colors, fonts } from '../../../src/constants';
+import { colors, fonts, spacing } from '../../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
 import { weightUnitLabel, distanceUnitLabel, formatWeight, formatDistance } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
@@ -73,6 +73,15 @@ export default function HomeScreen() {
     if (!user || !target) return;
     try {
       await startWorkout(user.id, target.id, target.exercises);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
+  const handleStartEmptyWorkout = async () => {
+    if (!user) return;
+    try {
+      await startWorkout(user.id, null, []);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
@@ -146,10 +155,20 @@ export default function HomeScreen() {
           />
         }
       >
-      <Text style={styles.greeting}>
-        {DAY_LABELS[currentDay as DayOfWeek]}
-      </Text>
-      <Text style={styles.routineName}>{activeRoutine.name}</Text>
+      <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/(tabs)/routines')}>
+        <Card style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <Text style={styles.greeting}>{DAY_LABELS[currentDay as DayOfWeek]}</Text>
+            <View style={styles.todayBadge}>
+              <Text style={styles.todayBadgeText}>TODAY</Text>
+            </View>
+          </View>
+          <Text style={styles.routineName}>{activeRoutine.name}</Text>
+          <Text style={styles.heroSubtext}>
+            {chosenDay ? `Custom: ${chosenDay.label}` : todaysWorkout ? todaysWorkout.label : 'Recovery Day'}
+          </Text>
+        </Card>
+      </TouchableOpacity>
 
       {!chosenDay && todaysWorkouts.length > 1 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.workoutSelector}>
@@ -172,15 +191,28 @@ export default function HomeScreen() {
         if (!displayWorkout) {
           return (
             <>
-              <Card style={styles.restDayCard}>
-                <Text style={styles.restDayTitle}>Rest Day</Text>
-                <Text style={styles.restDayMessage}>
-                  No workout scheduled for today. Recover and come back stronger.
-                </Text>
-              </Card>
+              <TouchableOpacity activeOpacity={0.8} onPress={openChooseModal}>
+                <Card style={styles.restDayCard}>
+                  <Text style={styles.restDayTitle}>Rest Day</Text>
+                  <Text style={styles.restDayMessage}>
+                    No workout scheduled for today. Recover and come back stronger.
+                  </Text>
+                </Card>
+              </TouchableOpacity>
               {!(hasActiveSession || activeSession) && (
-                <View style={styles.chooseOtherWrap}>
-                  <Button title="Choose Other Workout" variant="ghost" onPress={openChooseModal} />
+                <View style={styles.secondaryActionsRow}>
+                  <Button
+                    title="Choose Other Workout"
+                    variant="secondary"
+                    onPress={openChooseModal}
+                    style={styles.chooseOtherBtn}
+                  />
+                  <Button
+                    title="Start Empty Workout"
+                    variant="secondary"
+                    onPress={handleStartEmptyWorkout}
+                    style={styles.startEmptyBtn}
+                  />
                 </View>
               )}
             </>
@@ -232,9 +264,12 @@ export default function HomeScreen() {
                           }}
                           activeOpacity={0.7}
                         >
-                          <Text style={styles.exerciseName}>
-                            {ex.exercise?.name ?? 'Exercise'}
-                          </Text>
+                          <View style={styles.exerciseNameWrap}>
+                            <View style={styles.exerciseDot} />
+                            <Text style={styles.exerciseName}>
+                              {ex.exercise?.name ?? 'Exercise'}
+                            </Text>
+                          </View>
                           <Text style={styles.exerciseTarget}>{setsLabel}</Text>
                         </TouchableOpacity>
                         {isExpanded && ex.sets && ex.sets.length > 0 && (() => {
@@ -320,6 +355,8 @@ export default function HomeScreen() {
                 <Button
                   title="Continue Workout"
                   size="lg"
+                  variant="secondary"
+                  style={styles.primaryActionBtn}
                   onPress={async () => {
                     if (!user) return;
                     if (activeSession) {
@@ -342,11 +379,24 @@ export default function HomeScreen() {
               <>
                 <Button
                   title="Start Workout"
+                  variant="secondary"
                   onPress={handleStartWorkout}
                   size="lg"
+                  style={styles.primaryActionBtn}
                 />
-                <View style={styles.chooseOtherWrap}>
-                  <Button title="Choose Other Workout" variant="ghost" onPress={openChooseModal} />
+                <View style={styles.secondaryActionsRow}>
+                  <Button
+                    title="Choose Other Workout"
+                    variant="secondary"
+                    onPress={openChooseModal}
+                    style={styles.chooseOtherBtn}
+                  />
+                  <Button
+                    title="Start Empty Workout"
+                    variant="secondary"
+                    onPress={handleStartEmptyWorkout}
+                    style={styles.startEmptyBtn}
+                  />
                 </View>
               </>
             )}
@@ -420,25 +470,60 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   content: {
-    padding: 20,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
+  },
+  heroCard: {
+    marginBottom: 14,
+    backgroundColor: '#171D1D',
+    borderColor: '#244343',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   greeting: {
-    fontSize: 16,
-    fontFamily: fonts.regular,
-    color: colors.textSecondary,
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: '#A7C9C5',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  todayBadge: {
+    borderWidth: 1,
+    borderColor: '#2D6666',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(78, 205, 196, 0.12)',
+  },
+  todayBadgeText: {
+    fontSize: 11,
+    fontFamily: fonts.bold,
+    color: '#8FE2DA',
   },
   routineName: {
-    fontSize: 28,
+    fontSize: 30,
     fontFamily: fonts.bold,
     color: colors.text,
-    marginTop: 4,
-    marginBottom: 24,
+    marginTop: 2,
+  },
+  heroSubtext: {
+    fontSize: 13,
+    marginTop: 6,
+    color: '#88A2A2',
+    fontFamily: fonts.regular,
   },
   workoutCard: {
-    marginBottom: 24,
+    marginBottom: 18,
+    backgroundColor: '#171717',
+    borderColor: '#2E2E2E',
   },
   dayLabel: {
-    fontSize: 18,
+    fontSize: 19,
     fontFamily: fonts.bold,
     color: colors.text,
     marginBottom: 4,
@@ -452,18 +537,31 @@ const styles = StyleSheet.create({
   exerciseRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    alignItems: 'center',
+    paddingVertical: 9,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  exerciseNameWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 8,
+  },
+  exerciseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#4ECDC4',
+    marginRight: 10,
   },
   exerciseName: {
     fontSize: 15,
     fontFamily: fonts.regular,
     color: colors.text,
-    flex: 1,
   },
   exerciseTarget: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
   },
@@ -474,7 +572,7 @@ const styles = StyleSheet.create({
   setDetailHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 4,
+    paddingBottom: 6,
     marginBottom: 2,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -488,7 +586,7 @@ const styles = StyleSheet.create({
   setDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
   setDetailCell: {
     fontSize: 13,
@@ -512,10 +610,10 @@ const styles = StyleSheet.create({
   },
   inProgress: {
     color: colors.textSecondary,
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: fonts.semiBold,
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: 16,
     marginBottom: 4,
   },
   duration: {
@@ -527,7 +625,8 @@ const styles = StyleSheet.create({
   },
   restDayCard: {
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: 34,
+    backgroundColor: '#171717',
   },
   restDayTitle: {
     fontSize: 22,
@@ -543,16 +642,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   workoutSelector: {
-    marginBottom: 16,
+    marginBottom: 12,
     flexGrow: 0,
   },
   workoutChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
     marginRight: 8,
+    backgroundColor: '#161616',
   },
   workoutChipSelected: {
     backgroundColor: colors.text,
@@ -566,8 +666,27 @@ const styles = StyleSheet.create({
   workoutChipTextSelected: {
     color: colors.background,
   },
-  chooseOtherWrap: {
-    marginTop: 12,
+  secondaryActionsRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  primaryActionBtn: {
+    backgroundColor: '#172323',
+    borderWidth: 1,
+    borderColor: '#2D6666',
+  },
+  chooseOtherBtn: {
+    flex: 1,
+    backgroundColor: '#2A2A2A',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  startEmptyBtn: {
+    flex: 1,
+    backgroundColor: '#2A2A2A',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
   },
   clearChoiceBtn: {
     marginBottom: 12,

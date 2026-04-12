@@ -38,7 +38,7 @@ interface WorkoutState {
   loading: boolean;
   restTimer: RestTimer | null;
 
-  startWorkout: (userId: string, routineDayId: string, exercises: RoutineDayExercise[]) => Promise<void>;
+  startWorkout: (userId: string, routineDayId: string | null, exercises: RoutineDayExercise[]) => Promise<void>;
   resumeWorkout: (userId: string) => Promise<boolean>;
   updateRowLocal: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'duration' | 'distance'>>) => void;
   updateRow: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'duration' | 'distance'>>) => Promise<void>;

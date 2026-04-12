@@ -71,17 +71,16 @@ interface MuscleHeatmapProps {
 export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set distribution by muscle group', bare = false, maxValue }: MuscleHeatmapProps) {
   const { profile } = useProfileStore();
   const bodyGender = profile?.sex === 'female' ? 'female' : 'male';
-
-  if (data.length === 0) return null;
+  const isEmpty = data.length === 0;
 
   const bodyData = toBodyData(data, maxValue);
 
   const Wrapper = bare ? View : Card;
 
   return (
-    <Wrapper style={bare ? styles.bareContainer : styles.card}>
+      <Wrapper style={bare ? styles.bareContainer : styles.card}>
       {title ? <Text style={styles.title}>{title}</Text> : null}
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      {subtitle ? <Text style={styles.subtitle}>{isEmpty ? 'No completed sets yet' : subtitle}</Text> : null}
 
       <View style={styles.bodyRow}>
         <View style={styles.bodyHalf}>
