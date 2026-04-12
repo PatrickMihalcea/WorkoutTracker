@@ -455,7 +455,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   completeWorkout: async (weightUnit) => {
-    const { session, rows, exercises } = get();
+    const { session, rows, exercises, supersetGroups } = get();
     if (!session) return;
 
     const parseWeight = (text: string): number => {
@@ -478,6 +478,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           rir: row.rir ? parseInt(row.rir, 10) : null,
           is_warmup: row.is_warmup,
           exercise_order: order,
+          superset_group: supersetGroups[entry.id] ?? entry.superset_group ?? null,
           duration: parseFloat(row.duration) || 0,
           distance: parseFloat(row.distance) || 0,
         });

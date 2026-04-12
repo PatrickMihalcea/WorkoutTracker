@@ -171,6 +171,9 @@ function ExerciseDetailContent() {
   const metricOptions = useMemo(() => getMetricOptions(exerciseType), [exerciseType]);
 
   const points = data?.timeSeries?.[selectedMetric] ?? [];
+  const secondaryMuscles = (data?.exercise.secondary_muscles ?? [])
+    .map((m) => m.replace(/_/g, ' '))
+    .filter((m) => m && m.toLowerCase() !== 'none');
 
   const barChartData = useMemo((): BarDataItem[] => {
     if (!data) return [];
@@ -279,9 +282,9 @@ function ExerciseDetailContent() {
             {data.exercise.muscle_group.replace(/_/g, ' ')} · {data.exercise.equipment.replace(/_/g, ' ')}
           </Text>
         </View>
-        {data.exercise.secondary_muscles?.length > 0 && (
+        {secondaryMuscles.length > 0 && (
           <Text style={styles.secondaryText}>
-            Also targets: {data.exercise.secondary_muscles.map((m) => m.replace(/_/g, ' ')).join(', ')}
+            Also targets: {secondaryMuscles.join(', ')}
           </Text>
         )}
       </View>

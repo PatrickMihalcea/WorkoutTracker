@@ -142,6 +142,24 @@ export const sessionService = {
     if (error) throw error;
   },
 
+  async updateSetsByIds(ids: string[], updates: Partial<SetLogInsert>): Promise<void> {
+    if (ids.length === 0) return;
+    const { error } = await supabase
+      .from('set_logs')
+      .update(updates)
+      .in('id', ids);
+    if (error) throw error;
+  },
+
+  async deleteSetsByIds(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    const { error } = await supabase
+      .from('set_logs')
+      .delete()
+      .in('id', ids);
+    if (error) throw error;
+  },
+
   async getActiveSession(userId: string): Promise<WorkoutSession | null> {
     const { data, error } = await supabase
       .from('workout_sessions')

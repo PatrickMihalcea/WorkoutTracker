@@ -37,7 +37,13 @@ function InnerLayout() {
           headerBackTitle: 'Dashboard',
         }}
       />
-      <Stack.Screen name="[sessionId]" options={{ title: 'Workout Details' }} />
+      <Stack.Screen
+        name="[sessionId]"
+        options={{
+          title: 'Workout Details',
+          headerBackTitle: 'History',
+        }}
+      />
     </AppStack>
   );
 }

@@ -145,7 +145,7 @@ function computeAssistedBodyweightTimeSeries(sessions: Map<string, { startedAt: 
 function computeDurationTimeSeries(sessions: Map<string, { startedAt: string; sets: RawSet[] }>): Record<string, TimeSeriesPoint[]> {
   return {
     longestDuration: buildSessionPoints(sessions, (sets) =>
-      Math.max(...sets.map((s) => s.duration)),
+      sets.reduce((sum, s) => sum + s.duration, 0),
     ),
     sessionDuration: buildSessionPoints(sessions, (sets) =>
       sets.reduce((sum, s) => sum + s.duration, 0),
@@ -162,7 +162,7 @@ function computeDurationWeightTimeSeries(sessions: Map<string, { startedAt: stri
       Math.max(...sets.map((s) => s.weight)),
     ),
     longestDuration: buildSessionPoints(sessions, (sets) =>
-      Math.max(...sets.map((s) => s.duration)),
+      sets.reduce((sum, s) => sum + s.duration, 0),
     ),
     totalDuration: buildSessionPoints(sessions, (sets) =>
       sets.reduce((sum, s) => sum + s.duration, 0),
@@ -173,16 +173,15 @@ function computeDurationWeightTimeSeries(sessions: Map<string, { startedAt: stri
 function computeDistanceDurationTimeSeries(sessions: Map<string, { startedAt: string; sets: RawSet[] }>): Record<string, TimeSeriesPoint[]> {
   return {
     farthestDistance: buildSessionPoints(sessions, (sets) =>
-      Math.max(...sets.map((s) => s.distance)),
+      sets.reduce((sum, s) => sum + s.distance, 0),
     ),
     longestDuration: buildSessionPoints(sessions, (sets) =>
-      Math.max(...sets.map((s) => s.duration)),
+      sets.reduce((sum, s) => sum + s.duration, 0),
     ),
     bestPace: buildSessionPoints(sessions, (sets) => {
-      const paces = sets
-        .filter((s) => s.duration > 0 && s.distance > 0)
-        .map((s) => s.distance / (s.duration / 60));
-      return paces.length > 0 ? Math.max(...paces) : 0;
+      const totalDistance = sets.reduce((sum, s) => sum + s.distance, 0);
+      const totalDuration = sets.reduce((sum, s) => sum + s.duration, 0);
+      return totalDistance > 0 && totalDuration > 0 ? totalDistance / (totalDuration / 60) : 0;
     }),
   };
 }

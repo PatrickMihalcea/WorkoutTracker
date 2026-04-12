@@ -23,6 +23,7 @@ export interface SetLog {
   rir: number | null;
   is_warmup: boolean;
   exercise_order: number | null;
+  superset_group: string | null;
   duration: number;
   distance: number;
 }

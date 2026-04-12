@@ -25,6 +25,10 @@ interface SetRowProps {
   onToggle: () => void;
   onSwipeDelete: () => void;
   onToggleWarmup: () => void;
+  showCompletionToggle?: boolean;
+  enableWarmupSwipe?: boolean;
+  showInlineDelete?: boolean;
+  onInlineDelete?: () => void;
 }
 
 export function SetRow({
@@ -45,6 +49,10 @@ export function SetRow({
   onToggle,
   onSwipeDelete,
   onToggleWarmup,
+  showCompletionToggle = true,
+  enableWarmupSwipe = true,
+  showInlineDelete = false,
+  onInlineDelete,
 }: SetRowProps) {
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
   const config = getExerciseTypeConfig(exerciseType);
@@ -151,7 +159,11 @@ export function SetRow({
 
   return (
     <>
-      <SwipeToDeleteRow onDelete={onSwipeDelete} expandedHeight={60} onSwipeRight={onToggleWarmup}>
+      <SwipeToDeleteRow
+        onDelete={onSwipeDelete}
+        expandedHeight={60}
+        onSwipeRight={enableWarmupSwipe ? onToggleWarmup : undefined}
+      >
         <View style={[
             styles.row,
             row.is_completed && styles.rowSaved,
@@ -229,15 +241,26 @@ export function SetRow({
               </View>
             )}
 
-            <TouchableOpacity
-              style={[styles.saveButton, row.is_completed && styles.saveButtonDone]}
-              onPress={handleToggle}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.saveButtonText, row.is_completed && styles.saveButtonTextDone]}>
-                {row.is_completed ? '✓' : '+'}
-              </Text>
-            </TouchableOpacity>
+            {showCompletionToggle && (
+              <TouchableOpacity
+                style={[styles.saveButton, row.is_completed && styles.saveButtonDone]}
+                onPress={handleToggle}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.saveButtonText, row.is_completed && styles.saveButtonTextDone]}>
+                  {row.is_completed ? '✓' : '+'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {showInlineDelete && onInlineDelete && (
+              <TouchableOpacity
+                style={styles.inlineDeleteButton}
+                onPress={onInlineDelete}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.inlineDeleteText}>×</Text>
+              </TouchableOpacity>
+            )}
           </View>
       </SwipeToDeleteRow>
 
@@ -354,5 +377,18 @@ const styles = StyleSheet.create({
   },
   saveButtonTextDone: {
     color: colors.textSecondary,
+  },
+  inlineDeleteButton: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
+  },
+  inlineDeleteText: {
+    fontSize: 18,
+    color: colors.danger,
+    fontFamily: fonts.bold,
+    lineHeight: 18,
   },
 });

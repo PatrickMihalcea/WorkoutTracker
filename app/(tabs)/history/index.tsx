@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: spacing.sm,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
   },
   sessionCard: {
     marginBottom: 12,
