@@ -17,6 +17,7 @@ import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
+import { useWorkoutOverlay } from '../../../src/components/workout';
 import { routineService } from '../../../src/services';
 import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
 import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast, ExercisePickerModal, SupersetBracket, ChipPicker } from '../../../src/components/ui';
@@ -53,12 +54,14 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 function SwipeableExerciseRow({
   ex,
   onEdit,
+  onDetails,
   onDelete,
   onLongPress,
   menuItems,
 }: {
   ex: RoutineDayExercise;
   onEdit: () => void;
+  onDetails?: () => void;
   onDelete: () => void;
   onLongPress?: () => void;
   menuItems?: OverflowMenuItem[];
@@ -68,6 +71,11 @@ function SwipeableExerciseRow({
     ex.sets && ex.sets.length > 0
       ? `${setsCount} sets`
       : `${ex.target_sets}×${ex.target_reps}`;
+
+  const handleDetailsPress = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    onDetails?.();
+  };
 
   return (
     <SwipeToDeleteRow onDelete={onDelete} expandedHeight={80}>
@@ -79,7 +87,13 @@ function SwipeableExerciseRow({
         activeOpacity={0.7}
       >
         <View style={styles.exerciseInfo}>
-          <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+          {onDetails ? (
+            <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7} style={styles.exerciseNameTapTarget}>
+              <Text style={[styles.exerciseName, styles.exerciseNameLink]}>{ex.exercise?.name ?? 'Exercise'}</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+          )}
           <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
         </View>
         <Text style={styles.exerciseTarget}>{setsLabel}</Text>
@@ -96,6 +110,7 @@ export default function RoutineDetailScreen() {
   const { user } = useAuthStore();
   const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
   const { profile, updateProfile } = useProfileStore();
+  const { expand: expandWorkout } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
   const dUnit = profile?.distance_unit ?? 'km';
 
@@ -332,10 +347,11 @@ export default function RoutineDetailScreen() {
     if (!user) return;
     try {
       await startWorkout(user.id, day.id, day.exercises, day.week_index);
+      expandWorkout();
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
-  }, [activeSession, user, startWorkout]);
+  }, [activeSession, user, startWorkout, expandWorkout]);
 
   const handleDuplicateDay = useCallback(async (day: RoutineDayWithExercises) => {
     try {
@@ -485,7 +501,6 @@ export default function RoutineDetailScreen() {
 
   const buildExerciseMenuItems = (day: RoutineDayWithExercises, ex: RoutineDayExercise, idx: number): OverflowMenuItem[] => {
     const items: OverflowMenuItem[] = [];
-    items.push({ label: 'Details', onPress: () => navigateToExerciseDetail(ex.exercise_id) });
     const myGroup = ex.superset_group ?? null;
     const prevGroup = idx > 0 ? (day.exercises[idx - 1].superset_group ?? null) : null;
     const nextGroup = idx < day.exercises.length - 1 ? (day.exercises[idx + 1].superset_group ?? null) : null;
@@ -559,6 +574,7 @@ export default function RoutineDetailScreen() {
                 <SwipeableExerciseRow
                   ex={item.entry}
                   onEdit={() => handleOpenExerciseEdit(item.entry, day.id)}
+                  onDetails={() => navigateToExerciseDetail(item.entry.exercise_id)}
                   onDelete={() => handleExRemove(item.entry.id, day)}
                   onLongPress={drag}
                   menuItems={buildExerciseMenuItems(day, item.entry, day.exercises.indexOf(item.entry))}
@@ -572,6 +588,7 @@ export default function RoutineDetailScreen() {
                         <SwipeableExerciseRow
                           ex={entry}
                           onEdit={() => handleOpenExerciseEdit(entry, day.id)}
+                          onDetails={() => navigateToExerciseDetail(entry.exercise_id)}
                           onDelete={() => handleExRemove(entry.id, day)}
                           onLongPress={drag}
                           menuItems={buildExerciseMenuItems(day, entry, day.exercises.indexOf(entry))}
@@ -617,6 +634,16 @@ export default function RoutineDetailScreen() {
           onChange={(week) => setSelectedWeek(week ?? currentRoutine.current_week)}
           allowDeselect={false}
           keyboardPersistTaps
+          getChipStyle={(item, isSelected) => {
+            const isActiveWeek = item.value === currentRoutine.current_week;
+            if (!isActiveWeek) return undefined;
+            return isSelected ? styles.weekChipActiveSelected : styles.weekChipActive;
+          }}
+          getChipTextStyle={(item, isSelected) => {
+            const isActiveWeek = item.value === currentRoutine.current_week;
+            if (!isActiveWeek) return undefined;
+            return isSelected ? styles.weekChipActiveTextSelected : styles.weekChipActiveText;
+          }}
         />
         <View style={styles.weekActions}>
           <Button
@@ -635,7 +662,7 @@ export default function RoutineDetailScreen() {
             style={styles.weekActionBtn}
           />
         </View>
-        {selectedWeek !== currentRoutine.current_week && (
+        {!updatingWeeks && selectedWeek !== currentRoutine.current_week && (
           <Button
             title={`Set Week ${selectedWeek} Active`}
             variant="secondary"
@@ -780,6 +807,29 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 6,
   },
+  weekChipActive: {
+    borderWidth: 1,
+    borderColor: '#2D6666',
+    backgroundColor: 'rgba(78, 205, 196, 0.12)',
+  },
+  weekChipActiveSelected: {
+    borderWidth: 1,
+    borderColor: '#4ECDC4',
+    backgroundColor: '#1D3E3E',
+    shadowColor: '#4ECDC4',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 2,
+  },
+  weekChipActiveText: {
+    color: '#88CFC8',
+    fontFamily: fonts.bold,
+  },
+  weekChipActiveTextSelected: {
+    color: '#D9F6F2',
+    fontFamily: fonts.bold,
+  },
   weekActions: {
     flexDirection: 'row',
     gap: 10,
@@ -841,6 +891,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.text,
+  },
+  exerciseNameLink: {
+    textDecorationLine: 'underline',
+  },
+  exerciseNameTapTarget: {
+    alignSelf: 'flex-start',
   },
   exerciseMeta: {
     fontSize: 12,

@@ -75,6 +75,7 @@ export default function HomeScreen() {
     if (!user || !target) return;
     try {
       await startWorkout(user.id, target.id, target.exercises, target.week_index);
+      expandWorkout();
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
@@ -84,6 +85,7 @@ export default function HomeScreen() {
     if (!user) return;
     try {
       await startWorkout(user.id, null, []);
+      expandWorkout();
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }

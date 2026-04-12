@@ -661,7 +661,6 @@ export default function SessionDetailScreen() {
 
   const buildExerciseMenuItems = (group: ExerciseGroup, idx: number, groups: ExerciseGroup[]): OverflowMenuItem[] => {
     const items: OverflowMenuItem[] = [{ label: 'Edit Sets', onPress: () => openExerciseEditor(group) }];
-    items.push({ label: 'Details', onPress: () => router.push(`/exercise/${group.exerciseId}`) });
     const myGroup = group.supersetGroup ?? null;
     const prevGroup = idx > 0 ? (groups[idx - 1].supersetGroup ?? null) : null;
     const nextGroup = idx < groups.length - 1 ? (groups[idx + 1].supersetGroup ?? null) : null;
@@ -802,7 +801,13 @@ export default function SessionDetailScreen() {
               <Card style={[styles.exerciseCard, noBottomMargin && styles.exerciseCardNoMargin]}>
                 <View style={styles.exerciseHeader}>
                   <View style={styles.exerciseHeaderText}>
-                    <Text style={styles.exerciseName}>{group.exerciseName}</Text>
+                    <TouchableOpacity
+                      onPress={() => router.push(`/exercise/${group.exerciseId}`)}
+                      activeOpacity={0.7}
+                      style={styles.exerciseNameTapTarget}
+                    >
+                      <Text style={[styles.exerciseName, styles.exerciseNameLink]}>{group.exerciseName}</Text>
+                    </TouchableOpacity>
                     <Text style={styles.muscleGroup}>{formatMuscleGroupLabel(group.muscleGroup)}</Text>
                   </View>
                   <OverflowMenu items={menuItems} />
@@ -1095,6 +1100,12 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: fonts.bold,
     color: colors.text,
+  },
+  exerciseNameLink: {
+    textDecorationLine: 'underline',
+  },
+  exerciseNameTapTarget: {
+    alignSelf: 'flex-start',
   },
   muscleGroup: {
     fontSize: 13,

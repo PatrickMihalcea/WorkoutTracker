@@ -59,15 +59,33 @@ export function SimpleLineChart({
 }: SimpleLineChartProps) {
   const { onChartTouchStart, onChartTouchEnd, pointerActiveRef } = useChartInteraction();
   const points = useMemo(() => data.filter((p) => p.value > 0), [data]);
-  const hasTarget = (targetValue ?? 0) > 0;
+  const hasTargetSeries = useMemo(
+    () => points.some((point) => (point.target ?? 0) > 0),
+    [points],
+  );
+  const hasConstantTarget = (targetValue ?? 0) > 0;
+
+  const targetSeriesValues = useMemo(
+    () => points.map((point) => point.target ?? 0).filter((value) => value > 0),
+    [points],
+  );
+
   const yAxisSource = useMemo(
-    () => (hasTarget ? [...points, { value: targetValue as number }] : points),
-    [points, hasTarget, targetValue],
+    () => {
+      if (hasTargetSeries) {
+        return [...points, ...targetSeriesValues.map((value) => ({ value }))];
+      }
+      if (hasConstantTarget) {
+        return [...points, { value: targetValue as number }];
+      }
+      return points;
+    },
+    [points, hasTargetSeries, targetSeriesValues, hasConstantTarget, targetValue],
   );
   const yMinStep = minYStep ?? 1;
   const [yAxis, setYAxis] = useState<YAxisInfo>(() => computeYAxisInfo(yAxisSource, yMinStep, yLabelFormatter));
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
-  const [activeTooltip, setActiveTooltip] = useState<{ date: string; value: string; target?: string; ptX: number } | null>(null);
+  const [activeTooltip, setActiveTooltip] = useState<{ date: string; value: string; target?: string; ptX: number; targetY?: number } | null>(null);
   const tooltipWidthRef = useRef(0);
   const [tooltipReady, setTooltipReady] = useState(false);
 
@@ -101,12 +119,27 @@ export function SimpleLineChart({
     if (range <= 0) return points.map(() => CHART_HEIGHT);
     return points.map((p) => CHART_HEIGHT - ((p.value - yAxis.minValue) / range) * CHART_HEIGHT);
   }, [points, yAxis.maxValue, yAxis.minValue]);
+  const targetSeriesPoints = useMemo(() => {
+    const range = yAxis.maxValue - yAxis.minValue;
+    return points.reduce<{ x: number; y: number }[]>((acc, point, index) => {
+      const target = point.target ?? 0;
+      if (target <= 0) return acc;
+      const y = range <= 0 ? CHART_HEIGHT : CHART_HEIGHT - ((target - yAxis.minValue) / range) * CHART_HEIGHT;
+      acc.push({ x: pointPositions[index].x, y });
+      return acc;
+    }, []);
+  }, [points, pointPositions, yAxis.maxValue, yAxis.minValue]);
   const targetY = useMemo(() => {
-    if (!hasTarget) return null;
+    if (!hasConstantTarget || hasTargetSeries) return null;
     const range = yAxis.maxValue - yAxis.minValue;
     if (range <= 0) return CHART_HEIGHT;
     return CHART_HEIGHT - (((targetValue as number) - yAxis.minValue) / range) * CHART_HEIGHT;
-  }, [hasTarget, targetValue, yAxis.maxValue, yAxis.minValue]);
+  }, [hasConstantTarget, hasTargetSeries, targetValue, yAxis.maxValue, yAxis.minValue]);
+
+  const targetPolylinePoints = useMemo(
+    () => targetSeriesPoints.map((point) => `${point.x},${point.y}`).join(' '),
+    [targetSeriesPoints],
+  );
 
   const polylinePoints = useMemo(() => {
     return pointPositions.map((pos, i) => `${pos.x},${pointYs[i]}`).join(' ');
@@ -164,23 +197,37 @@ export function SimpleLineChart({
     const idx = findNearestPoint(touchX);
     if (idx < 0) return;
     const pt = points[idx];
+    const pointTarget = hasTargetSeries
+      ? (pt.target ?? 0)
+      : (hasConstantTarget ? (targetValue ?? 0) : 0);
+    const targetPointY = pointTarget > 0
+      ? (() => {
+        const range = yAxis.maxValue - yAxis.minValue;
+        if (range <= 0) return CHART_HEIGHT;
+        return CHART_HEIGHT - ((pointTarget - yAxis.minValue) / range) * CHART_HEIGHT;
+      })()
+      : undefined;
     setActiveTooltip({
       date: formatPointDate(pt.date),
       value: formatTooltipValue(pt.value),
-      target: hasTarget
-        ? `${targetLabel}: ${(formatTargetTooltipValue ?? formatTooltipValue)(targetValue as number)}`
+      target: pointTarget > 0
+        ? `${targetLabel}: ${(formatTargetTooltipValue ?? formatTooltipValue)(pointTarget)}`
         : undefined,
       ptX: pointPositions[idx].x,
+      targetY: targetPointY,
     });
   }, [
     findNearestPoint,
     points,
     pointPositions,
     formatTooltipValue,
-    hasTarget,
+    hasTargetSeries,
+    hasConstantTarget,
     targetLabel,
     formatTargetTooltipValue,
     targetValue,
+    yAxis.maxValue,
+    yAxis.minValue,
   ]);
 
   const handleTouchStart = useCallback((e: GestureResponderEvent) => {
@@ -297,6 +344,24 @@ export function SimpleLineChart({
                 fill="none"
                 stroke={frontColor}
                 strokeWidth={2}
+              />
+            )}
+            {targetSeriesPoints.length > 1 && (
+              <Polyline
+                points={targetPolylinePoints}
+                fill="none"
+                stroke={targetLineColor}
+                strokeWidth={1.5}
+                strokeDasharray="5 4"
+                opacity={0.9}
+              />
+            )}
+            {activeTooltip?.targetY != null && (
+              <Circle
+                cx={activeTooltip.ptX}
+                cy={activeTooltip.targetY}
+                r={3.2}
+                fill={targetLineColor}
               />
             )}
             {targetY !== null && (

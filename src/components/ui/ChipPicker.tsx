@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ViewStyle, TextStyle, StyleProp } from 'react-native';
 import { DayOfWeek, DAY_LABELS } from '../../models';
 import { colors, fonts } from '../../constants';
 
@@ -10,6 +10,12 @@ interface ChipPickerProps<T extends string | number> {
   allowDeselect?: boolean;
   style?: ViewStyle;
   keyboardPersistTaps?: boolean;
+  chipStyle?: StyleProp<ViewStyle>;
+  chipSelectedStyle?: StyleProp<ViewStyle>;
+  chipTextStyle?: StyleProp<TextStyle>;
+  chipTextSelectedStyle?: StyleProp<TextStyle>;
+  getChipStyle?: (item: { key: string; label: string; value: T }, isSelected: boolean) => StyleProp<ViewStyle> | undefined;
+  getChipTextStyle?: (item: { key: string; label: string; value: T }, isSelected: boolean) => StyleProp<TextStyle> | undefined;
 }
 
 export function ChipPicker<T extends string | number>({
@@ -19,6 +25,12 @@ export function ChipPicker<T extends string | number>({
   allowDeselect = true,
   style,
   keyboardPersistTaps = false,
+  chipStyle,
+  chipSelectedStyle,
+  chipTextStyle,
+  chipTextSelectedStyle,
+  getChipStyle,
+  getChipTextStyle,
 }: ChipPickerProps<T>) {
   return (
     <ScrollView
@@ -34,7 +46,13 @@ export function ChipPicker<T extends string | number>({
           return (
             <TouchableOpacity
               key={item.key}
-              style={[styles.chip, isSelected && styles.chipSelected]}
+              style={[
+                styles.chip,
+                chipStyle,
+                isSelected && styles.chipSelected,
+                isSelected && chipSelectedStyle,
+                getChipStyle?.(item, isSelected),
+              ]}
               onPress={() => {
                 if (isSelected && allowDeselect) {
                   onChange(null);
@@ -43,7 +61,15 @@ export function ChipPicker<T extends string | number>({
                 }
               }}
             >
-              <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+              <Text
+                style={[
+                  styles.chipText,
+                  chipTextStyle,
+                  isSelected && styles.chipTextSelected,
+                  isSelected && chipTextSelectedStyle,
+                  getChipTextStyle?.(item, isSelected),
+                ]}
+              >
                 {item.label}
               </Text>
             </TouchableOpacity>

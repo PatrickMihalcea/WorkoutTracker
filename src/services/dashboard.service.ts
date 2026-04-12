@@ -31,6 +31,7 @@ export interface TimeSeriesPoint {
   label: string;
   value: number;
   date: number;
+  target?: number;
 }
 
 export interface ExerciseProgression {
@@ -317,7 +318,7 @@ function mapToPointsAvg(
     }));
 }
 
-const SESSION_SELECT = 'id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group, exercise_type))';
+const SESSION_SELECT = 'id, routine_day_id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group, exercise_type))';
 const BODY_MEASUREMENT_SELECT = ['logged_on', ...BODY_MEASUREMENT_METRICS.map((m) => m.column)].join(', ');
 
 type RawMeasurement = Pick<BodyMeasurement, 'logged_on' | MeasurementValueColumn>;
@@ -432,12 +433,138 @@ async function fetchMeasurementRows(userId: string, weeks: number): Promise<RawM
   return (data ?? []) as unknown as RawMeasurement[];
 }
 
+type RoutineMetricTargets = {
+  volume: number;
+  reps: number;
+  duration: number;
+};
+
+type RoutineDayTargetRow = {
+  id: string;
+  exercises: {
+    target_sets: number;
+    target_reps: number;
+    sets: {
+      target_weight: number;
+      target_reps_min: number;
+      target_reps_max: number;
+      target_duration: number;
+    }[] | null;
+  }[] | null;
+};
+
+function targetRepsForSet(
+  set: { target_reps_min: number; target_reps_max: number },
+  fallback: number,
+): number {
+  const min = set.target_reps_min > 0 ? set.target_reps_min : 0;
+  const max = set.target_reps_max > 0 ? set.target_reps_max : 0;
+  if (min > 0 && max > 0) return Math.round((min + max) / 2);
+  if (min > 0) return min;
+  if (max > 0) return max;
+  return fallback > 0 ? fallback : 0;
+}
+
+function computeRoutineDayMetricTargets(day: RoutineDayTargetRow): RoutineMetricTargets {
+  let reps = 0;
+  let volume = 0;
+  let duration = 0;
+
+  for (const ex of day.exercises ?? []) {
+    const setTemplates = ex.sets ?? [];
+
+    if (setTemplates.length > 0) {
+      for (const set of setTemplates) {
+        const targetReps = targetRepsForSet(set, ex.target_reps);
+        reps += targetReps;
+        volume += (set.target_weight ?? 0) * targetReps;
+        duration += (set.target_duration ?? 0) / 60;
+      }
+      continue;
+    }
+
+    const fallbackReps = ex.target_reps > 0 ? ex.target_reps : 0;
+    const fallbackSets = ex.target_sets > 0 ? ex.target_sets : 0;
+    reps += fallbackReps * fallbackSets;
+  }
+
+  return {
+    volume: Math.round(volume),
+    reps: Math.round(reps),
+    duration: Math.round(duration),
+  };
+}
+
+async function fetchRoutineDayTargets(dayIds: string[]): Promise<Map<string, RoutineMetricTargets>> {
+  const uniqueDayIds = [...new Set(dayIds.filter(Boolean))];
+  if (uniqueDayIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from('routine_days')
+    .select(`
+      id,
+      exercises:routine_day_exercises (
+        target_sets,
+        target_reps,
+        sets:routine_day_exercise_sets (
+          target_weight,
+          target_reps_min,
+          target_reps_max,
+          target_duration
+        )
+      )
+    `)
+    .in('id', uniqueDayIds);
+
+  if (error) throw error;
+
+  const out = new Map<string, RoutineMetricTargets>();
+  for (const day of (data ?? []) as unknown as RoutineDayTargetRow[]) {
+    out.set(day.id, computeRoutineDayMetricTargets(day));
+  }
+  return out;
+}
+
+function attachRoutineTargets(
+  points: TimeSeriesPoint[],
+  sessions: RawSession[],
+  metric: keyof RoutineMetricTargets,
+  granularity: Granularity,
+  raw: boolean,
+  dayTargetsById: Map<string, RoutineMetricTargets>,
+): TimeSeriesPoint[] {
+  if (points.length === 0 || sessions.length === 0 || dayTargetsById.size === 0) return points;
+
+  const targetByPointKey = new Map<string, number>();
+  for (const session of sessions) {
+    if (!session.routine_day_id) continue;
+
+    const dayTargets = dayTargetsById.get(session.routine_day_id);
+    if (!dayTargets) continue;
+
+    const target = dayTargets[metric];
+    if (target <= 0) continue;
+
+    const key = raw
+      ? session.started_at
+      : getBucketKey(new Date(session.started_at), granularity);
+    targetByPointKey.set(key, (targetByPointKey.get(key) ?? 0) + target);
+  }
+
+  return points.map((point) => {
+    const target = targetByPointKey.get(point.key);
+    if (!target || target <= 0) return point;
+    return { ...point, target: Math.round(target) };
+  });
+}
+
 function buildRoutineChartData(
   rawData: RawSession[] | null,
   weeks: number,
   granularity: Granularity,
   raw: boolean,
   wUnit: WeightUnit,
+  dayTargetsById: Map<string, RoutineMetricTargets> = new Map(),
 ): RoutineChartData {
   if (!rawData || rawData.length === 0) {
     return { volume: [], reps: [], duration: [] };
@@ -446,17 +573,23 @@ function buildRoutineChartData(
   const sessions = convertSessionWeights(rawData, wUnit);
 
   if (raw) {
+    const volume = computeVolumeRaw(sessions);
+    const reps = computeRepsRaw(sessions);
+
     return {
-      volume: computeVolumeRaw(sessions),
-      reps: computeRepsRaw(sessions),
+      volume: attachRoutineTargets(volume, sessions, 'volume', granularity, true, dayTargetsById),
+      reps: attachRoutineTargets(reps, sessions, 'reps', granularity, true, dayTargetsById),
       duration: computeDurationRaw(sessions),
     };
   }
 
   const skeleton = weeks > 0 ? generateSkeleton(granularity, weeks) : null;
+  const volume = computeVolume(sessions, granularity, skeleton);
+  const reps = computeReps(sessions, granularity, skeleton);
+
   return {
-    volume: computeVolume(sessions, granularity, skeleton),
-    reps: computeReps(sessions, granularity, skeleton),
+    volume: attachRoutineTargets(volume, sessions, 'volume', granularity, false, dayTargetsById),
+    reps: attachRoutineTargets(reps, sessions, 'reps', granularity, false, dayTargetsById),
     duration: computeDuration(sessions, granularity, skeleton),
   };
 }
@@ -601,6 +734,12 @@ export const dashboardService = {
     if (!days || days.length === 0) return { volume: [], reps: [], duration: [] };
 
     const dayIds = days.map((d) => d.id);
+    let dayTargetsById = new Map<string, RoutineMetricTargets>();
+    try {
+      dayTargetsById = await fetchRoutineDayTargets(dayIds);
+    } catch {
+      dayTargetsById = new Map();
+    }
 
     let query = supabase
       .from('workout_sessions')
@@ -625,6 +764,7 @@ export const dashboardService = {
       granularity,
       raw,
       wUnit,
+      dayTargetsById,
     );
   },
 
@@ -653,12 +793,20 @@ export const dashboardService = {
     const { data: rawData, error } = await query;
 
     if (error) throw error;
+    let dayTargetsById = new Map<string, RoutineMetricTargets>();
+    try {
+      dayTargetsById = await fetchRoutineDayTargets([dayId]);
+    } catch {
+      dayTargetsById = new Map();
+    }
+
     return buildRoutineChartData(
       rawData as unknown as RawSession[] | null,
       weeks,
       granularity,
       raw,
       wUnit,
+      dayTargetsById,
     );
   },
 
@@ -727,6 +875,7 @@ function emptySummary(): SummaryData {
 
 type RawSession = {
   id: string;
+  routine_day_id: string | null;
   started_at: string;
   completed_at: string | null;
   status: string;

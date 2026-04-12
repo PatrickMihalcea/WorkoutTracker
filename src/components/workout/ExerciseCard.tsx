@@ -135,9 +135,24 @@ export function ExerciseCard({
     onToggleCollapse?.();
   };
 
+  const handleDetailsPress = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    onDetails?.();
+  };
+
+  const renderExerciseName = (done?: string) => {
+    if (!onDetails) {
+      return <Text style={[styles.exerciseName, done && { color: done }]}>{exerciseName}</Text>;
+    }
+    return (
+      <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7} style={styles.exerciseNameTapTarget}>
+        <Text style={[styles.exerciseName, styles.exerciseNameLink, done && { color: done }]}>{exerciseName}</Text>
+      </TouchableOpacity>
+    );
+  };
+
   const menuItems = useMemo((): OverflowMenuItem[] => {
     const items: OverflowMenuItem[] = [];
-    if (onDetails) items.push({ label: 'Details', onPress: onDetails });
     if (canSupersetPrev) items.push({ label: 'Superset Prev', onPress: () => onSupersetPrev?.() });
     if (canSupersetNext) items.push({ label: 'Superset Next', onPress: () => onSupersetNext?.() });
     if (supersetGroup) items.push({ label: 'Separate', onPress: () => onSeparate?.() });
@@ -145,7 +160,7 @@ export function ExerciseCard({
     if (onDuplicate) items.push({ label: 'Duplicate', onPress: onDuplicate });
     if (onRemove) items.push({ label: 'Delete', onPress: onRemove, destructive: true });
     return items;
-  }, [onDetails, supersetGroup, canSupersetPrev, canSupersetNext, onSupersetPrev, onSupersetNext, onSeparate, onSwap, onDuplicate, onRemove]);
+  }, [supersetGroup, canSupersetPrev, canSupersetNext, onSupersetPrev, onSupersetNext, onSeparate, onSwap, onDuplicate, onRemove]);
 
   const showMenu = !reorderCollapsed && (onSwap || onDuplicate || onRemove);
 
@@ -160,7 +175,7 @@ export function ExerciseCard({
         <Card style={StyleSheet.flatten(reorderCardStyle)}>
           <View style={styles.headerCollapsed}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
+              {renderExerciseName(doneTextColor)}
               <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
             </View>
             <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
@@ -184,7 +199,7 @@ export function ExerciseCard({
           <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
             <View style={styles.headerCollapsed}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
+                {renderExerciseName(doneTextColor)}
                 <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
               </View>
               <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
@@ -210,7 +225,7 @@ export function ExerciseCard({
       <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
         <View style={[styles.header, (allDone && canAnimate) && { backgroundColor: 'transparent' }]}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.exerciseName, doneTextColor && { color: doneTextColor }]}>{exerciseName}</Text>
+            {renderExerciseName(doneTextColor)}
             <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
           </View>
           <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
@@ -361,6 +376,12 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: fonts.bold,
     color: colors.text,
+  },
+  exerciseNameLink: {
+    textDecorationLine: 'underline',
+  },
+  exerciseNameTapTarget: {
+    alignSelf: 'flex-start',
   },
   muscleGroup: {
     fontSize: 13,
