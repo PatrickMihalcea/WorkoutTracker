@@ -182,6 +182,7 @@ export default function DayEditorScreen() {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
   const [autoOpenPicker, setAutoOpenPicker] = useState(false);
   const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
 
@@ -451,7 +452,12 @@ export default function DayEditorScreen() {
           headerTitle: () => <DayViewHeaderDropdown dayId={dayId ?? ''} currentView="edit" />,
         }}
       />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        scrollEnabled={!isReordering}
+      >
         {editingLabel ? (
           <InlineEditRow
             value={labelDraft}
@@ -482,7 +488,11 @@ export default function DayEditorScreen() {
           })()}
           keyExtractor={(item) => item.type === 'single' ? item.entry.id : item.groupId}
           scrollEnabled={false}
+          activationDistance={20}
+          onDragBegin={() => setIsReordering(true)}
+          onRelease={() => setIsReordering(false)}
           onDragEnd={({ data }) => {
+            setIsReordering(false);
             const flat = flattenReorderItems(data);
             handleReorderExercises(flat);
           }}

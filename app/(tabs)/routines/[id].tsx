@@ -580,7 +580,11 @@ export default function RoutineDetailScreen() {
           data={reorderData}
           keyExtractor={(item) => item.type === 'single' ? item.entry.id : item.groupId}
           scrollEnabled={false}
+          activationDistance={20}
+          onDragBegin={() => setReorderingDayId(day.id)}
+          onRelease={() => setReorderingDayId(null)}
           onDragEnd={({ data }) => {
+            setReorderingDayId(null);
             const flat = flattenReorderItems(data);
             handleReorderExercises(flat);
           }}
@@ -626,7 +630,12 @@ export default function RoutineDetailScreen() {
   return (
     <View style={styles.container}>
       <Toast message={toastMessage} visible={!!toastMessage} onDismiss={() => setToastMessage('')} />
-      <ScrollView contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets scrollEnabled={scrollEnabled}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={scrollEnabled && !reorderingDayId}
+      >
         {editingName ? (
           <InlineEditRow
             value={nameDraft}
