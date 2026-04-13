@@ -97,6 +97,7 @@ export function ExerciseCard({
 
   const colorAnim = useRef(new Animated.Value(allDone ? 1 : 0)).current;
   const prevAllDone = useRef(allDone);
+  const didLongPressNameRef = useRef(false);
 
   const canAnimate = setCompletion !== 'transparent';
 
@@ -137,7 +138,24 @@ export function ExerciseCard({
 
   const handleDetailsPress = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
+    if (didLongPressNameRef.current) {
+      didLongPressNameRef.current = false;
+      return;
+    }
     onDetails?.();
+  };
+
+  const handleNameLongPress = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+    didLongPressNameRef.current = true;
+    onLongPress?.();
+  };
+
+  const handleNamePressOut = () => {
+    // Delay reset to keep the long-press flag valid through same-cycle onPress dispatch.
+    setTimeout(() => {
+      didLongPressNameRef.current = false;
+    }, 0);
   };
 
   const renderExerciseName = (done?: string) => {
@@ -145,7 +163,14 @@ export function ExerciseCard({
       return <Text style={[styles.exerciseName, done && { color: done }]}>{exerciseName}</Text>;
     }
     return (
-      <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7} style={styles.exerciseNameTapTarget}>
+      <TouchableOpacity
+        onPress={handleDetailsPress}
+        onLongPress={handleNameLongPress}
+        onPressOut={handleNamePressOut}
+        delayLongPress={400}
+        activeOpacity={0.7}
+        style={styles.exerciseNameTapTarget}
+      >
         <Text style={[styles.exerciseName, styles.exerciseNameLink, done && { color: done }]}>{exerciseName}</Text>
       </TouchableOpacity>
     );

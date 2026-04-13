@@ -208,9 +208,21 @@ export function WorkoutOverlay() {
   const handleComplete = useCallback(() => {
     Alert.alert('Complete Workout', 'Finish and save this workout?', [
       { text: 'Keep Going', style: 'cancel' },
-      { text: 'Complete', onPress: () => completeWorkout(weightUnit) },
+      {
+        text: 'Complete',
+        onPress: async () => {
+          try {
+            const completedSessionId = await completeWorkout(weightUnit);
+            if (completedSessionId) {
+              router.push(`/(tabs)/profile/${completedSessionId}?justCompleted=1`);
+            }
+          } catch (error: unknown) {
+            Alert.alert('Error', (error as Error).message || 'Failed to complete workout.');
+          }
+        },
+      },
     ]);
-  }, [completeWorkout, weightUnit]);
+  }, [completeWorkout, weightUnit, router]);
 
   const handleStartRestTimer = useCallback(() => {
     if (restTimerDefault > 0) {

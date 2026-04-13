@@ -61,6 +61,7 @@ export default function HomeScreen() {
   const hasCustomWorkoutInProgress = !!activeSession && !activeSession.routine_day_id;
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const todaysWorkout = todaysWorkouts.length > 0 ? todaysWorkouts[selectedDayIndex] ?? todaysWorkouts[0] : null;
+  const chosenDayIsScheduledToday = !!chosenDay && todaysWorkouts.some((d) => d.id === chosenDay.id);
 
   const handleStartWorkout = async () => {
     const target = chosenDay ?? todaysWorkout;
@@ -195,10 +196,10 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.routineName}>{activeRoutine.name}</Text>
           <Text style={styles.heroSubtext}>
-            {chosenDay
+            {chosenDay && !chosenDayIsScheduledToday
               ? `Custom: Week ${chosenDay.week_index} · ${chosenDay.label}`
-              : todaysWorkout
-                ? `Week ${activeWeek} · ${todaysWorkout.label}`
+              : (chosenDay ?? todaysWorkout)
+                ? `Week ${activeWeek} · ${(chosenDay ?? todaysWorkout)?.label}`
                 : `Week ${activeWeek} · Recovery Day`}
           </Text>
         </Card>

@@ -70,7 +70,7 @@ interface WorkoutState {
   swapExercise: (entryId: string, newExercise: Exercise) => Promise<void>;
   removeExerciseByExerciseId: (exerciseId: string) => void;
   updateExerciseInState: (exercise: Exercise) => void;
-  completeWorkout: (weightUnit: string) => Promise<void>;
+  completeWorkout: (weightUnit: string) => Promise<string | null>;
   cancelWorkout: () => Promise<void>;
   reset: () => void;
   startRestTimer: (seconds: number) => void;
@@ -575,7 +575,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
   completeWorkout: async (weightUnit) => {
     const { session, rows, exercises, supersetGroups } = get();
-    if (!session) return;
+    if (!session) return null;
 
     const parseWeight = (text: string): number => {
       const val = parseFloat(text) || 0;
@@ -637,7 +637,9 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       }
     }
 
+    const completedSessionId = session.id;
     set(resetWorkoutState());
+    return completedSessionId;
   },
 
   cancelWorkout: async () => {

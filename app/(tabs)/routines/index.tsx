@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
@@ -19,17 +20,30 @@ export default function RoutineListScreen() {
   const { user } = useAuthStore();
   const { routines, fetchRoutines, setActive, deleteRoutine, duplicateRoutine } = useRoutineStore();
   const [refreshing, setRefreshing] = useState(false);
+  const [routinesLoaded, setRoutinesLoaded] = useState(false);
+
+  const loadRoutines = useCallback(async () => {
+    try {
+      await fetchRoutines();
+    } finally {
+      setRoutinesLoaded(true);
+    }
+  }, [fetchRoutines]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchRoutines();
-    }, [fetchRoutines]),
+      loadRoutines();
+    }, [loadRoutines]),
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchRoutines();
-    setRefreshing(false);
+    try {
+      await fetchRoutines();
+    } finally {
+      setRefreshing(false);
+      setRoutinesLoaded(true);
+    }
   }, [fetchRoutines]);
 
   const handleSetActive = async (routine: Routine) => {
@@ -107,6 +121,14 @@ export default function RoutineListScreen() {
     </TouchableOpacity>
   );
 
+  if (!routinesLoaded) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="small" color={colors.textSecondary} />
+      </View>
+    );
+  }
+
   if (routines.length === 0 && !refreshing) {
     return (
       <View style={styles.container}>
@@ -144,6 +166,12 @@ export default function RoutineListScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.background,
   },
   list: {

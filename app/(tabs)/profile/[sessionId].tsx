@@ -14,6 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { routineService, sessionService } from '../../../src/services';
+import type { SessionRecordAchieved, SessionRecordMetric } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { Card, Input, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle } from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
@@ -202,6 +203,23 @@ function formatCompactStat(value: number): string {
   return formatStatNumber(value);
 }
 
+function sessionRecordMetricLabel(metric: SessionRecordMetric): string {
+  switch (metric) {
+    case 'heaviest_weight': return 'Heaviest Weight';
+    case 'best_est_1rm': return 'Best Est. 1RM';
+    case 'best_set_volume': return 'Best Set Volume';
+    case 'best_session_volume': return 'Best Session Volume';
+    case 'max_reps': return 'Max Reps';
+    case 'best_session_reps': return 'Best Session Reps';
+    case 'lightest_assist': return 'Lightest Assist';
+    case 'longest_duration': return 'Longest Duration';
+    case 'best_session_duration': return 'Best Session Duration';
+    case 'farthest_distance': return 'Farthest Distance';
+    case 'best_pace': return 'Best Pace';
+    default: return 'Record';
+  }
+}
+
 function computeTemplateTargets(day: RoutineDayWithExercises): {
   exerciseTarget: number;
   setTarget: number;
@@ -243,7 +261,7 @@ function computeTemplateTargets(day: RoutineDayWithExercises): {
 
 export default function SessionDetailScreen() {
   const router = useRouter();
-  const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
+  const { sessionId, justCompleted } = useLocalSearchParams<{ sessionId: string; justCompleted?: string }>();
   const { profile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
   const distUnit = profile?.distance_unit ?? 'km';
@@ -262,16 +280,29 @@ export default function SessionDetailScreen() {
   const [swapGroupKey, setSwapGroupKey] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [updatingGroups, setUpdatingGroups] = useState(false);
+  const [sessionRecords, setSessionRecords] = useState<SessionRecordAchieved[]>([]);
+  const [showCompletionBanner, setShowCompletionBanner] = useState(justCompleted === '1');
   const [routineDayTemplate, setRoutineDayTemplate] = useState<RoutineDayWithExercises | null>(null);
   const [templateResolved, setTemplateResolved] = useState(false);
+
+  useEffect(() => {
+    setShowCompletionBanner(justCompleted === '1');
+  }, [justCompleted, sessionId]);
 
   const loadSession = useCallback(async () => {
     if (!sessionId) return;
     try {
       const data = await sessionService.getByIdWithExercises(sessionId);
       setSession(data);
+      try {
+        const records = await sessionService.getRecordsAchievedInSession(data);
+        setSessionRecords(records);
+      } catch {
+        setSessionRecords([]);
+      }
     } catch {
       // Handle quietly
+      setSessionRecords([]);
     } finally {
       setLoading(false);
     }
@@ -765,9 +796,69 @@ export default function SessionDetailScreen() {
     ? formatCompactStat(targets.volumeTarget)
     : '--';
 
+  const formatSessionRecordValue = (record: SessionRecordAchieved): string => {
+    switch (record.metric) {
+      case 'heaviest_weight':
+      case 'best_est_1rm':
+      case 'lightest_assist':
+        return formatWeight(record.value, weightUnit);
+      case 'max_reps':
+      case 'best_session_reps':
+        return `${Math.round(record.value)} reps`;
+      case 'best_set_volume':
+      case 'best_session_volume':
+        return `${formatCompactStat(record.value)} vol`;
+      case 'longest_duration':
+      case 'best_session_duration':
+        return formatDurationValue(record.value);
+      case 'farthest_distance':
+        return formatDistance(record.value, distUnit);
+      case 'best_pace':
+        return `${record.value.toFixed(2)} ${distanceUnitLabel(distUnit)}/min`;
+      default:
+        return formatStatNumber(record.value);
+    }
+  };
+
+  const recordsByExercise = (() => {
+    const grouped = new Map<string, { exerciseName: string; records: SessionRecordAchieved[] }>();
+    for (const record of sessionRecords) {
+      const existing = grouped.get(record.exerciseId);
+      if (existing) {
+        existing.records.push(record);
+      } else {
+        grouped.set(record.exerciseId, {
+          exerciseName: record.exerciseName,
+          records: [record],
+        });
+      }
+    }
+    return [...grouped.entries()].map(([exerciseId, payload]) => ({
+      exerciseId,
+      exerciseName: payload.exerciseName,
+      records: payload.records,
+    }));
+  })();
+
   return (
     <View style={styles.flex}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
+        {showCompletionBanner && (
+          <Card style={styles.completionBanner}>
+            <View style={styles.completionBannerHeader}>
+              <Text style={styles.completionBadge}>WORKOUT COMPLETE</Text>
+              <TouchableOpacity
+                style={styles.completionDismissBtn}
+                onPress={() => setShowCompletionBanner(false)}
+                hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              >
+                <Text style={styles.completionDismissText}>X</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.completionTitle}>Nice work. Session saved.</Text>
+            <Text style={styles.completionSubtitle}>You can edit sets, exercises, and session details below.</Text>
+          </Card>
+        )}
         <View style={styles.headerRow}>
           <View style={styles.headerText}>
             <Text style={styles.date}>{formatDate(session.started_at)}</Text>
@@ -818,6 +909,26 @@ export default function SessionDetailScreen() {
             compact
           />
         </View>
+
+        {sessionRecords.length > 0 && (
+          <Card style={styles.recordsCard}>
+            <Text style={styles.recordsTitle}>
+              {sessionRecords.length} {sessionRecords.length === 1 ? 'Record' : 'Records'} Achieved
+            </Text>
+            <Text style={styles.recordsSubtitle}>New personal bests set in this session.</Text>
+            {recordsByExercise.map((group) => (
+              <View key={group.exerciseId} style={styles.recordsExerciseBlock}>
+                <Text style={styles.recordsExerciseName}>{group.exerciseName}</Text>
+                {group.records.map((record) => (
+                  <View key={`${record.exerciseId}-${record.metric}`} style={styles.recordRow}>
+                    <Text style={styles.recordMetric}>{sessionRecordMetricLabel(record.metric)}</Text>
+                    <Text style={styles.recordValue}>{formatSessionRecordValue(record)}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </Card>
+        )}
 
         {groups.map((group, idx) => {
           const position = getSupersetPosition(supersetEntries, idx, supersetMap);
@@ -1071,6 +1182,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: fonts.regular,
   },
+  completionBanner: {
+    marginBottom: 14,
+    backgroundColor: '#1B2420',
+    borderColor: '#2E5C49',
+  },
+  completionBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  completionBadge: {
+    fontSize: 11,
+    fontFamily: fonts.bold,
+    color: '#8BE1B8',
+    letterSpacing: 0.8,
+  },
+  completionDismissBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  completionDismissText: {
+    color: '#9DD2B7',
+    fontSize: 14,
+    fontFamily: fonts.bold,
+  },
+  completionTitle: {
+    fontSize: 20,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  completionSubtitle: {
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: '#A8C1B4',
+  },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1111,6 +1259,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginBottom: 24,
+  },
+  recordsCard: {
+    marginBottom: 18,
+    backgroundColor: '#1B2125',
+    borderColor: '#35414A',
+  },
+  recordsTitle: {
+    fontSize: 18,
+    fontFamily: fonts.bold,
+    color: colors.text,
+  },
+  recordsSubtitle: {
+    marginTop: 4,
+    marginBottom: 12,
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+  },
+  recordsExerciseBlock: {
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  recordsExerciseName: {
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  recordRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    gap: 8,
+  },
+  recordMetric: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+  },
+  recordValue: {
+    fontSize: 13,
+    fontFamily: fonts.bold,
+    color: '#8BE1B8',
   },
   exerciseCard: {
     marginBottom: 6,

@@ -22,7 +22,7 @@ const TAB_ICONS: Record<string, string> = {
 const TAB_LABELS: Record<string, string> = {
   today: 'Today',
   routines: 'Routines',
-  history: 'History',
+  history: 'Dashboard',
   profile: 'Profile',
 };
 
@@ -79,7 +79,7 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
 
 function TabLayoutInner() {
   const segments = useSegments();
-  const { view, chartMode } = useHistoryView();
+  const { chartMode } = useHistoryView();
   const { chartActive } = useChartInteraction();
   const { user } = useAuthStore();
   const { session, resumeWorkout } = useWorkoutStore();
@@ -91,7 +91,7 @@ function TabLayoutInner() {
     || segment === 'history'
     || segment === 'profile'
   ));
-  const hasActiveChart = chartActive || (currentTab === 'history' && view === 'dashboard' && chartMode === 'abs');
+  const hasActiveChart = chartActive || (currentTab === 'history' && chartMode === 'abs');
 
   useEffect(() => {
     if (user && !session) {
@@ -122,7 +122,7 @@ function TabLayoutInner() {
       />
       <SwipeableTabs.Screen
         name="history"
-        options={{ title: 'History' }}
+        options={{ title: 'Dashboard' }}
       />
       <SwipeableTabs.Screen
         name="profile"
