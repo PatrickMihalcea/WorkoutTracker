@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { Button, Card, Input } from '../../../src/components/ui';
 import { colors, fonts, spacing } from '../../../src/constants';
 import { BODY_MEASUREMENT_METRICS, MeasurementMetricKey } from '../../../src/models';
@@ -23,11 +24,14 @@ function buildEmptyGoalForm(): GoalFormValues {
 }
 
 export default function GoalsScreen() {
+  const navigation = useNavigation();
   const { profile, updateProfile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
   const heightUnit = profile?.height_unit ?? 'cm';
   const [saving, setSaving] = useState(false);
   const [values, setValues] = useState<GoalFormValues>(buildEmptyGoalForm);
+  const initialValuesRef = useRef<GoalFormValues>(buildEmptyGoalForm());
+  const allowNextLeaveRef = useRef(false);
 
   const unitLabelByMetric = useMemo(() => {
     return BODY_MEASUREMENT_METRICS.reduce((acc, metric) => {
@@ -38,7 +42,9 @@ export default function GoalsScreen() {
 
   useEffect(() => {
     if (!profile) {
-      setValues(buildEmptyGoalForm());
+      const empty = buildEmptyGoalForm();
+      setValues(empty);
+      initialValuesRef.current = empty;
       return;
     }
 
@@ -50,10 +56,11 @@ export default function GoalsScreen() {
       next[metric.key] = `${Math.round(display * 10) / 10}`;
     }
     setValues(next);
+    initialValuesRef.current = next;
   }, [profile, weightUnit, heightUnit]);
 
-  const handleSave = async () => {
-    if (!profile) return;
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!profile) return false;
 
     const updates: Partial<UserProfileUpdate> = {};
     for (const metric of BODY_MEASUREMENT_METRICS) {
@@ -68,7 +75,7 @@ export default function GoalsScreen() {
       const parsed = Number(raw);
       if (!Number.isFinite(parsed) || parsed < 0) {
         Alert.alert('Invalid value', `${metric.label} goal must be zero or greater.`);
-        return;
+        return false;
       }
 
       const stored = measurementGoalToStored(metric.key, parsed, weightUnit, heightUnit);
@@ -79,13 +86,62 @@ export default function GoalsScreen() {
     try {
       setSaving(true);
       await updateProfile(updates);
-      Alert.alert('Saved', 'Goals updated.');
+      initialValuesRef.current = values;
+      return true;
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message || 'Could not save goals.');
+      return false;
     } finally {
       setSaving(false);
     }
-  };
+  }, [heightUnit, profile, updateProfile, values, weightUnit]);
+
+  const isDirty = useMemo(() => {
+    const initial = initialValuesRef.current;
+    for (const metric of BODY_MEASUREMENT_METRICS) {
+      if (values[metric.key].trim() !== (initial[metric.key] ?? '').trim()) {
+        return true;
+      }
+    }
+    return false;
+  }, [values]);
+
+  usePreventRemove(isDirty, ({ data }) => {
+    if (allowNextLeaveRef.current) {
+      allowNextLeaveRef.current = false;
+      return;
+    }
+
+    const action = data.action;
+
+    Alert.alert(
+      'Unsaved Changes',
+      'Save changes before leaving Goals?',
+      [
+        {
+          text: 'Save',
+          onPress: () => {
+            void (async () => {
+              const saved = await handleSave();
+              if (saved) {
+                allowNextLeaveRef.current = true;
+                navigation.dispatch(action);
+              }
+            })();
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            allowNextLeaveRef.current = true;
+            navigation.dispatch(action);
+          },
+        },
+      ],
+    );
+  });
 
   return (
     <View style={styles.container}>

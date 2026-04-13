@@ -8,7 +8,6 @@ import {
   Alert,
 } from 'react-native';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { Button } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import { ColorPreferences } from '../../../src/models/profile';
 
@@ -96,7 +95,6 @@ export default function ColourCustomizationScreen() {
 
   const [completion, setCompletion] = useState(prefs.setCompletion ?? DEFAULTS.setCompletion);
   const [accent, setAccent] = useState(prefs.accent ?? DEFAULTS.accent);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (profile?.color_preferences) {
@@ -105,25 +103,31 @@ export default function ColourCustomizationScreen() {
     }
   }, [profile]);
 
-  const handleSave = async () => {
-    setSaving(true);
+  const persistPreferences = async (nextCompletion: string, nextAccent: string) => {
     try {
       const current = profile?.color_preferences ?? {};
       const updated: ColorPreferences = {
         ...current,
-        setCompletion: completion === DEFAULTS.setCompletion ? undefined : completion,
-        accent: accent === DEFAULTS.accent ? undefined : accent,
+        setCompletion: nextCompletion === DEFAULTS.setCompletion ? undefined : nextCompletion,
+        accent: nextAccent === DEFAULTS.accent ? undefined : nextAccent,
       };
       const clean = Object.fromEntries(
         Object.entries(updated).filter(([, v]) => v !== undefined),
       );
       await updateProfile({ color_preferences: clean });
-      Alert.alert('Saved', 'Colour preferences updated');
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
-    } finally {
-      setSaving(false);
     }
+  };
+
+  const handleCompletionSelect = (next: string) => {
+    setCompletion(next);
+    void persistPreferences(next, accent);
+  };
+
+  const handleAccentSelect = (next: string) => {
+    setAccent(next);
+    void persistPreferences(completion, next);
   };
 
   return (
@@ -134,8 +138,8 @@ export default function ColourCustomizationScreen() {
           value={completion}
           defaultValue={DEFAULTS.setCompletion}
           previewType="row"
-          onSelect={setCompletion}
-          onReset={() => setCompletion(DEFAULTS.setCompletion)}
+          onSelect={handleCompletionSelect}
+          onReset={() => handleCompletionSelect(DEFAULTS.setCompletion)}
         />
 
         <ColorSection
@@ -143,14 +147,10 @@ export default function ColourCustomizationScreen() {
           value={accent}
           defaultValue={DEFAULTS.accent}
           previewType="swatch"
-          onSelect={setAccent}
-          onReset={() => setAccent(DEFAULTS.accent)}
+          onSelect={handleAccentSelect}
+          onReset={() => handleAccentSelect(DEFAULTS.accent)}
         />
       </ScrollView>
-
-      <View style={styles.footer}>
-        <Button title="Save" onPress={handleSave} loading={saving} />
-      </View>
     </View>
   );
 }
@@ -286,10 +286,5 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: fonts.bold,
     color: colors.textMuted,
-  },
-  footer: {
-    padding: 24,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
 });

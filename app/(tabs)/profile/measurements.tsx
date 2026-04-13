@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { BodyMeasurement, BODY_MEASUREMENT_METRICS, MeasurementMetricKey } from '../../../src/models';
@@ -20,6 +21,10 @@ import { colors, fonts, spacing } from '../../../src/constants';
 import { cmToIn, inToCm, kgToLbs, lbsToKg } from '../../../src/utils/units';
 
 type FormValues = Record<MeasurementMetricKey, string>;
+type FormSnapshot = {
+  dateKey: string;
+  values: FormValues;
+};
 const MAX_SCROLL_TO_LOG_RETRIES = 12;
 
 function toDateKey(d: Date): string {
@@ -40,7 +45,32 @@ function createEmptyFormValues(): FormValues {
   }, {} as FormValues);
 }
 
+function normalizeFormValue(value: string): string {
+  return value.trim();
+}
+
+function buildFormSnapshot(date: Date, values: FormValues): FormSnapshot {
+  const normalized = createEmptyFormValues();
+  for (const metric of BODY_MEASUREMENT_METRICS) {
+    normalized[metric.key] = normalizeFormValue(values[metric.key] ?? '');
+  }
+  return {
+    dateKey: toDateKey(date),
+    values: normalized,
+  };
+}
+
+function areSnapshotsEqual(a: FormSnapshot | null, b: FormSnapshot | null): boolean {
+  if (!a || !b) return false;
+  if (a.dateKey !== b.dateKey) return false;
+  for (const metric of BODY_MEASUREMENT_METRICS) {
+    if (a.values[metric.key] !== b.values[metric.key]) return false;
+  }
+  return true;
+}
+
 export default function MeasurementsScreen() {
+  const navigation = useNavigation();
   const user = useAuthStore((s) => s.user);
   const { profile, setProfile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
@@ -61,6 +91,8 @@ export default function MeasurementsScreen() {
   const logYByIdRef = useRef<Record<string, number>>({});
   const pendingScrollLogIdRef = useRef<string | null>(null);
   const pendingScrollRetriesRef = useRef(0);
+  const initialFormSnapshotRef = useRef<FormSnapshot | null>(null);
+  const allowNextLeaveRef = useRef(false);
 
   const scrollToTop = useCallback(() => {
     requestAnimationFrame(() => {
@@ -161,14 +193,18 @@ export default function MeasurementsScreen() {
     setEditingLog(null);
     setFormOpen(false);
     setShowDatePicker(Platform.OS === 'ios');
+    initialFormSnapshotRef.current = null;
   }, []);
 
   const openCreate = useCallback(() => {
+    const nextDate = new Date();
+    const nextValues = createEmptyFormValues();
     setEditingLog(null);
-    setFormValues(createEmptyFormValues());
-    setFormDate(new Date());
+    setFormValues(nextValues);
+    setFormDate(nextDate);
     setFormOpen(true);
     setShowDatePicker(Platform.OS === 'ios');
+    initialFormSnapshotRef.current = buildFormSnapshot(nextDate, nextValues);
     scrollToTop();
   }, [scrollToTop]);
 
@@ -183,9 +219,11 @@ export default function MeasurementsScreen() {
     }
     setEditingLog(log);
     setFormValues(nextValues);
-    setFormDate(fromDateKey(log.logged_on));
+    const nextDate = fromDateKey(log.logged_on);
+    setFormDate(nextDate);
     setFormOpen(true);
     setShowDatePicker(Platform.OS === 'ios');
+    initialFormSnapshotRef.current = buildFormSnapshot(nextDate, nextValues);
     scrollToTop();
   }, [scrollToTop, toDisplayValue]);
 
@@ -194,8 +232,8 @@ export default function MeasurementsScreen() {
     if (selected) setFormDate(selected);
   };
 
-  const saveForm = useCallback(async () => {
-    if (!user?.id) return;
+  const saveForm = useCallback(async (): Promise<boolean> => {
+    if (!user?.id) return false;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -203,7 +241,7 @@ export default function MeasurementsScreen() {
     selectedDate.setHours(0, 0, 0, 0);
     if (selectedDate.getTime() > today.getTime()) {
       Alert.alert('Invalid Date', 'Future dates are not allowed.');
-      return;
+      return false;
     }
 
     const canonical: Partial<BodyMeasurement> = {};
@@ -219,7 +257,7 @@ export default function MeasurementsScreen() {
       const parsed = Number(raw);
       if (!Number.isFinite(parsed) || parsed < 0) {
         Alert.alert('Invalid value', `${metric.label} must be a positive number.`);
-        return;
+        return false;
       }
 
       canonical[metric.column] = Math.round(toStoredValue(metric.key, parsed) * 10000) / 10000;
@@ -255,12 +293,12 @@ export default function MeasurementsScreen() {
       } else {
         Alert.alert('Missing Data', 'Enter at least one measurement.');
       }
-      return;
+      return false;
     }
 
     const nextDateKey = toDateKey(selectedDate);
 
-    const performSave = async (replaceConfirmed: boolean) => {
+    const performSave = async (replaceConfirmed: boolean): Promise<boolean> => {
       const conflictingLog = logs.find((log) => (
         log.logged_on === nextDateKey && log.id !== editingLog?.id
       ));
@@ -281,7 +319,7 @@ export default function MeasurementsScreen() {
             },
           ],
         );
-        return;
+        return false;
       }
 
       try {
@@ -301,14 +339,16 @@ export default function MeasurementsScreen() {
         await loadLogs();
         await refreshProfileSilently(user.id);
         resetForm();
+        return true;
       } catch {
         Alert.alert('Error', 'Failed to save measurement entry.');
+        return false;
       } finally {
         setSaving(false);
       }
     };
 
-    await performSave(false);
+    return await performSave(false);
   }, [
     editingLog,
     formDate,
@@ -320,6 +360,51 @@ export default function MeasurementsScreen() {
     toStoredValue,
     user?.id,
   ]);
+
+  const isFormDirty = useMemo(() => {
+    if (!formOpen) return false;
+    const initial = initialFormSnapshotRef.current;
+    if (!initial) return false;
+    const current = buildFormSnapshot(formDate, formValues);
+    return !areSnapshotsEqual(initial, current);
+  }, [formDate, formOpen, formValues]);
+
+  usePreventRemove(isFormDirty, ({ data }) => {
+    if (allowNextLeaveRef.current) {
+      allowNextLeaveRef.current = false;
+      return;
+    }
+
+    const action = data.action;
+
+    Alert.alert(
+      'Unsaved Changes',
+      'Save changes before leaving Measurements?',
+      [
+        {
+          text: 'Save',
+          onPress: () => {
+            void (async () => {
+              const saved = await saveForm();
+              if (saved) {
+                allowNextLeaveRef.current = true;
+                navigation.dispatch(action);
+              }
+            })();
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            allowNextLeaveRef.current = true;
+            navigation.dispatch(action);
+          },
+        },
+      ],
+    );
+  });
 
   const deleteLog = useCallback((log: BodyMeasurement, closeFormOnSuccess: boolean = false) => {
     if (!user?.id) return;

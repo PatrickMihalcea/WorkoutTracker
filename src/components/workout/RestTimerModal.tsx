@@ -25,9 +25,16 @@ interface RestTimerModalProps {
   currentValue: number;
   onSave: (seconds: number) => void | Promise<void>;
   onClose: () => void;
+  autoSave?: boolean;
 }
 
-export function RestTimerModal({ visible, currentValue, onSave, onClose }: RestTimerModalProps) {
+export function RestTimerModal({
+  visible,
+  currentValue,
+  onSave,
+  onClose,
+  autoSave = false,
+}: RestTimerModalProps) {
   const [selected, setSelected] = useState(currentValue);
   const [saving, setSaving] = useState(false);
 
@@ -49,11 +56,24 @@ export function RestTimerModal({ visible, currentValue, onSave, onClose }: RestT
     }
   };
 
+  const handleValueChange = (value: number) => {
+    setSelected(value);
+    if (!autoSave) return;
+    setSaving(true);
+    void Promise.resolve(onSave(value))
+      .catch((error: unknown) => {
+        Alert.alert('Error', (error as Error).message || 'Failed to update rest timer.');
+      })
+      .finally(() => {
+        setSaving(false);
+      });
+  };
+
   return (
     <BottomSheetModal visible={visible} title="Rest Timer" onClose={onClose}>
       <Picker
         selectedValue={selected}
-        onValueChange={(value) => setSelected(value)}
+        onValueChange={handleValueChange}
         itemStyle={styles.pickerItem}
       >
         {OPTIONS.map((opt) => (
@@ -61,7 +81,7 @@ export function RestTimerModal({ visible, currentValue, onSave, onClose }: RestT
         ))}
       </Picker>
 
-      <Button title="Save" onPress={handleSave} loading={saving} />
+      {!autoSave && <Button title="Save" onPress={handleSave} loading={saving} />}
     </BottomSheetModal>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { Button } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import { notificationService } from '../../../src/services';
 
@@ -71,37 +70,30 @@ function ToggleRow({ label, description, value, onValueChange, disabled = false 
 export default function NotificationsSettingsScreen() {
   const { profile, updateProfile } = useProfileStore();
 
-  const [restTimerEnabled, setRestTimerEnabled] = useState(true);
-  const [workoutDayEnabled, setWorkoutDayEnabled] = useState(true);
-  const [workoutRestDaysEnabled, setWorkoutRestDaysEnabled] = useState(false);
-  const [reminderTime, setReminderTime] = useState('08:00');
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!profile) return;
-    setRestTimerEnabled(profile.notify_rest_timer_enabled ?? true);
-    setWorkoutDayEnabled(profile.notify_workout_day_enabled ?? true);
-    setWorkoutRestDaysEnabled(profile.notify_workout_rest_days_enabled ?? false);
-    setReminderTime(profile.notify_workout_day_time ?? '08:00');
-  }, [profile]);
+  const restTimerEnabled = profile?.notify_rest_timer_enabled ?? true;
+  const workoutDayEnabled = profile?.notify_workout_day_enabled ?? true;
+  const workoutRestDaysEnabled = profile?.notify_workout_rest_days_enabled ?? false;
+  const reminderTime = profile?.notify_workout_day_time ?? '08:00';
 
   const reminderDate = useMemo(() => parseTime(reminderTime), [reminderTime]);
 
-  const handleTimeChange = (_event: DateTimePickerEvent, date?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowTimePicker(false);
-    }
-    if (!date) return;
-    setReminderTime(toTimeString(date));
-  };
-
-  const handleSave = async () => {
+  const persistNotificationUpdates = async (updates: {
+    notify_rest_timer_enabled?: boolean;
+    notify_workout_day_enabled?: boolean;
+    notify_workout_day_time?: string;
+    notify_workout_rest_days_enabled?: boolean;
+  }) => {
     if (!profile) return;
 
-    setSaving(true);
     try {
-      if (restTimerEnabled || workoutDayEnabled) {
+      const nextProfile = { ...profile, ...updates };
+      const wantsNotifications = Boolean(
+        (nextProfile.notify_rest_timer_enabled ?? true)
+          || (nextProfile.notify_workout_day_enabled ?? true),
+      );
+
+      if (wantsNotifications) {
         const granted = await notificationService.ensurePermissions();
         if (!granted) {
           Alert.alert(
@@ -112,31 +104,26 @@ export default function NotificationsSettingsScreen() {
         }
       }
 
-      const updates = {
-        notify_rest_timer_enabled: restTimerEnabled,
-        notify_workout_day_enabled: workoutDayEnabled,
-        notify_workout_day_time: reminderTime,
-        notify_workout_rest_days_enabled: workoutRestDaysEnabled,
-      };
-
       await updateProfile(updates);
 
-      const nextProfile = {
-        ...profile,
-        ...updates,
-      };
-
-      if (!restTimerEnabled) {
+      if (updates.notify_rest_timer_enabled === false) {
         await notificationService.cancelRestTimerNotification();
       }
-      await notificationService.syncWorkoutDayReminder(nextProfile);
 
-      Alert.alert('Saved', 'Notification preferences updated.');
+      await notificationService.syncWorkoutDayReminder(nextProfile);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message || 'Failed to save notification settings.');
-    } finally {
-      setSaving(false);
     }
+  };
+
+  const handleTimeChange = (_event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
+    if (!date) return;
+    const nextTime = toTimeString(date);
+    if (nextTime === reminderTime) return;
+    void persistNotificationUpdates({ notify_workout_day_time: nextTime });
   };
 
   return (
@@ -146,14 +133,18 @@ export default function NotificationsSettingsScreen() {
           label="Rest Timer Notifications"
           description="Notify when rest timer completes while app is in background."
           value={restTimerEnabled}
-          onValueChange={setRestTimerEnabled}
+          onValueChange={(next) => {
+            void persistNotificationUpdates({ notify_rest_timer_enabled: next });
+          }}
         />
 
         <ToggleRow
           label="Workout Day Reminders"
           description="Daily reminder based on your current active routine week."
           value={workoutDayEnabled}
-          onValueChange={setWorkoutDayEnabled}
+          onValueChange={(next) => {
+            void persistNotificationUpdates({ notify_workout_day_enabled: next });
+          }}
         />
 
         <TouchableOpacity
@@ -173,7 +164,9 @@ export default function NotificationsSettingsScreen() {
           label="Notify on Rest Days"
           description="When enabled, sends a reminder even if no workout is scheduled today."
           value={workoutRestDaysEnabled}
-          onValueChange={setWorkoutRestDaysEnabled}
+          onValueChange={(next) => {
+            void persistNotificationUpdates({ notify_workout_rest_days_enabled: next });
+          }}
           disabled={!workoutDayEnabled}
         />
       </View>
@@ -189,10 +182,6 @@ export default function NotificationsSettingsScreen() {
           />
         </View>
       )}
-
-      <View style={styles.footer}>
-        <Button title="Save" onPress={handleSave} loading={saving} />
-      </View>
     </View>
   );
 }
@@ -254,8 +243,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     overflow: 'hidden',
     alignItems: 'center',
-  },
-  footer: {
-    marginTop: 16,
   },
 });

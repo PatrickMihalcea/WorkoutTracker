@@ -37,6 +37,7 @@ export default function WorkoutsSettingsScreen() {
         visible={showPicker}
         currentValue={restSeconds}
         onSave={handleSave}
+        autoSave
         onClose={() => setShowPicker(false)}
       />
     </View>

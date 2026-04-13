@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { Button } from '../../../src/components/ui';
 import { colors, fonts } from '../../../src/constants';
 import { WeightUnit, HeightUnit, DistanceUnit } from '../../../src/models/profile';
 
@@ -44,7 +43,6 @@ export default function UnitsScreen() {
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(profile?.weight_unit ?? 'kg');
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(profile?.height_unit ?? 'cm');
   const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>(profile?.distance_unit ?? 'km');
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -54,19 +52,39 @@ export default function UnitsScreen() {
     }
   }, [profile]);
 
-  const handleSave = async () => {
-    setSaving(true);
+  const handleWeightToggle = async (next: WeightUnit) => {
+    if (!profile || next === weightUnit) return;
+    const previous = weightUnit;
+    setWeightUnit(next);
     try {
-      await updateProfile({
-        weight_unit: weightUnit,
-        height_unit: heightUnit,
-        distance_unit: distanceUnit,
-      });
-      Alert.alert('Saved', 'Unit preferences updated');
+      await updateProfile({ weight_unit: next });
     } catch (error: unknown) {
+      setWeightUnit(previous);
       Alert.alert('Error', (error as Error).message);
-    } finally {
-      setSaving(false);
+    }
+  };
+
+  const handleHeightToggle = async (next: HeightUnit) => {
+    if (!profile || next === heightUnit) return;
+    const previous = heightUnit;
+    setHeightUnit(next);
+    try {
+      await updateProfile({ height_unit: next });
+    } catch (error: unknown) {
+      setHeightUnit(previous);
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
+  const handleDistanceToggle = async (next: DistanceUnit) => {
+    if (!profile || next === distanceUnit) return;
+    const previous = distanceUnit;
+    setDistanceUnit(next);
+    try {
+      await updateProfile({ distance_unit: next });
+    } catch (error: unknown) {
+      setDistanceUnit(previous);
+      Alert.alert('Error', (error as Error).message);
     }
   };
 
@@ -78,26 +96,22 @@ export default function UnitsScreen() {
           optionA="kg"
           optionB="lbs"
           value={weightUnit}
-          onToggle={(v) => setWeightUnit(v as WeightUnit)}
+          onToggle={(v) => { void handleWeightToggle(v as WeightUnit); }}
         />
         <UnitSwitch
           label="Height"
           optionA="cm"
           optionB="in"
           value={heightUnit}
-          onToggle={(v) => setHeightUnit(v as HeightUnit)}
+          onToggle={(v) => { void handleHeightToggle(v as HeightUnit); }}
         />
         <UnitSwitch
           label="Distance"
           optionA="km"
           optionB="miles"
           value={distanceUnit}
-          onToggle={(v) => setDistanceUnit(v as DistanceUnit)}
+          onToggle={(v) => { void handleDistanceToggle(v as DistanceUnit); }}
         />
-      </View>
-
-      <View style={styles.footer}>
-        <Button title="Save" onPress={handleSave} loading={saving} />
       </View>
     </View>
   );
@@ -145,10 +159,5 @@ const styles = StyleSheet.create({
   },
   switchTextActive: {
     color: colors.background,
-  },
-  footer: {
-    padding: 24,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
 });
