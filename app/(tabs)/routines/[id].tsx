@@ -122,6 +122,9 @@ export default function RoutineDetailScreen() {
   const [dayLabel, setDayLabel] = useState('');
   const [selectedWeek, setSelectedWeek] = useState<number>(0);
   const [updatingWeeks, setUpdatingWeeks] = useState(false);
+  const [showCopyWeekModal, setShowCopyWeekModal] = useState(false);
+  const [copyActionMode, setCopyActionMode] = useState<'from' | 'to' | null>(null);
+  const [selectedCopyWeekValue, setSelectedCopyWeekValue] = useState<number | 'new' | null>(null);
 
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [addExerciseDayId, setAddExerciseDayId] = useState<string | null>(null);
@@ -185,6 +188,21 @@ export default function RoutineDetailScreen() {
       return { key: String(week), label: `Week ${week}`, value: week };
     });
   }, [currentRoutine]);
+
+  const copyWeekOptions = useMemo(() => {
+    if (!currentRoutine || !copyActionMode) return [];
+    const viewedWeek = selectedWeek;
+    const weekChoices = Array.from({ length: currentRoutine.week_count }, (_, index) => {
+      const week = index + 1;
+      return { key: `week-${week}`, label: `Week ${week}`, value: week as number | 'new' };
+    }).filter((item) => item.value !== viewedWeek);
+
+    if (copyActionMode === 'to') {
+      weekChoices.push({ key: 'week-new', label: '+ New Week', value: 'new' });
+    }
+
+    return weekChoices;
+  }, [currentRoutine, copyActionMode, selectedWeek]);
 
   const selectedWeekDays = useMemo(() => {
     if (!currentRoutine) return [];
@@ -419,6 +437,129 @@ export default function RoutineDetailScreen() {
       Alert.alert('Error', (error as Error).message);
     }
   }, [currentRoutine, id, selectedWeek, fetchRoutineDetail, profile]);
+
+  const executeCopyWeek = useCallback(async (sourceWeek: number, targetWeek: number, toast: string) => {
+    if (!currentRoutine || !id || updatingWeeks) return;
+    setUpdatingWeeks(true);
+    try {
+      await routineService.copyWeek(id, sourceWeek, targetWeek);
+      await fetchRoutineDetail(id);
+      setToastMessage(toast);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    } finally {
+      setUpdatingWeeks(false);
+    }
+  }, [currentRoutine, id, fetchRoutineDetail, updatingWeeks]);
+
+  const executeCopyToNewWeek = useCallback(async (sourceWeek: number) => {
+    if (!currentRoutine || !id || updatingWeeks) return;
+    const nextWeek = currentRoutine.week_count + 1;
+    setUpdatingWeeks(true);
+    try {
+      await routineService.setWeekCount(id, nextWeek);
+      if (sourceWeek !== currentRoutine.week_count) {
+        await routineService.copyWeek(id, sourceWeek, nextWeek);
+      }
+      setSelectedWeek(nextWeek);
+      await fetchRoutineDetail(id);
+      setToastMessage(`Copied Week ${sourceWeek} to new Week ${nextWeek}.`);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    } finally {
+      setUpdatingWeeks(false);
+    }
+  }, [currentRoutine, id, fetchRoutineDetail, updatingWeeks]);
+
+  const openCopyFromMenu = useCallback(() => {
+    if (!currentRoutine || updatingWeeks || currentRoutine.week_count <= 1) return;
+    setCopyActionMode('from');
+    setSelectedCopyWeekValue(null);
+    setShowCopyWeekModal(true);
+  }, [currentRoutine, updatingWeeks]);
+
+  const openCopyToMenu = useCallback(() => {
+    if (!currentRoutine || updatingWeeks) return;
+    setCopyActionMode('to');
+    setSelectedCopyWeekValue(null);
+    setShowCopyWeekModal(true);
+  }, [currentRoutine, updatingWeeks]);
+
+  const handleConfirmCopyWeekSelection = useCallback(() => {
+    if (!currentRoutine || !id || !copyActionMode || selectedCopyWeekValue == null || updatingWeeks) return;
+
+    const viewedWeek = selectedWeek;
+    setShowCopyWeekModal(false);
+
+    if (copyActionMode === 'from') {
+      if (typeof selectedCopyWeekValue !== 'number') return;
+      const sourceWeek = selectedCopyWeekValue;
+      Alert.alert(
+        'Copy From',
+        `Copy week ${sourceWeek} into week ${viewedWeek}? This will replace all days in week ${viewedWeek}.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Copy',
+            onPress: () => {
+              void executeCopyWeek(
+                sourceWeek,
+                viewedWeek,
+                `Copied Week ${sourceWeek} to Week ${viewedWeek}.`,
+              );
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    if (selectedCopyWeekValue === 'new') {
+      const newWeek = currentRoutine.week_count + 1;
+      Alert.alert(
+        'Copy To',
+        `Copy week ${viewedWeek} to new week ${newWeek}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Copy',
+            onPress: () => {
+              void executeCopyToNewWeek(viewedWeek);
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    const targetWeek = selectedCopyWeekValue;
+    Alert.alert(
+      'Copy To',
+      `Copy week ${viewedWeek} to week ${targetWeek}? This will replace all days in week ${targetWeek}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Copy',
+          onPress: () => {
+            void executeCopyWeek(
+              viewedWeek,
+              targetWeek,
+              `Copied Week ${viewedWeek} to Week ${targetWeek}.`,
+            );
+          },
+        },
+      ],
+    );
+  }, [
+    currentRoutine,
+    id,
+    copyActionMode,
+    selectedCopyWeekValue,
+    selectedWeek,
+    updatingWeeks,
+    executeCopyWeek,
+    executeCopyToNewWeek,
+  ]);
 
   const applySupersetChanges = async (dayExercises: RoutineDayExercise[], updated: SupersetGroups) => {
     for (const ex of dayExercises) {
@@ -671,20 +812,45 @@ export default function RoutineDetailScreen() {
             return isSelected ? styles.weekChipActiveTextSelected : styles.weekChipActiveText;
           }}
         />
-        <View style={styles.weekActions}>
-          <Button
-            title="Delete Week"
-            variant="danger"
+        <View style={styles.weekActionsInline}>
+          <TouchableOpacity
+            style={[
+              styles.weekMiniBtn,
+              styles.weekMinusBtn,
+              (updatingWeeks || currentRoutine.week_count <= 1) && styles.weekMiniBtnDisabled,
+            ]}
             onPress={handleDeleteSelectedWeek}
-            loading={updatingWeeks}
-            disabled={currentRoutine.week_count <= 1}
+            disabled={updatingWeeks || currentRoutine.week_count <= 1}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.weekMiniBtnText, styles.weekMinusText]}>-</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.weekMiniBtn,
+              styles.weekPlusBtn,
+              updatingWeeks && styles.weekMiniBtnDisabled,
+            ]}
+            onPress={handleAddWeek}
+            disabled={updatingWeeks}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.weekMiniBtnText, styles.weekPlusText]}>+</Text>
+          </TouchableOpacity>
+          <Button
+            title="Copy To"
+            variant="secondary"
+            size="sm"
+            onPress={openCopyToMenu}
+            disabled={updatingWeeks}
             style={styles.weekActionBtn}
           />
           <Button
-            title="+ Week"
+            title="Copy From"
             variant="secondary"
-            onPress={handleAddWeek}
-            loading={updatingWeeks}
+            size="sm"
+            onPress={openCopyFromMenu}
+            disabled={updatingWeeks || currentRoutine.week_count <= 1}
             style={styles.weekActionBtn}
           />
         </View>
@@ -737,6 +903,41 @@ export default function RoutineDetailScreen() {
           onPress={() => setShowAddDay(true)}
         />
       </ScrollView>
+
+      <BottomSheetModal
+        visible={showCopyWeekModal}
+        title={copyActionMode === 'from' ? 'Copy From' : 'Copy To'}
+        onClose={() => setShowCopyWeekModal(false)}
+      >
+        <Text style={styles.copyWeekHelper}>
+          {copyActionMode === 'from'
+            ? `Choose which week to copy into week ${selectedWeek}.`
+            : `Choose where to copy week ${selectedWeek}.`}
+        </Text>
+
+        <ChipPicker
+          items={copyWeekOptions}
+          selected={selectedCopyWeekValue}
+          onChange={setSelectedCopyWeekValue}
+          allowDeselect={false}
+          keyboardPersistTaps
+          horizontal={false}
+          maxHeight={220}
+        />
+
+        <View style={styles.modalActions}>
+          <Button
+            title="Cancel"
+            variant="ghost"
+            onPress={() => setShowCopyWeekModal(false)}
+          />
+          <Button
+            title="Copy"
+            onPress={handleConfirmCopyWeekSelection}
+            disabled={selectedCopyWeekValue == null || updatingWeeks}
+          />
+        </View>
+      </BottomSheetModal>
 
       {/* Add Day Modal */}
       <BottomSheetModal visible={showAddDay} title="Add Training Day" onClose={() => setShowAddDay(false)} showCloseButton={false}>
@@ -860,13 +1061,47 @@ const styles = StyleSheet.create({
     color: '#D9F6F2',
     fontFamily: fonts.bold,
   },
-  weekActions: {
+  weekActionsInline: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'stretch',
+    gap: 8,
     marginBottom: 8,
+  },
+  weekMiniBtn: {
+    width: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekMiniBtnDisabled: {
+    opacity: 0.45,
+  },
+  weekMinusBtn: {
+    borderColor: '#FF5A5A',
+  },
+  weekPlusBtn: {
+    borderColor: colors.text,
+  },
+  weekMiniBtnText: {
+    fontSize: 22,
+    lineHeight: 24,
+    fontFamily: fonts.bold,
+  },
+  weekMinusText: {
+    color: '#FF5A5A',
+  },
+  weekPlusText: {
+    color: colors.text,
   },
   weekActionBtn: {
     flex: 1,
+  },
+  copyWeekHelper: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    marginBottom: 10,
   },
   activeWeekBtn: {
     marginBottom: 6,

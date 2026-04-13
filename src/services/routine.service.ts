@@ -283,6 +283,25 @@ export const routineService = {
     return data;
   },
 
+  async copyWeek(routineId: string, sourceWeekIndex: number, targetWeekIndex: number): Promise<void> {
+    if (sourceWeekIndex < 1 || targetWeekIndex < 1) return;
+    if (sourceWeekIndex === targetWeekIndex) return;
+
+    const routine = await this.getById(routineId);
+    if (sourceWeekIndex > routine.week_count || targetWeekIndex > routine.week_count) {
+      throw new Error(`Week must be between 1 and ${routine.week_count}`);
+    }
+
+    const { error: deleteError } = await supabase
+      .from('routine_days')
+      .delete()
+      .eq('routine_id', routineId)
+      .eq('week_index', targetWeekIndex);
+    if (deleteError) throw deleteError;
+
+    await this.duplicateWeekTemplate(routineId, sourceWeekIndex, targetWeekIndex);
+  },
+
   async setActive(id: string, userId: string): Promise<void> {
     await supabase
       .from('routines')
