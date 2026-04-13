@@ -2,6 +2,8 @@ import { create } from 'zustand';
 
 import { WorkoutSession, WorkoutRow, SetLog, RoutineDayExercise, Exercise } from '../models';
 import { sessionService, workoutRowService, routineService, exerciseService } from '../services';
+import { notificationService } from '../services/notification.service';
+import { useProfileStore } from './profile.store';
 
 function generateId(): string {
   const hex = '0123456789abcdef';
@@ -101,6 +103,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   hydrateActiveSession: async (session) => {
     if (!session) {
       set(resetWorkoutState());
+      void notificationService.cancelRestTimerNotification();
       return false;
     }
 
@@ -114,6 +117,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         supersetGroups: {},
         restTimer: null,
       });
+      void notificationService.cancelRestTimerNotification();
       return true;
     }
 
@@ -185,6 +189,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         previousSets: {},
         restTimer: null,
       });
+      void notificationService.cancelRestTimerNotification();
       return true;
     } catch {
       set({
@@ -196,6 +201,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         supersetGroups: {},
         restTimer: null,
       });
+      void notificationService.cancelRestTimerNotification();
       return true;
     }
   },
@@ -230,6 +236,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         previousSets: {},
         restTimer: null,
       });
+      void notificationService.cancelRestTimerNotification();
     } finally {
       set({ loading: false });
     }
@@ -241,6 +248,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       const session = await sessionService.getActiveSession(userId);
       if (!session) {
         set(resetWorkoutState());
+        void notificationService.cancelRestTimerNotification();
         return false;
       }
       return await get().hydrateActiveSession(session);
@@ -639,6 +647,8 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
     const completedSessionId = session.id;
     set(resetWorkoutState());
+    void notificationService.cancelRestTimerNotification();
+    void notificationService.syncWorkoutDayReminder(useProfileStore.getState().profile);
     return completedSessionId;
   },
 
@@ -648,14 +658,21 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     await workoutRowService.deleteBySession(session.id);
     await sessionService.cancel(session.id);
     set(resetWorkoutState());
+    void notificationService.cancelRestTimerNotification();
   },
 
   reset: () => {
     set(resetWorkoutState());
+    void notificationService.cancelRestTimerNotification();
   },
 
   startRestTimer: (seconds) => {
     set({ restTimer: { remaining: seconds, total: seconds } });
+    const profile = useProfileStore.getState().profile;
+    const enabled = profile?.notify_rest_timer_enabled ?? true;
+    if (enabled) {
+      void notificationService.scheduleRestTimerNotification(seconds);
+    }
   },
 
   tickRestTimer: () => {
@@ -664,6 +681,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const next = restTimer.remaining - 1;
     if (next <= 0) {
       set({ restTimer: null });
+      void notificationService.cancelRestTimerNotification();
     } else {
       set({ restTimer: { ...restTimer, remaining: next } });
     }
@@ -676,12 +694,19 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const newTotal = Math.max(0, restTimer.total + delta);
     if (newRemaining <= 0) {
       set({ restTimer: null });
+      void notificationService.cancelRestTimerNotification();
     } else {
       set({ restTimer: { remaining: newRemaining, total: newTotal } });
+      const profile = useProfileStore.getState().profile;
+      const enabled = profile?.notify_rest_timer_enabled ?? true;
+      if (enabled) {
+        void notificationService.scheduleRestTimerNotification(newRemaining);
+      }
     }
   },
 
   dismissRestTimer: () => {
     set({ restTimer: null });
+    void notificationService.cancelRestTimerNotification();
   },
 }));

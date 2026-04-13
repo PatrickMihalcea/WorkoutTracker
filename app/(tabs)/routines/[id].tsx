@@ -18,7 +18,7 @@ import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
-import { routineService } from '../../../src/services';
+import { routineService, notificationService } from '../../../src/services';
 import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
 import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast, ExercisePickerModal, SupersetBracket, ChipPicker } from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
@@ -414,10 +414,11 @@ export default function RoutineDetailScreen() {
     try {
       await routineService.setCurrentWeek(id, selectedWeek);
       await fetchRoutineDetail(id);
+      void notificationService.syncWorkoutDayReminder(profile);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
-  }, [currentRoutine, id, selectedWeek, fetchRoutineDetail]);
+  }, [currentRoutine, id, selectedWeek, fetchRoutineDetail, profile]);
 
   const applySupersetChanges = async (dayExercises: RoutineDayExercise[], updated: SupersetGroups) => {
     for (const ex of dayExercises) {

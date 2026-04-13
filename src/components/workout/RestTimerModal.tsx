@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { BottomSheetModal, Button } from '../ui';
 import { colors, fonts } from '../../constants';
@@ -23,12 +23,13 @@ const OPTIONS = buildOptions();
 interface RestTimerModalProps {
   visible: boolean;
   currentValue: number;
-  onSave: (seconds: number) => void;
+  onSave: (seconds: number) => void | Promise<void>;
   onClose: () => void;
 }
 
 export function RestTimerModal({ visible, currentValue, onSave, onClose }: RestTimerModalProps) {
   const [selected, setSelected] = useState(currentValue);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -36,9 +37,16 @@ export function RestTimerModal({ visible, currentValue, onSave, onClose }: RestT
     }
   }, [visible, currentValue]);
 
-  const handleSave = () => {
-    onSave(selected);
-    onClose();
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(selected);
+      onClose();
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message || 'Failed to update rest timer.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -53,7 +61,7 @@ export function RestTimerModal({ visible, currentValue, onSave, onClose }: RestT
         ))}
       </Picker>
 
-      <Button title="Save" onPress={handleSave} />
+      <Button title="Save" onPress={handleSave} loading={saving} />
     </BottomSheetModal>
   );
 }

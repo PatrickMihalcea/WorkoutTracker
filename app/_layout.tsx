@@ -9,6 +9,7 @@ import { useAuthStore } from '../src/stores/auth.store';
 import { useProfileStore } from '../src/stores/profile.store';
 import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
 import { colors } from '../src/constants';
+import { notificationService } from '../src/services';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -28,6 +29,10 @@ export default function RootLayout() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    void notificationService.initialize();
+  }, []);
 
   const ready = fontsLoaded && initialized && !profileLoading;
 
@@ -57,6 +62,31 @@ export default function RootLayout() {
       router.replace('/(tabs)/today');
     }
   }, [session, profile, ready, segments, router]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!session) return;
+    if (!profile?.onboarding_complete) return;
+
+    void (async () => {
+      const wantsNotifications = Boolean(
+        profile.notify_rest_timer_enabled || profile.notify_workout_day_enabled,
+      );
+      if (wantsNotifications) {
+        await notificationService.ensurePermissions();
+      }
+      await notificationService.syncWorkoutDayReminder(profile);
+    })();
+  }, [
+    ready,
+    session?.user?.id,
+    profile?.id,
+    profile?.onboarding_complete,
+    profile?.notify_rest_timer_enabled,
+    profile?.notify_workout_day_enabled,
+    profile?.notify_workout_day_time,
+    profile?.notify_workout_rest_days_enabled,
+  ]);
 
   if (!ready) {
     return (

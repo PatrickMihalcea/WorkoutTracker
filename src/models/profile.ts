@@ -24,6 +24,10 @@ export interface UserProfile {
   distance_unit: DistanceUnit;
   color_preferences: ColorPreferences;
   rest_timer_seconds: number;
+  notify_rest_timer_enabled: boolean;
+  notify_workout_day_enabled: boolean;
+  notify_workout_day_time: string;
+  notify_workout_rest_days_enabled: boolean;
   show_routine_performance: boolean;
   onboarding_complete: boolean;
   body_weight_kg_goal?: number | null;

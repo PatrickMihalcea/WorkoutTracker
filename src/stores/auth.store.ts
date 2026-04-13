@@ -3,6 +3,7 @@ import { Session, User } from '@supabase/supabase-js';
 import { accountService, authService } from '../services';
 import { supabase } from '../services/supabase';
 import { useProfileStore } from './profile.store';
+import { notificationService } from '../services/notification.service';
 
 interface AuthState {
   session: Session | null;
@@ -51,6 +52,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         await useProfileStore.getState().fetchProfile(typedSession.user.id);
       } else {
         useProfileStore.getState().setProfile(null);
+        void notificationService.cancelRestTimerNotification();
+        void notificationService.cancelWorkoutDayReminderNotifications();
       }
     });
   },
@@ -76,6 +79,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   signOut: async () => {
     await authService.signOut();
     useProfileStore.getState().setProfile(null);
+    void notificationService.cancelRestTimerNotification();
+    void notificationService.cancelWorkoutDayReminderNotifications();
     set({ session: null, user: null });
   },
 
@@ -89,6 +94,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         // User may already be invalidated after deletion.
       }
       useProfileStore.getState().setProfile(null);
+      void notificationService.cancelRestTimerNotification();
+      void notificationService.cancelWorkoutDayReminderNotifications();
       set({ session: null, user: null });
     } finally {
       set({ loading: false });

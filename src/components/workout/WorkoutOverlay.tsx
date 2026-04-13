@@ -225,10 +225,11 @@ export function WorkoutOverlay() {
   }, [completeWorkout, weightUnit, router]);
 
   const handleStartRestTimer = useCallback(() => {
-    if (restTimerDefault > 0) {
-      startRestTimer(restTimerDefault);
+    const latestDefault = useProfileStore.getState().profile?.rest_timer_seconds ?? 90;
+    if (latestDefault > 0) {
+      startRestTimer(latestDefault);
     }
-  }, [restTimerDefault, startRestTimer]);
+  }, [startRestTimer]);
 
   const handleUpdateLocal = (id: string, entryId: string, updates: Record<string, string>) => {
     updateRowLocal(id, entryId, updates);

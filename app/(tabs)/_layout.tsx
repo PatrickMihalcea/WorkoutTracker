@@ -59,7 +59,7 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
           >
             {route.name === 'history' ? (
               <Image
-                source={require('../../assets/icons/history.png')}
+                source={require('../../assets/icons/graph.png')}
                 style={[styles.tabImage, { tintColor: color }]}
               />
             ) : (

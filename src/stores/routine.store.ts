@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { Exercise, Routine, RoutineWithDays } from '../models';
 import { routineService } from '../services';
+import { notificationService } from '../services/notification.service';
+import { useProfileStore } from './profile.store';
 
 interface RoutineState {
   routines: Routine[];
@@ -82,6 +84,7 @@ export const useRoutineStore = create<RoutineState>((set) => ({
     }));
     const routine = await routineService.getWithDays(id);
     set({ activeRoutine: routine });
+    void notificationService.syncWorkoutDayReminder(useProfileStore.getState().profile);
   },
 
   deleteRoutine: async (id) => {

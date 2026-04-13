@@ -75,6 +75,10 @@ export default function DisplayNameScreen() {
             distance_unit: 'km',
             color_preferences: {},
             rest_timer_seconds: 90,
+            notify_rest_timer_enabled: true,
+            notify_workout_day_enabled: true,
+            notify_workout_day_time: '08:00',
+            notify_workout_rest_days_enabled: false,
             show_routine_performance: true,
             onboarding_complete: false,
           });
