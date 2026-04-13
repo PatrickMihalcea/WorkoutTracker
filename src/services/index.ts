@@ -13,3 +13,4 @@ export { exerciseDetailService } from './exerciseDetail.service';
 export type { ExerciseDetailData, PersonalRecord, SetRecord, WeightDurationRecord, DistanceRecord } from './exerciseDetail.service';
 export type { SessionRecordAchieved, SessionRecordMetric } from './session.service';
 export { notificationService } from './notification.service';
+export { onboardingService } from './onboarding.service';
