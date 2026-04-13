@@ -54,6 +54,7 @@ export function SetRow({
   showInlineDelete = false,
   onInlineDelete,
 }: SetRowProps) {
+  type RowFieldKey = 'weight' | 'reps' | 'duration' | 'distance';
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
   const config = getExerciseTypeConfig(exerciseType);
 
@@ -77,11 +78,16 @@ export function SetRow({
     return getSuggestedForField(key);
   };
 
-  const handleFieldChange = (key: string, v: string) => {
+  const getRowFieldValue = (key: RowFieldKey): string => {
+    return row[key];
+  };
+
+  const handleFieldChange = (key: RowFieldKey, v: string) => {
     onUpdateRowLocal({ [key]: v });
   };
-  const handleFieldBlur = (key: string) => {
-    onUpdateRow({ [key]: (row as Record<string, unknown>)[key] as string });
+
+  const handleFieldBlur = (key: RowFieldKey) => {
+    onUpdateRow({ [key]: getRowFieldValue(key) });
   };
 
   const handleRirSelect = (value: number | null) => {
@@ -103,7 +109,8 @@ export function SetRow({
     const pendingUpdates: Record<string, string> = {};
 
     for (const field of config.fields) {
-      const rowVal = (row as Record<string, unknown>)[field.key] as string;
+      const key = field.key as RowFieldKey;
+      const rowVal = getRowFieldValue(key);
       const suggested = getSuggestedForField(field.key);
       const finalVal = rowVal || suggested;
       if (finalVal !== rowVal) pendingUpdates[field.key] = finalVal;
@@ -192,7 +199,8 @@ export function SetRow({
             </View>
 
             {config.fields.map((field) => {
-              const rowVal = (row as Record<string, unknown>)[field.key] as string;
+              const key = field.key as RowFieldKey;
+              const rowVal = getRowFieldValue(key);
 
               if (field.key === 'duration') {
                 const displayVal = durationSeconds > 0
@@ -221,8 +229,8 @@ export function SetRow({
                   key={field.key}
                   style={[styles.input, styles.fieldInput]}
                   value={rowVal}
-                  onChangeText={(v) => handleFieldChange(field.key, v)}
-                  onBlur={() => handleFieldBlur(field.key)}
+                  onChangeText={(v) => handleFieldChange(key, v)}
+                  onBlur={() => handleFieldBlur(key)}
                   placeholder={placeholder}
                   placeholderTextColor={colors.textMuted}
                   keyboardType={field.keyboardType}

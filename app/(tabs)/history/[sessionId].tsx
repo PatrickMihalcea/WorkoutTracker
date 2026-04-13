@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { routineService, sessionService } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
@@ -264,7 +265,7 @@ export default function SessionDetailScreen() {
   const [routineDayTemplate, setRoutineDayTemplate] = useState<RoutineDayWithExercises | null>(null);
   const [templateResolved, setTemplateResolved] = useState(false);
 
-  const loadSession = async () => {
+  const loadSession = useCallback(async () => {
     if (!sessionId) return;
     try {
       const data = await sessionService.getByIdWithExercises(sessionId);
@@ -274,11 +275,15 @@ export default function SessionDetailScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionId]);
 
   useEffect(() => {
-    loadSession();
-  }, [sessionId]);
+    void loadSession();
+  }, [loadSession]);
+
+  useFocusEffect(useCallback(() => {
+    void loadSession();
+  }, [loadSession]));
 
   useEffect(() => {
     let active = true;
@@ -659,6 +664,28 @@ export default function SessionDetailScreen() {
     setSwapGroupKey(null);
   };
 
+  const handleSwapDeletedWithoutReplacement = (exercise: Exercise) => {
+    if (!session || !swapGroupKey) return;
+    const groups = groupSetsByExercise(session.sets);
+    const group = groups.find((g) => g.key === swapGroupKey);
+    if (!group || group.exerciseId !== exercise.id) return;
+
+    void withGroupUpdate(async () => {
+      const freshGroups = groupSetsByExercise(session.sets);
+      const target = freshGroups.find((g) => g.key === group.key);
+      if (!target) return;
+      const remaining = freshGroups.filter((g) => g.key !== target.key);
+      const entries = buildSupersetEntries(remaining);
+      const supersetMap = buildSupersetGroupMap(remaining);
+      const cleaned = autoCleanAfterDelete(entries, supersetMap);
+      const cleanedGroups = remaining.map((g) => ({ ...g, supersetGroup: cleaned[g.key] ?? null }));
+      await sessionService.deleteSetsByIds(target.sets.map((set) => set.id));
+      await persistGroupedSession(cleanedGroups);
+    });
+    setShowSwapPicker(false);
+    setSwapGroupKey(null);
+  };
+
   const buildExerciseMenuItems = (group: ExerciseGroup, idx: number, groups: ExerciseGroup[]): OverflowMenuItem[] => {
     const items: OverflowMenuItem[] = [{ label: 'Edit Sets', onPress: () => openExerciseEditor(group) }];
     const myGroup = group.supersetGroup ?? null;
@@ -1005,6 +1032,10 @@ export default function SessionDetailScreen() {
         visible={showSwapPicker}
         onClose={() => { setShowSwapPicker(false); setSwapGroupKey(null); }}
         onSelect={handleSwapSelect}
+        onDeletedSelectedWithoutReplacement={handleSwapDeletedWithoutReplacement}
+        selectedExerciseId={swapGroupKey
+          ? (groupSetsByExercise(session?.sets ?? []).find((group) => group.key === swapGroupKey)?.exerciseId ?? null)
+          : null}
         onExerciseDetails={(exerciseId) => router.push(`/exercise/${exerciseId}`)}
       />
       {updatingGroups && (

@@ -292,8 +292,11 @@ export default function RoutineDetailScreen() {
     }
   };
 
-  const handleDeleteExercise = (exercise: Exercise) =>
-    confirmDeleteExercise(exercise, user?.id ?? '', () => { if (id) fetchRoutineDetail(id); });
+  const handleDeleteExercise = (exercise: Exercise, onDeleted?: () => void) =>
+    confirmDeleteExercise(exercise, user?.id ?? '', () => {
+      if (id) fetchRoutineDetail(id);
+      onDeleted?.();
+    });
 
   const handleRemoveExercise = async (entryId: string) => {
     await routineService.removeDayExercise(entryId);
@@ -480,6 +483,19 @@ export default function RoutineDetailScreen() {
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
+    setShowSwapPicker(false);
+    setSwapEntryId(null);
+    setSwapDayId(null);
+  };
+
+  const handleSwapDeletedWithoutReplacement = (exercise: Exercise) => {
+    if (!swapEntryId || !swapDayId || !currentRoutine) return;
+    const entryId = swapEntryId;
+    const dayId = swapDayId;
+    const day = currentRoutine.days.find((item) => item.id === dayId);
+    const targetEntry = day?.exercises.find((item) => item.id === entryId);
+    if (!day || !targetEntry || targetEntry.exercise_id !== exercise.id) return;
+    void handleExRemove(entryId, day);
     setShowSwapPicker(false);
     setSwapEntryId(null);
     setSwapDayId(null);
@@ -755,6 +771,10 @@ export default function RoutineDetailScreen() {
         visible={showSwapPicker}
         onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); setSwapDayId(null); }}
         onSelect={handleExSwapSelect}
+        onDeletedSelectedWithoutReplacement={handleSwapDeletedWithoutReplacement}
+        selectedExerciseId={swapEntryId && swapDayId
+          ? (currentRoutine?.days.find((day) => day.id === swapDayId)?.exercises.find((entry) => entry.id === swapEntryId)?.exercise_id ?? null)
+          : null}
         onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
       />
     </View>

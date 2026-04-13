@@ -573,4 +573,62 @@ export const routineService = {
 
     return newDay;
   },
+
+  async duplicateRoutine(routineId: string, userId: string): Promise<Routine> {
+    const source = await this.getWithDays(routineId);
+    const newRoutine = await this.create({
+      user_id: userId,
+      name: `${source.name} (copy)`,
+      is_active: false,
+      week_count: source.week_count,
+      current_week: 1,
+    });
+
+    const sortedDays = [...source.days].sort(compareRoutineDays);
+    for (const sourceDay of sortedDays) {
+      const newDay = await this.addDay({
+        routine_id: newRoutine.id,
+        day_of_week: sourceDay.day_of_week,
+        label: sourceDay.label,
+        week_index: sourceDay.week_index,
+      });
+
+      const groupMap = new Map<string, string>();
+      const exercises = [...sourceDay.exercises].sort((a, b) => a.sort_order - b.sort_order);
+      for (const ex of exercises) {
+        const setsPayload = (ex.sets ?? [])
+          .sort((a, b) => a.set_number - b.set_number)
+          .map((s) => ({
+            set_number: s.set_number,
+            target_weight: s.target_weight,
+            target_reps_min: s.target_reps_min,
+            target_reps_max: s.target_reps_max,
+            target_rir: s.target_rir ?? null,
+            target_duration: s.target_duration ?? 0,
+            target_distance: s.target_distance ?? 0,
+            is_warmup: s.is_warmup ?? false,
+          }));
+
+        const newEntry = await this.addExerciseToDay(
+          {
+            routine_day_id: newDay.id,
+            exercise_id: ex.exercise_id,
+            sort_order: ex.sort_order,
+            target_sets: ex.target_sets,
+            target_reps: ex.target_reps,
+          },
+          setsPayload,
+        );
+
+        if (ex.superset_group) {
+          if (!groupMap.has(ex.superset_group)) {
+            groupMap.set(ex.superset_group, generateGroupId());
+          }
+          await this.setSupersetGroup(newEntry.id, groupMap.get(ex.superset_group)!);
+        }
+      }
+    }
+
+    return newRoutine;
+  },
 };

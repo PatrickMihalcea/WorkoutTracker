@@ -1,6 +1,7 @@
 import { Alert } from 'react-native';
 import { Exercise } from '../models';
-import { sessionService, exerciseService } from '../services';
+import { sessionService } from '../services';
+import { deleteCustomExercise } from '../services/exerciseMutation.service';
 
 export async function confirmDeleteExercise(
   exercise: Exercise,
@@ -26,7 +27,7 @@ export async function confirmDeleteExercise(
       style: 'destructive',
       onPress: async () => {
         try {
-          await exerciseService.delete(exercise.id);
+          await deleteCustomExercise(exercise);
           onDeleted();
         } catch {
           Alert.alert('Error', 'Could not delete exercise.');

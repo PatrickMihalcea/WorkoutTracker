@@ -341,6 +341,16 @@ export function WorkoutOverlay() {
     setSwapEntryId(null);
   };
 
+  const handleSwapDeletedWithoutReplacement = (exercise: Exercise) => {
+    if (!swapEntryId) return;
+    const entryId = swapEntryId;
+    const targetEntry = exercises.find((item) => item.id === entryId);
+    if (!targetEntry || targetEntry.exercise_id !== exercise.id) return;
+    void handleRemoveExercise(entryId);
+    setShowSwapPicker(false);
+    setSwapEntryId(null);
+  };
+
   const handleDuplicate = async (entryId: string) => {
     try { await duplicateExercise(entryId); }
     catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
@@ -586,6 +596,8 @@ export function WorkoutOverlay() {
               visible={showSwapPicker}
               onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); }}
               onSelect={handleSwapSelect}
+              onDeletedSelectedWithoutReplacement={handleSwapDeletedWithoutReplacement}
+              selectedExerciseId={swapEntryId ? (exercises.find((entry) => entry.id === swapEntryId)?.exercise_id ?? null) : null}
               onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
             />
           </KeyboardAvoidingView>

@@ -95,6 +95,7 @@ const MUSCLE_GROUP_COLORS: Record<string, string> = {
   [MuscleGroup.Abs]: '#F0B27A',
   [MuscleGroup.Forearms]: '#AED6F1',
   [MuscleGroup.Traps]: '#D5DBDB',
+  [MuscleGroup.Cardio]: '#7EC8E3',
   [MuscleGroup.FullBody]: '#82E0AA',
 };
 

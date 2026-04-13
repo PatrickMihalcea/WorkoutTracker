@@ -4,22 +4,15 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
-import { useAuthStore } from '../../stores/auth.store';
-import { exerciseService } from '../../services';
-import { Button, Input, ChipPicker, MultiChipPicker, BottomSheetModal, ExercisePickerModal } from '../ui';
+import { Button, BottomSheetModal, ExercisePickerModal } from '../ui';
 import { colors, fonts } from '../../constants';
 import {
   Exercise,
-  ExerciseType,
-  MuscleGroup,
-  Equipment,
   WeightUnit,
   DistanceUnit,
   RoutineDayExercise,
 } from '../../models';
-import { EXERCISE_TYPE_ITEMS } from '../../utils/exerciseType';
 import {
   TemplateSetRow,
   defaultSetRow,
@@ -40,18 +33,6 @@ export interface SetsPayloadItem {
   is_warmup?: boolean;
 }
 
-const MUSCLE_GROUP_CHIPS = Object.values(MuscleGroup).map((mg) => ({
-  key: mg,
-  label: mg.replace('_', ' '),
-  value: mg,
-}));
-
-const EQUIPMENT_CHIPS = Object.values(Equipment).map((eq) => ({
-  key: eq,
-  label: eq.replace('_', ' '),
-  value: eq,
-}));
-
 interface AddExerciseModalProps {
   visible: boolean;
   onClose: () => void;
@@ -59,7 +40,7 @@ interface AddExerciseModalProps {
   weightUnit: WeightUnit;
   distanceUnit?: DistanceUnit;
   editingEntry?: RoutineDayExercise | null;
-  onDeleteExercise?: (exercise: Exercise) => void;
+  onDeleteExercise?: (exercise: Exercise, onDeleted?: () => void) => void;
   onExerciseDetails?: (exerciseId: string) => void;
   autoOpenPicker?: boolean;
 }
@@ -75,24 +56,14 @@ export function AddExerciseModal({
   onExerciseDetails,
   autoOpenPicker,
 }: AddExerciseModalProps) {
-  const { user } = useAuthStore();
-
-  const [exercises, setExercises] = useState<Exercise[]>([]);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
-  const [showCreateExercise, setShowCreateExercise] = useState(false);
-  const [newExerciseName, setNewExerciseName] = useState('');
-  const [newExerciseMuscle, setNewExerciseMuscle] = useState<MuscleGroup>(MuscleGroup.Chest);
-  const [newExerciseEquipment, setNewExerciseEquipment] = useState<Equipment>(Equipment.Barbell);
-  const [newExerciseType, setNewExerciseType] = useState<ExerciseType>(ExerciseType.WeightReps);
-  const [newSecondaryMuscles, setNewSecondaryMuscles] = useState<string[]>([]);
 
   const [templateSets, setTemplateSets] = useState<TemplateSetRow[]>([defaultSetRow()]);
   const [useRepRange, setUseRepRange] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      loadExercises();
       if (editingEntry) {
         const ex = editingEntry.exercise ?? null;
         setSelectedExercise(ex);
@@ -119,23 +90,11 @@ export function AddExerciseModal({
     setTimeout(() => onExerciseDetails?.(exerciseId), 250);
   }, [onExerciseDetails]);
 
-  const loadExercises = async () => {
-    try {
-      const list = await exerciseService.getAll();
-      setExercises(list);
-    } catch {
-      // Will be empty
-    }
-  };
-
   const resetAndClose = () => {
     setSelectedExercise(null);
     setShowExercisePicker(false);
-    setShowCreateExercise(false);
     setTemplateSets([defaultSetRow()]);
     setUseRepRange(false);
-    setNewExerciseName('');
-    setNewSecondaryMuscles([]);
     onClose();
   };
 
@@ -144,47 +103,16 @@ export function AddExerciseModal({
     setShowExercisePicker(false);
   };
 
+  const handlePickerExerciseDeleted = (exercise: Exercise) => {
+    setSelectedExercise((prev) => (prev?.id === exercise.id ? null : prev));
+  };
+
   const handleConfirm = () => {
     if (!selectedExercise) return;
     if (useRepRange && !validateRepRange(templateSets)) return;
     const setsPayload = buildSetsPayload(templateSets, weightUnit, useRepRange);
     onConfirm(selectedExercise, setsPayload);
     resetAndClose();
-  };
-
-  const handleCreateExercise = async () => {
-    if (!user || !newExerciseName.trim()) {
-      Alert.alert('Error', 'Please enter an exercise name');
-      return;
-    }
-    const duplicate = exercises.find(
-      (ex) =>
-        ex.name.toLowerCase() === newExerciseName.trim().toLowerCase() &&
-        ex.muscle_group === newExerciseMuscle &&
-        ex.equipment === newExerciseEquipment,
-    );
-    if (duplicate) {
-      Alert.alert('Duplicate', 'An exercise with the same name, muscle group, and equipment already exists.');
-      return;
-    }
-    try {
-      const exercise = await exerciseService.create({
-        user_id: user.id,
-        name: newExerciseName.trim(),
-        muscle_group: newExerciseMuscle,
-        equipment: newExerciseEquipment,
-        exercise_type: newExerciseType,
-        secondary_muscles: newSecondaryMuscles,
-      });
-      setNewExerciseName('');
-      setNewSecondaryMuscles([]);
-      setShowCreateExercise(false);
-      setExercises((prev) => [...prev, exercise]);
-      setSelectedExercise(exercise);
-      setShowExercisePicker(false);
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
-    }
   };
 
   return (
@@ -230,71 +158,10 @@ export function AddExerciseModal({
           onClose={() => setShowExercisePicker(false)}
           onSelect={handleSelectExercise}
           onDeleteExercise={onDeleteExercise}
+          onExerciseDeleted={handlePickerExerciseDeleted}
           onExerciseDetails={handleExerciseDetails}
-          onCreateNew={() => {
-            setShowExercisePicker(false);
-            setTimeout(() => setShowCreateExercise(true), 300);
-          }}
           selectedExerciseId={selectedExercise?.id}
         />
-
-        <BottomSheetModal
-          visible={showCreateExercise}
-          title="Create New Exercise"
-          fullHeight
-          onClose={() => {
-            setShowCreateExercise(false);
-            setNewExerciseName('');
-            setNewSecondaryMuscles([]);
-          }}
-        >
-          <View style={styles.formBody}>
-            <Input
-              label="Exercise Name"
-              value={newExerciseName}
-              onChangeText={setNewExerciseName}
-              placeholder="e.g. Bench Press"
-            />
-
-            <Text style={styles.fieldLabel}>Exercise Type</Text>
-            <ChipPicker
-              items={EXERCISE_TYPE_ITEMS}
-              selected={newExerciseType}
-              onChange={(v) => setNewExerciseType((v as ExerciseType) ?? ExerciseType.WeightReps)}
-              allowDeselect={false}
-            />
-
-            <Text style={styles.fieldLabel}>Primary Muscle Group</Text>
-            <ChipPicker
-              items={MUSCLE_GROUP_CHIPS}
-              selected={newExerciseMuscle}
-              onChange={(v) => setNewExerciseMuscle(v as MuscleGroup)}
-              allowDeselect={false}
-            />
-
-            <Text style={styles.fieldLabel}>Secondary Muscles (optional)</Text>
-            <MultiChipPicker
-              items={MUSCLE_GROUP_CHIPS}
-              selected={newSecondaryMuscles}
-              onChange={setNewSecondaryMuscles}
-            />
-
-            <Text style={styles.fieldLabel}>Equipment</Text>
-            <ChipPicker
-              items={EQUIPMENT_CHIPS}
-              selected={newExerciseEquipment}
-              onChange={(v) => setNewExerciseEquipment(v as Equipment)}
-              allowDeselect={false}
-            />
-          </View>
-
-          <View style={styles.actionButtons}>
-            <Button
-              title="Save Exercise"
-              onPress={handleCreateExercise}
-            />
-          </View>
-        </BottomSheetModal>
       </BottomSheetModal>
   );
 }

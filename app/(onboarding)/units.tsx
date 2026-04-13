@@ -1,40 +1,47 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useProfileStore } from '../../src/stores/profile.store';
-import { Button } from '../../src/components/ui';
-import { colors, fonts } from '../../src/constants';
-import { WeightUnit, HeightUnit, DistanceUnit } from '../../src/models/profile';
 
-interface UnitSwitchProps {
+import { OnboardingScaffold } from '../../src/components/onboarding/OnboardingScaffold';
+import { Button } from '../../src/components/ui';
+import { colors, fonts, spacing } from '../../src/constants';
+import { DistanceUnit, HeightUnit, WeightUnit } from '../../src/models/profile';
+import { useProfileStore } from '../../src/stores/profile.store';
+
+interface UnitOption {
   label: string;
-  optionA: string;
-  optionB: string;
   value: string;
-  onToggle: (val: string) => void;
+  hint: string;
 }
 
-function UnitSwitch({ label, optionA, optionB, value, onToggle }: UnitSwitchProps) {
+interface UnitRowProps {
+  label: string;
+  helper: string;
+  value: string;
+  options: UnitOption[];
+  onSelect: (next: string) => void;
+}
+
+function UnitRow({ label, helper, value, options, onSelect }: UnitRowProps) {
   return (
-    <View style={styles.switchRow}>
-      <Text style={styles.switchLabel}>{label}</Text>
-      <View style={styles.switchTrack}>
-        <TouchableOpacity
-          style={[styles.switchOption, value === optionA && styles.switchOptionActive]}
-          onPress={() => onToggle(optionA)}
-        >
-          <Text style={[styles.switchText, value === optionA && styles.switchTextActive]}>
-            {optionA.toUpperCase()}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.switchOption, value === optionB && styles.switchOptionActive]}
-          onPress={() => onToggle(optionB)}
-        >
-          <Text style={[styles.switchText, value === optionB && styles.switchTextActive]}>
-            {optionB.toUpperCase()}
-          </Text>
-        </TouchableOpacity>
+    <View style={styles.groupCard}>
+      <Text style={styles.groupLabel}>{label}</Text>
+      <Text style={styles.groupHelper}>{helper}</Text>
+      <View style={styles.optionRow}>
+        {options.map((option) => {
+          const selected = value === option.value;
+          return (
+            <TouchableOpacity
+              key={option.value}
+              onPress={() => onSelect(option.value)}
+              activeOpacity={0.8}
+              style={[styles.unitCard, selected && styles.unitCardSelected]}
+            >
+              <Text style={[styles.unitCardLabel, selected && styles.unitCardLabelSelected]}>{option.label}</Text>
+              <Text style={[styles.unitCardHint, selected && styles.unitCardHintSelected]}>{option.hint}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
@@ -43,104 +50,121 @@ function UnitSwitch({ label, optionA, optionB, value, onToggle }: UnitSwitchProp
 export default function UnitsScreen() {
   const router = useRouter();
   const { updateProfile } = useProfileStore();
+
   const [weightUnit, setWeightUnit] = useState<WeightUnit>('kg');
   const [heightUnit, setHeightUnit] = useState<HeightUnit>('cm');
   const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>('km');
 
   const handleContinue = async () => {
-    await updateProfile({ weight_unit: weightUnit, height_unit: heightUnit, distance_unit: distanceUnit });
-    router.push('/(onboarding)/birthday');
+    await updateProfile({
+      weight_unit: weightUnit,
+      height_unit: heightUnit,
+      distance_unit: distanceUnit,
+    });
+    router.push('/(onboarding)/measurements');
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.heading}>Unit preferences</Text>
-        <Text style={styles.subtitle}>Choose how you measure things</Text>
+    <OnboardingScaffold
+      step={2}
+      onBack={() => router.back()}
+      title="Dial in your units"
+      subtitle="Choose how your numbers appear so every set, rep, and distance reads naturally to you."
+      footer={<Button title="Continue" onPress={handleContinue} />}
+    >
+      <UnitRow
+        label="Weight"
+        helper="Used for all training loads and personal records."
+        value={weightUnit}
+        onSelect={(next) => setWeightUnit(next as WeightUnit)}
+        options={[
+          { label: 'Kilograms', value: 'kg', hint: 'KG' },
+          { label: 'Pounds', value: 'lbs', hint: 'LBS' },
+        ]}
+      />
 
-        <UnitSwitch
-          label="Weight"
-          optionA="kg"
-          optionB="lbs"
-          value={weightUnit}
-          onToggle={(v) => setWeightUnit(v as WeightUnit)}
-        />
-        <UnitSwitch
-          label="Height"
-          optionA="cm"
-          optionB="in"
-          value={heightUnit}
-          onToggle={(v) => setHeightUnit(v as HeightUnit)}
-        />
-        <UnitSwitch
-          label="Distance"
-          optionA="km"
-          optionB="miles"
-          value={distanceUnit}
-          onToggle={(v) => setDistanceUnit(v as DistanceUnit)}
-        />
-      </View>
+      <UnitRow
+        label="Height"
+        helper="Used for profile setup and body metrics."
+        value={heightUnit}
+        onSelect={(next) => setHeightUnit(next as HeightUnit)}
+        options={[
+          { label: 'Centimeters', value: 'cm', hint: 'CM' },
+          { label: 'Feet/Inches', value: 'in', hint: 'FT/IN' },
+        ]}
+      />
 
-      <View style={styles.footer}>
-        <Button title="Continue" onPress={handleContinue} />
-      </View>
-    </View>
+      <UnitRow
+        label="Distance"
+        helper="Used for cardio and conditioning movements."
+        value={distanceUnit}
+        onSelect={(next) => setDistanceUnit(next as DistanceUnit)}
+        options={[
+          { label: 'Kilometers', value: 'km', hint: 'KM' },
+          { label: 'Miles', value: 'miles', hint: 'MI' },
+        ]}
+      />
+    </OnboardingScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    flex: 1,
-    padding: 24,
-  },
-  heading: {
-    fontSize: 28,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    fontFamily: fonts.light,
-    color: colors.textMuted,
-    marginBottom: 32,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  switchLabel: {
-    fontSize: 18,
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-  },
-  switchTrack: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
+  groupCard: {
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
+    backgroundColor: 'rgba(22, 22, 22, 0.92)',
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
-  switchOption: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+  groupLabel: {
+    color: colors.text,
+    fontSize: 17,
+    fontFamily: fonts.semiBold,
+    marginBottom: 4,
   },
-  switchOptionActive: {
-    backgroundColor: colors.text,
+  groupHelper: {
+    color: '#9AAEAE',
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    lineHeight: 18,
+    marginBottom: spacing.sm,
   },
-  switchText: {
+  optionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  unitCard: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#363636',
+    backgroundColor: '#121212',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    minHeight: 70,
+    justifyContent: 'center',
+  },
+  unitCardSelected: {
+    borderColor: '#4ECDC4',
+    backgroundColor: 'rgba(78, 205, 196, 0.14)',
+  },
+  unitCardLabel: {
+    color: colors.text,
     fontSize: 14,
     fontFamily: fonts.semiBold,
-    color: colors.textMuted,
+    marginBottom: 4,
   },
-  switchTextActive: {
-    color: colors.background,
+  unitCardLabelSelected: {
+    color: '#DEFFFC',
+  },
+  unitCardHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    letterSpacing: 0.3,
+  },
+  unitCardHintSelected: {
+    color: '#8FD5CE',
   },
 });

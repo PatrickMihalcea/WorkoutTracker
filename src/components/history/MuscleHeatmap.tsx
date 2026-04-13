@@ -29,6 +29,7 @@ const MUSCLE_TO_SLUGS: Record<string, BodySlug[]> = {
   abs:        ['abs', 'obliques'],
   forearms:   ['forearm'],
   traps:      ['trapezius'],
+  cardio:     [],
   full_body:  ['chest', 'upper-back', 'deltoids', 'biceps', 'triceps', 'quadriceps', 'hamstring', 'gluteal', 'calves', 'abs'],
 };
 

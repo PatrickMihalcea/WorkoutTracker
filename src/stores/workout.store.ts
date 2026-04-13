@@ -28,6 +28,18 @@ export interface RestTimer {
 
 type SupersetGroups = Record<string, string | null>;
 
+function resetWorkoutState() {
+  return {
+    session: null,
+    rows: {},
+    previousSets: {},
+    exercises: [],
+    collapsedCards: {},
+    supersetGroups: {},
+    restTimer: null,
+  };
+}
+
 interface WorkoutState {
   session: WorkoutSession | null;
   rows: RowMap;
@@ -39,6 +51,7 @@ interface WorkoutState {
   restTimer: RestTimer | null;
 
   startWorkout: (userId: string, routineDayId: string | null, exercises: RoutineDayExercise[], routineWeekIndex?: number | null) => Promise<void>;
+  hydrateActiveSession: (session: WorkoutSession | null) => Promise<boolean>;
   resumeWorkout: (userId: string) => Promise<boolean>;
   updateRowLocal: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'duration' | 'distance'>>) => void;
   updateRow: (id: string, entryId: string, updates: Partial<Pick<WorkoutRow, 'weight' | 'reps' | 'rir' | 'duration' | 'distance'>>) => Promise<void>;
@@ -55,6 +68,8 @@ interface WorkoutState {
   setSupersetGroup: (entryId: string, group: string | null) => Promise<void>;
   duplicateExercise: (entryId: string) => Promise<void>;
   swapExercise: (entryId: string, newExercise: Exercise) => Promise<void>;
+  removeExerciseByExerciseId: (exerciseId: string) => void;
+  updateExerciseInState: (exercise: Exercise) => void;
   completeWorkout: (weightUnit: string) => Promise<void>;
   cancelWorkout: () => Promise<void>;
   reset: () => void;
@@ -83,38 +98,26 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   loading: false,
   restTimer: null,
 
-  startWorkout: async (userId, routineDayId, exercises, routineWeekIndex = null) => {
-    set({ loading: true });
-    try {
-      const stale = await sessionService.getActiveSession(userId);
-      if (stale) {
-        await workoutRowService.deleteBySession(stale.id);
-        await sessionService.cancel(stale.id);
-      }
-      const session = await sessionService.create({
-        user_id: userId,
-        routine_day_id: routineDayId,
-        routine_week_index: routineWeekIndex,
-        started_at: new Date().toISOString(),
-        completed_at: null,
-        status: 'in_progress',
-      });
-      const allRows = await workoutRowService.createInitialRows(session.id, exercises);
-      const groups: SupersetGroups = {};
-      for (const ex of exercises) {
-        groups[ex.id] = ex.superset_group ?? null;
-      }
-      set({ session, exercises, rows: groupByEntry(allRows), collapsedCards: {}, supersetGroups: groups });
-    } finally {
-      set({ loading: false });
+  hydrateActiveSession: async (session) => {
+    if (!session) {
+      set(resetWorkoutState());
+      return false;
     }
-  },
 
-  resumeWorkout: async (userId) => {
-    set({ loading: true });
+    if (!session.routine_day_id) {
+      set({
+        session,
+        rows: {},
+        previousSets: {},
+        exercises: [],
+        collapsedCards: {},
+        supersetGroups: {},
+        restTimer: null,
+      });
+      return true;
+    }
+
     try {
-      const session = await sessionService.getActiveSession(userId);
-      if (!session || !session.routine_day_id) return false;
       const day = await routineService.getDayWithExercises(session.routine_day_id);
       const allRows = await workoutRowService.getBySession(session.id);
       const grouped = groupByEntry(allRows);
@@ -129,7 +132,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         const exercise = await exerciseService.getById(entryRows[0].exercise_id);
         adHocEntries.push({
           id: entryId,
-          routine_day_id: session.routine_day_id ?? '',
+          routine_day_id: session.routine_day_id,
           exercise_id: exercise.id,
           sort_order: day.exercises.length + adHocEntries.length,
           target_sets: entryRows.length,
@@ -158,6 +161,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         const orderB = grouped[b.id]?.[0]?.exercise_order ?? 999;
         return orderA - orderB;
       });
+
       const collapsedCards: Record<string, boolean> = {};
       for (const entry of allEntries) {
         const entryRows = grouped[entry.id] ?? [];
@@ -165,13 +169,81 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           collapsedCards[entry.id] = true;
         }
       }
+
       const groups: SupersetGroups = {};
       for (const entry of allEntries) {
         const entryRows = grouped[entry.id] ?? [];
         groups[entry.id] = entryRows[0]?.superset_group ?? entry.superset_group ?? null;
       }
-      set({ session, exercises: allEntries, rows: grouped, collapsedCards, supersetGroups: groups });
+
+      set({
+        session,
+        exercises: allEntries,
+        rows: grouped,
+        collapsedCards,
+        supersetGroups: groups,
+        previousSets: {},
+        restTimer: null,
+      });
       return true;
+    } catch {
+      set({
+        session,
+        rows: {},
+        previousSets: {},
+        exercises: [],
+        collapsedCards: {},
+        supersetGroups: {},
+        restTimer: null,
+      });
+      return true;
+    }
+  },
+
+  startWorkout: async (userId, routineDayId, exercises, routineWeekIndex = null) => {
+    set({ loading: true });
+    try {
+      const stale = await sessionService.getActiveSession(userId);
+      if (stale) {
+        await workoutRowService.deleteBySession(stale.id);
+        await sessionService.cancel(stale.id);
+      }
+      const session = await sessionService.create({
+        user_id: userId,
+        routine_day_id: routineDayId,
+        routine_week_index: routineWeekIndex,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+        status: 'in_progress',
+      });
+      const allRows = await workoutRowService.createInitialRows(session.id, exercises);
+      const groups: SupersetGroups = {};
+      for (const ex of exercises) {
+        groups[ex.id] = ex.superset_group ?? null;
+      }
+      set({
+        session,
+        exercises,
+        rows: groupByEntry(allRows),
+        collapsedCards: {},
+        supersetGroups: groups,
+        previousSets: {},
+        restTimer: null,
+      });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  resumeWorkout: async (userId) => {
+    set({ loading: true });
+    try {
+      const session = await sessionService.getActiveSession(userId);
+      if (!session) {
+        set(resetWorkoutState());
+        return false;
+      }
+      return await get().hydrateActiveSession(session);
     } finally {
       set({ loading: false });
     }
@@ -463,6 +535,44 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     }));
   },
 
+  removeExerciseByExerciseId: (exerciseId) => {
+    set((state) => {
+      const removedEntryIds = state.exercises
+        .filter((entry) => entry.exercise_id === exerciseId)
+        .map((entry) => entry.id);
+
+      const nextRows = { ...state.rows };
+      const nextCollapsed = { ...state.collapsedCards };
+      const nextGroups = { ...state.supersetGroups };
+
+      for (const entryId of removedEntryIds) {
+        delete nextRows[entryId];
+        delete nextCollapsed[entryId];
+        delete nextGroups[entryId];
+      }
+
+      const { [exerciseId]: _removed, ...nextPreviousSets } = state.previousSets;
+
+      return {
+        exercises: state.exercises.filter((entry) => entry.exercise_id !== exerciseId),
+        rows: nextRows,
+        collapsedCards: nextCollapsed,
+        supersetGroups: nextGroups,
+        previousSets: nextPreviousSets,
+      };
+    });
+  },
+
+  updateExerciseInState: (exercise) => {
+    set((state) => ({
+      exercises: state.exercises.map((entry) =>
+        entry.exercise_id === exercise.id
+          ? { ...entry, exercise }
+          : entry,
+      ),
+    }));
+  },
+
   completeWorkout: async (weightUnit) => {
     const { session, rows, exercises, supersetGroups } = get();
     if (!session) return;
@@ -527,7 +637,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       }
     }
 
-    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {}, supersetGroups: {}, restTimer: null });
+    set(resetWorkoutState());
   },
 
   cancelWorkout: async () => {
@@ -535,11 +645,11 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     if (!session) return;
     await workoutRowService.deleteBySession(session.id);
     await sessionService.cancel(session.id);
-    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {}, supersetGroups: {}, restTimer: null });
+    set(resetWorkoutState());
   },
 
   reset: () => {
-    set({ session: null, rows: {}, exercises: [], previousSets: {}, collapsedCards: {}, supersetGroups: {}, restTimer: null });
+    set(resetWorkoutState());
   },
 
   startRestTimer: (seconds) => {

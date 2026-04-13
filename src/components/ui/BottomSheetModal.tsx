@@ -11,6 +11,8 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  StyleProp,
+  ViewStyle,
 } from 'react-native';
 import { colors, fonts } from '../../constants';
 import { KeyboardDismiss } from './KeyboardDismiss';
@@ -24,6 +26,8 @@ interface BottomSheetModalProps {
   scrollable?: boolean;
   fullHeight?: boolean;
   showCloseButton?: boolean;
+  contentPaddingHorizontal?: number;
+  sheetStyle?: StyleProp<ViewStyle>;
   onClose?: () => void;
 }
 
@@ -34,6 +38,8 @@ export function BottomSheetModal({
   scrollable = false,
   fullHeight = false,
   showCloseButton = true,
+  contentPaddingHorizontal = 24,
+  sheetStyle,
   onClose,
 }: BottomSheetModalProps) {
   const overlayOpacity = useRef(new Animated.Value(0)).current;
@@ -89,7 +95,7 @@ export function BottomSheetModal({
               <Text style={styles.closeBtn}>✕</Text>
             </TouchableOpacity>
           )}
-          <View style={[styles.sheet, fullHeight && styles.sheetFull]}>
+          <View style={[styles.sheet, { paddingHorizontal: contentPaddingHorizontal }, fullHeight && styles.sheetFull, sheetStyle]}>
             {title ? <Text style={styles.title}>{title}</Text> : null}
             <Body style={scrollable ? styles.scrollBody : styles.viewBody} {...bodyProps}>
               {children}

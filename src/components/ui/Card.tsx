@@ -1,10 +1,10 @@
 import React from 'react';
-import { Animated, StyleSheet, ViewStyle } from 'react-native';
+import { Animated, StyleProp, StyleSheet, ViewStyle } from 'react-native';
 import { colors } from '../../constants';
 
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle | Animated.AnimatedProps<ViewStyle>['style'];
+  style?: StyleProp<ViewStyle>;
 }
 
 export function Card({ children, style }: CardProps) {

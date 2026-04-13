@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Routine, RoutineWithDays } from '../models';
+import { Exercise, Routine, RoutineWithDays } from '../models';
 import { routineService } from '../services';
 
 interface RoutineState {
@@ -12,8 +12,11 @@ interface RoutineState {
   fetchActiveRoutine: () => Promise<void>;
   fetchRoutineDetail: (id: string) => Promise<void>;
   createRoutine: (name: string, userId: string, weekCount?: number) => Promise<Routine>;
+  duplicateRoutine: (id: string, userId: string) => Promise<Routine>;
   setActive: (id: string, userId: string) => Promise<void>;
   deleteRoutine: (id: string) => Promise<void>;
+  removeExerciseReferences: (exerciseId: string) => void;
+  updateExerciseReferences: (exercise: Exercise) => void;
 }
 
 export const useRoutineStore = create<RoutineState>((set) => ({
@@ -63,6 +66,12 @@ export const useRoutineStore = create<RoutineState>((set) => ({
     return routine;
   },
 
+  duplicateRoutine: async (id, userId) => {
+    const routine = await routineService.duplicateRoutine(id, userId);
+    set((state) => ({ routines: [routine, ...state.routines] }));
+    return routine;
+  },
+
   setActive: async (id, userId) => {
     await routineService.setActive(id, userId);
     set((state) => ({
@@ -81,5 +90,49 @@ export const useRoutineStore = create<RoutineState>((set) => ({
       routines: state.routines.filter((r) => r.id !== id),
       activeRoutine: state.activeRoutine?.id === id ? null : state.activeRoutine,
     }));
+  },
+
+  removeExerciseReferences: (exerciseId) => {
+    set((state) => {
+      const pruneRoutine = (routine: RoutineWithDays | null): RoutineWithDays | null => {
+        if (!routine) return null;
+        return {
+          ...routine,
+          days: routine.days.map((day) => ({
+            ...day,
+            exercises: day.exercises.filter((entry) => entry.exercise_id !== exerciseId),
+          })),
+        };
+      };
+
+      return {
+        activeRoutine: pruneRoutine(state.activeRoutine),
+        currentRoutine: pruneRoutine(state.currentRoutine),
+      };
+    });
+  },
+
+  updateExerciseReferences: (exercise) => {
+    set((state) => {
+      const patchRoutine = (routine: RoutineWithDays | null): RoutineWithDays | null => {
+        if (!routine) return null;
+        return {
+          ...routine,
+          days: routine.days.map((day) => ({
+            ...day,
+            exercises: day.exercises.map((entry) =>
+              entry.exercise_id === exercise.id
+                ? { ...entry, exercise }
+                : entry,
+            ),
+          })),
+        };
+      };
+
+      return {
+        activeRoutine: patchRoutine(state.activeRoutine),
+        currentRoutine: patchRoutine(state.currentRoutine),
+      };
+    });
   },
 }));

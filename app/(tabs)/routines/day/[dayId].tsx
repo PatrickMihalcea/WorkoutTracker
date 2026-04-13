@@ -305,8 +305,11 @@ export default function DayEditorScreen() {
     }
   };
 
-  const handleDeleteExercise = (exercise: Exercise) =>
-    confirmDeleteExercise(exercise, user?.id ?? '', refresh);
+  const handleDeleteExercise = (exercise: Exercise, onDeleted?: () => void) =>
+    confirmDeleteExercise(exercise, user?.id ?? '', () => {
+      refresh();
+      onDeleted?.();
+    });
 
   const applySupersetChanges = async (dayExercises: RoutineDayExercise[], updated: SupersetGroups) => {
     for (const ex of dayExercises) {
@@ -375,6 +378,16 @@ export default function DayEditorScreen() {
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
+    setShowSwapPicker(false);
+    setSwapEntryId(null);
+  };
+
+  const handleSwapDeletedWithoutReplacement = (exercise: Exercise) => {
+    if (!swapEntryId || !day) return;
+    const entryId = swapEntryId;
+    const targetEntry = day.exercises.find((item) => item.id === entryId);
+    if (!targetEntry || targetEntry.exercise_id !== exercise.id) return;
+    void handleExRemove(entryId);
     setShowSwapPicker(false);
     setSwapEntryId(null);
   };
@@ -535,6 +548,8 @@ export default function DayEditorScreen() {
         visible={showSwapPicker}
         onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); }}
         onSelect={handleExSwapSelect}
+        onDeletedSelectedWithoutReplacement={handleSwapDeletedWithoutReplacement}
+        selectedExerciseId={swapEntryId ? (day?.exercises.find((entry) => entry.id === swapEntryId)?.exercise_id ?? null) : null}
         onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
       />
     </View>

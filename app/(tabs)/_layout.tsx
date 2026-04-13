@@ -85,7 +85,13 @@ function TabLayoutInner() {
   const { session, resumeWorkout } = useWorkoutStore();
   const { suppressNextAutoExpand } = useWorkoutOverlay();
   const isAtTabRoot = segments.length <= 2;
-  const hasActiveChart = chartActive || (segments[1] === 'history' && view === 'dashboard' && chartMode === 'abs');
+  const currentTab = segments.find((segment) => (
+    segment === 'today'
+    || segment === 'routines'
+    || segment === 'history'
+    || segment === 'profile'
+  ));
+  const hasActiveChart = chartActive || (currentTab === 'history' && view === 'dashboard' && chartMode === 'abs');
 
   useEffect(() => {
     if (user && !session) {

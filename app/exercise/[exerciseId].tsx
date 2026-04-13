@@ -6,14 +6,16 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useProfileStore } from '../../src/stores/profile.store';
 import {
   exerciseDetailService,
   ExerciseDetailData,
 } from '../../src/services';
+import { updateCustomExercise } from '../../src/services/exerciseMutation.service';
 import { colors, fonts, spacing } from '../../src/constants';
 import {
   SimpleLineChart,
@@ -22,10 +24,15 @@ import {
   formatVolume,
 } from '../../src/components/charts';
 import type { BarDataItem } from '../../src/components/charts';
+import { BottomSheetModal, Button, ChipPicker, Input, MultiChipPicker, OverflowMenu } from '../../src/components/ui';
+import type { OverflowMenuItem } from '../../src/components/ui';
 import { getExerciseTypeConfig } from '../../src/utils/exerciseType';
+import { EXERCISE_TYPE_ITEMS } from '../../src/utils/exerciseType';
 import { formatDurationValue } from '../../src/utils/duration';
 import { distanceUnitLabel } from '../../src/utils/units';
 import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
+import { confirmDeleteExercise } from '../../src/utils/confirmDeleteExercise';
+import { Equipment, ExerciseType, MuscleGroup } from '../../src/models';
 
 type MetricKey = string;
 
@@ -33,6 +40,18 @@ interface MetricOption {
   key: MetricKey;
   label: string;
 }
+
+const MUSCLE_GROUP_CHIPS = Object.values(MuscleGroup).map((mg) => ({
+  key: mg,
+  label: mg.replace(/_/g, ' '),
+  value: mg,
+}));
+
+const EQUIPMENT_CHIPS = Object.values(Equipment).map((eq) => ({
+  key: eq,
+  label: eq.replace(/_/g, ' '),
+  value: eq,
+}));
 
 function getMetricOptions(exerciseType: string): MetricOption[] {
   switch (exerciseType) {
@@ -130,6 +149,7 @@ function getChartColor(metricKey: string): string {
 
 function ExerciseDetailContent() {
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
+  const router = useRouter();
   const { user } = useAuthStore();
   const { profile } = useProfileStore();
   const { scrollEnabled } = useChartInteraction();
@@ -141,23 +161,32 @@ function ExerciseDetailContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>('');
   const [durationToggle, setDurationToggle] = useState<'left' | 'right'>('left');
+  const [showEditExercise, setShowEditExercise] = useState(false);
+  const [editExerciseName, setEditExerciseName] = useState('');
+  const [editExerciseType, setEditExerciseType] = useState<ExerciseType>(ExerciseType.WeightReps);
+  const [editExerciseMuscle, setEditExerciseMuscle] = useState<MuscleGroup>(MuscleGroup.Chest);
+  const [editExerciseEquipment, setEditExerciseEquipment] = useState<Equipment>(Equipment.Barbell);
+  const [editSecondaryMuscles, setEditSecondaryMuscles] = useState<string[]>([]);
+  const [savingEditExercise, setSavingEditExercise] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!user?.id || !exerciseId) return;
     try {
       const result = await exerciseDetailService.getData(user.id, exerciseId, wUnit, dUnit);
       setData(result);
-      if (!selectedMetric) {
-        const options = getMetricOptions(result.exercise.exercise_type);
-        if (options.length > 0) setSelectedMetric(options[0].key);
-      }
+      const options = getMetricOptions(result.exercise.exercise_type);
+      setSelectedMetric((prev) =>
+        options.some((opt) => opt.key === prev)
+          ? prev
+          : (options[0]?.key ?? ''),
+      );
     } catch {
       /* ignore */
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.id, exerciseId, selectedMetric, wUnit, dUnit]);
+  }, [user?.id, exerciseId, wUnit, dUnit]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -169,6 +198,60 @@ function ExerciseDetailContent() {
   const exerciseType = data?.exercise?.exercise_type ?? 'weight_reps';
   const config = getExerciseTypeConfig(exerciseType);
   const metricOptions = useMemo(() => getMetricOptions(exerciseType), [exerciseType]);
+  const isCustomExercise = !!data && data.exercise.user_id === user?.id;
+
+  const openEditExercise = useCallback(() => {
+    if (!data) return;
+    setEditExerciseName(data.exercise.name);
+    setEditExerciseType(data.exercise.exercise_type);
+    setEditExerciseMuscle(data.exercise.muscle_group);
+    setEditExerciseEquipment(data.exercise.equipment);
+    setEditSecondaryMuscles(data.exercise.secondary_muscles ?? []);
+    setShowEditExercise(true);
+  }, [data]);
+
+  const handleSaveEditedExercise = useCallback(async () => {
+    if (!data || !isCustomExercise) return;
+    const nextName = editExerciseName.trim();
+    if (!nextName) {
+      Alert.alert('Error', 'Please enter an exercise name');
+      return;
+    }
+    try {
+      setSavingEditExercise(true);
+      const updated = await updateCustomExercise(data.exercise.id, {
+        name: nextName,
+        exercise_type: editExerciseType,
+        muscle_group: editExerciseMuscle,
+        equipment: editExerciseEquipment,
+        secondary_muscles: editSecondaryMuscles,
+      });
+      setData((prev) => (prev ? { ...prev, exercise: updated } : prev));
+      setShowEditExercise(false);
+      await loadData();
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    } finally {
+      setSavingEditExercise(false);
+    }
+  }, [
+    data,
+    editExerciseEquipment,
+    editExerciseMuscle,
+    editExerciseName,
+    editExerciseType,
+    editSecondaryMuscles,
+    isCustomExercise,
+    loadData,
+  ]);
+
+  const handleDeleteExercise = useCallback(() => {
+    if (!data || !user?.id || !isCustomExercise) return;
+
+    void confirmDeleteExercise(data.exercise, user.id, () => {
+      router.back();
+    });
+  }, [data, isCustomExercise, router, user?.id]);
 
   const points = data?.timeSeries?.[selectedMetric] ?? [];
   const secondaryMuscles = (data?.exercise.secondary_muscles ?? [])
@@ -242,6 +325,10 @@ function ExerciseDetailContent() {
     if (barChartConfig?.isDuration) return formatDurationValue;
     return undefined;
   }, [barChartConfig]);
+  const detailMenuItems = useMemo<OverflowMenuItem[]>(() => ([
+    { label: 'Edit', onPress: openEditExercise },
+    { label: 'Delete', destructive: true, onPress: handleDeleteExercise },
+  ]), [handleDeleteExercise, openEditExercise]);
 
   if (loading && !data) {
     return (
@@ -273,7 +360,12 @@ function ExerciseDetailContent() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.exerciseName}>{data.exercise.name}</Text>
+        <View style={styles.headerTitleRow}>
+          <Text style={styles.exerciseName}>{data.exercise.name}</Text>
+          {isCustomExercise && (
+            <OverflowMenu items={detailMenuItems} />
+          )}
+        </View>
         <View style={styles.metaRow}>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{config.label}</Text>
@@ -344,6 +436,57 @@ function ExerciseDetailContent() {
           yLabelFormatter={barYLabelFmt}
         />
       )}
+
+      <BottomSheetModal
+        visible={showEditExercise}
+        title="Edit Exercise"
+        fullHeight
+        onClose={() => setShowEditExercise(false)}
+      >
+        <View style={styles.formBody}>
+          <Input
+            label="Exercise Name"
+            value={editExerciseName}
+            onChangeText={setEditExerciseName}
+            placeholder="e.g. Bench Press"
+          />
+
+          <Text style={styles.formFieldLabel}>Exercise Type</Text>
+          <ChipPicker
+            items={EXERCISE_TYPE_ITEMS}
+            selected={editExerciseType}
+            onChange={(value) => setEditExerciseType((value as ExerciseType) ?? ExerciseType.WeightReps)}
+            allowDeselect={false}
+          />
+
+          <Text style={styles.formFieldLabel}>Primary Muscle Group</Text>
+          <ChipPicker
+            items={MUSCLE_GROUP_CHIPS}
+            selected={editExerciseMuscle}
+            onChange={(value) => setEditExerciseMuscle(value as MuscleGroup)}
+            allowDeselect={false}
+          />
+
+          <Text style={styles.formFieldLabel}>Secondary Muscles (optional)</Text>
+          <MultiChipPicker
+            items={MUSCLE_GROUP_CHIPS}
+            selected={editSecondaryMuscles}
+            onChange={setEditSecondaryMuscles}
+          />
+
+          <Text style={styles.formFieldLabel}>Equipment</Text>
+          <ChipPicker
+            items={EQUIPMENT_CHIPS}
+            selected={editExerciseEquipment}
+            onChange={(value) => setEditExerciseEquipment(value as Equipment)}
+            allowDeselect={false}
+          />
+        </View>
+
+        <View style={styles.footer}>
+          <Button title="Save Changes" onPress={handleSaveEditedExercise} loading={savingEditExercise} />
+        </View>
+      </BottomSheetModal>
     </ScrollView>
   );
 }
@@ -382,7 +525,14 @@ const styles = StyleSheet.create({
   header: {
     paddingVertical: spacing.md,
   },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   exerciseName: {
+    flex: 1,
     fontSize: 24,
     fontFamily: fonts.bold,
     color: colors.text,
@@ -471,5 +621,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: fonts.light,
     color: colors.textMuted,
+  },
+  formBody: {
+    flex: 1,
+  },
+  formFieldLabel: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  footer: {
+    paddingBottom: 16,
   },
 });

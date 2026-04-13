@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
@@ -14,7 +14,7 @@ import { weightUnitLabel, distanceUnitLabel, formatWeight, formatDistance } from
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
 import { formatDurationValue } from '../../../src/utils/duration';
 import { DAY_LABELS, DayOfWeek, Routine, RoutineWithDays, RoutineDayWithExercises } from '../../../src/models';
-import { sessionService, routineService } from '../../../src/services';
+import { routineService } from '../../../src/services';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -27,7 +27,6 @@ export default function HomeScreen() {
   const dUnit = profile?.distance_unit ?? 'km';
   const [refreshing, setRefreshing] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [hasActiveSession, setHasActiveSession] = useState(!!activeSession);
 
   const [showChooseModal, setShowChooseModal] = useState(false);
   const [allRoutines, setAllRoutines] = useState<Routine[]>([]);
@@ -37,26 +36,18 @@ export default function HomeScreen() {
   const [chosenDay, setChosenDay] = useState<RoutineDayWithExercises | null>(null);
 
   useEffect(() => {
-    if (!activeSession) {
-      setHasActiveSession(false);
-      setChosenDay(null);
-    }
-  }, [activeSession]);
+    fetchActiveRoutine();
+  }, [fetchActiveRoutine]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchActiveRoutine();
-      if (user) {
-        sessionService.getActiveSession(user.id).then(async (s) => {
-          setHasActiveSession(!!s);
-          if (s?.routine_day_id) {
-            const day = await routineService.getDayWithExercises(s.routine_day_id);
-            setChosenDay(day);
-          }
-        });
-      }
-    }, [fetchActiveRoutine, user]),
-  );
+  useEffect(() => {
+    if (!activeSession) {
+      setChosenDay(null);
+      return;
+    }
+
+    const sessionDay = activeRoutine?.days.find((day) => day.id === activeSession.routine_day_id) ?? null;
+    setChosenDay(sessionDay);
+  }, [activeSession?.id, activeSession?.routine_day_id, activeRoutine?.days]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -67,6 +58,7 @@ export default function HomeScreen() {
   const currentDay = getCurrentDayOfWeek();
   const activeWeek = activeRoutine?.current_week ?? 1;
   const todaysWorkouts = activeRoutine?.days.filter((d) => d.week_index === activeWeek && d.day_of_week === currentDay) ?? [];
+  const hasCustomWorkoutInProgress = !!activeSession && !activeSession.routine_day_id;
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const todaysWorkout = todaysWorkouts.length > 0 ? todaysWorkouts[selectedDayIndex] ?? todaysWorkouts[0] : null;
 
@@ -90,6 +82,37 @@ export default function HomeScreen() {
       Alert.alert('Error', (error as Error).message);
     }
   };
+
+  const handleContinueWorkout = useCallback(async () => {
+    if (!user) return;
+    if (activeSession) {
+      expandWorkout();
+      return;
+    }
+
+    const ok = await resumeWorkout(user.id);
+    if (ok) {
+      expandWorkout();
+    }
+  }, [activeSession, expandWorkout, resumeWorkout, user]);
+
+  const renderInProgressState = () => (
+    <View>
+      <Button
+        title="Continue Workout"
+        size="lg"
+        variant="secondary"
+        style={styles.primaryActionBtn}
+        onPress={handleContinueWorkout}
+      />
+      <Text style={styles.inProgress}>Workout in progress</Text>
+      {activeSession && (
+        <Text style={styles.duration}>
+          {formatDuration(activeSession.started_at, null)}
+        </Text>
+      )}
+    </View>
+  );
 
   const openChooseModal = async () => {
     setShowChooseModal(true);
@@ -143,6 +166,7 @@ export default function HomeScreen() {
             actionLabel="Go to Routines"
             onAction={() => router.push('/(tabs)/routines')}
           />
+          {activeSession && renderInProgressState()}
         </ScrollView>
       </View>
     );
@@ -197,19 +221,32 @@ export default function HomeScreen() {
       )}
 
       {(() => {
-        const displayWorkout = chosenDay ?? todaysWorkout;
+        const displayWorkout = hasCustomWorkoutInProgress ? null : (chosenDay ?? todaysWorkout);
         if (!displayWorkout) {
           return (
             <>
-              <TouchableOpacity activeOpacity={0.8} onPress={openChooseModal}>
+              {hasCustomWorkoutInProgress ? (
                 <Card style={styles.restDayCard}>
-                  <Text style={styles.restDayTitle}>Rest Day</Text>
+                  <Text style={styles.restDayTitle}>Custom Workout</Text>
                   <Text style={styles.restDayMessage}>
-                    No workout scheduled for today. Recover and come back stronger.
+                    Custom workout selected. Continue when you are ready.
                   </Text>
                 </Card>
-              </TouchableOpacity>
-              {!(hasActiveSession || activeSession) && (
+              ) : (
+                <TouchableOpacity activeOpacity={0.8} onPress={openChooseModal}>
+                  <Card style={styles.restDayCard}>
+                    <Text style={styles.restDayTitle}>Rest Day</Text>
+                    <Text style={styles.restDayMessage}>
+                      No workout scheduled for today. Recover and come back stronger.
+                    </Text>
+                  </Card>
+                </TouchableOpacity>
+              )}
+              {activeSession ? (
+                <View style={styles.restDayInProgressWrap}>
+                  {renderInProgressState()}
+                </View>
+              ) : (
                 <View style={styles.secondaryActionsRow}>
                   <Button
                     title="Choose Other Workout"
@@ -230,7 +267,7 @@ export default function HomeScreen() {
         }
         return (
           <>
-            {chosenDay && !(hasActiveSession || activeSession) && (
+            {chosenDay && !activeSession && (
               <TouchableOpacity onPress={() => setChosenDay(null)} style={styles.clearChoiceBtn}>
                 <Text style={styles.clearChoiceText}>← Back to today</Text>
               </TouchableOpacity>
@@ -360,31 +397,8 @@ export default function HomeScreen() {
               })()}
             </Card>
 
-            {hasActiveSession || activeSession ? (
-              <View>
-                <Button
-                  title="Continue Workout"
-                  size="lg"
-                  variant="secondary"
-                  style={styles.primaryActionBtn}
-                  onPress={async () => {
-                    if (!user) return;
-                    if (activeSession) {
-                      expandWorkout();
-                    } else {
-                      const ok = await resumeWorkout(user.id);
-                      if (ok) expandWorkout();
-                      else setHasActiveSession(false);
-                    }
-                  }}
-                />
-                <Text style={styles.inProgress}>Workout in progress</Text>
-                {activeSession && (
-                  <Text style={styles.duration}>
-                    {formatDuration(activeSession.started_at, null)}
-                  </Text>
-                )}
-              </View>
+            {activeSession ? (
+              renderInProgressState()
             ) : (
               <>
                 <Button
@@ -650,6 +664,9 @@ const styles = StyleSheet.create({
     paddingVertical: 34,
     paddingHorizontal: spacing.md,
     backgroundColor: '#171717',
+  },
+  restDayInProgressWrap: {
+    marginTop: 10,
   },
   restDayTitle: {
     fontSize: 22,

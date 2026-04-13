@@ -10,14 +10,14 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
-import { Button, Card, EmptyState } from '../../../src/components/ui';
-import { colors, fonts } from '../../../src/constants';
+import { Button, Card, EmptyState, OverflowMenu, OverflowMenuItem } from '../../../src/components/ui';
+import { colors, fonts, spacing } from '../../../src/constants';
 import { Routine } from '../../../src/models';
 
 export default function RoutineListScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { routines, fetchRoutines, setActive, deleteRoutine } = useRoutineStore();
+  const { routines, fetchRoutines, setActive, deleteRoutine, duplicateRoutine } = useRoutineStore();
   const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(
@@ -56,6 +56,16 @@ export default function RoutineListScreen() {
     );
   };
 
+  const handleDuplicate = async (routine: Routine) => {
+    if (!user) return;
+    try {
+      const created = await duplicateRoutine(routine.id, user.id);
+      router.push(`/(tabs)/routines/${created.id}`);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
   const renderRoutine = ({ item }: { item: Routine }) => (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -66,22 +76,32 @@ export default function RoutineListScreen() {
         <View style={styles.routineHeader}>
           <View>
             <Text style={styles.routineName}>{item.name}</Text>
-            <Text style={styles.routineMeta}>
+            <Text style={[styles.routineMeta, item.is_active && styles.routineMetaActive]}>
               {item.week_count} {item.week_count === 1 ? 'week' : 'weeks'} · Current {item.current_week}
             </Text>
           </View>
-          {item.is_active ? (
-            <View style={styles.activeBadge}>
-              <Text style={styles.activeBadgeText}>Active</Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.setActiveBtn}
-              onPress={() => handleSetActive(item)}
-            >
-              <Text style={styles.setActiveText}>Set as Active</Text>
-            </TouchableOpacity>
-          )}
+          <OverflowMenu
+            items={[
+              {
+                label: 'Set Active',
+                onPress: () => handleSetActive(item),
+                disabled: item.is_active,
+              },
+              {
+                label: 'Edit',
+                onPress: () => router.push(`/(tabs)/routines/${item.id}`),
+              },
+              {
+                label: 'Duplicate',
+                onPress: () => handleDuplicate(item),
+              },
+              {
+                label: 'Delete',
+                onPress: () => handleDelete(item),
+                destructive: true,
+              },
+            ] as OverflowMenuItem[]}
+          />
         </View>
       </Card>
     </TouchableOpacity>
@@ -127,13 +147,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   list: {
-    padding: 16,
+    padding: spacing.sm,
   },
   routineCard: {
     marginBottom: 12,
+    paddingHorizontal: spacing.md,
   },
   activeCard: {
-    borderColor: colors.text,
+    borderColor: '#244343',
+    backgroundColor: '#171D1D',
   },
   routineHeader: {
     flexDirection: 'row',
@@ -151,24 +173,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.textMuted,
   },
-  activeBadge: {
-    backgroundColor: colors.text,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  activeBadgeText: {
-    color: colors.background,
-    fontSize: 12,
-    fontFamily: fonts.semiBold,
-  },
-  setActiveBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  setActiveText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
+  routineMetaActive: {
+    color: '#88A2A2',
   },
 });

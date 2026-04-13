@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
-import { useProfileStore } from '../../src/stores/profile.store';
+
+import { OnboardingScaffold } from '../../src/components/onboarding/OnboardingScaffold';
 import { Button } from '../../src/components/ui';
-import { colors, fonts } from '../../src/constants';
+import { colors, fonts, spacing } from '../../src/constants';
 import { feetInchesToCm } from '../../src/utils/units';
+import { useProfileStore } from '../../src/stores/profile.store';
 
 function generateRange(min: number, max: number, step = 1): number[] {
   const result: number[] = [];
@@ -38,20 +40,25 @@ export default function MeasurementsScreen() {
     await updateProfile({
       weight_kg: weightKg,
       height_cm: finalHeightCm,
-      onboarding_complete: true,
     });
-    router.replace('/(tabs)/today');
+
+    router.push('/(onboarding)/goals');
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.heading}>Your measurements</Text>
-        <Text style={styles.subtitle}>We'll use these for your profile</Text>
-
-        <Text style={styles.fieldLabel}>
-          Weight ({isLbs ? 'lbs' : 'kg'})
-        </Text>
+    <OnboardingScaffold
+      step={3}
+      onBack={() => router.back()}
+      title="Finish your setup"
+      subtitle="Final numbers. Accurate body metrics unlock cleaner trends and smarter progress tracking."
+      footer={<Button title="Continue" onPress={handleContinue} />}
+    >
+      <View style={[styles.sectionCard, styles.sectionCardWeight]}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Weight</Text>
+          <Text style={styles.sectionUnitBadge}>{isLbs ? 'LBS' : 'KG'}</Text>
+        </View>
+        <Text style={styles.sectionHint}>Current body weight in {isLbs ? 'pounds' : 'kilograms'}.</Text>
         <View style={styles.pickerContainer}>
           <Picker
             selectedValue={weightValue}
@@ -59,15 +66,20 @@ export default function MeasurementsScreen() {
             style={styles.picker}
             itemStyle={styles.pickerItem}
           >
-            {(isLbs ? WEIGHT_LBS_RANGE : WEIGHT_KG_RANGE).map((v) => (
-              <Picker.Item key={v} label={`${v}`} value={v} />
+            {(isLbs ? WEIGHT_LBS_RANGE : WEIGHT_KG_RANGE).map((value) => (
+              <Picker.Item key={value} label={`${value} ${isLbs ? 'lbs' : 'kg'}`} value={value} />
             ))}
           </Picker>
         </View>
+      </View>
 
-        <Text style={styles.fieldLabel}>
-          Height ({isInches ? 'ft / in' : 'cm'})
-        </Text>
+      <View style={[styles.sectionCard, styles.sectionCardHeight]}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Height</Text>
+          <Text style={styles.sectionUnitBadge}>{isInches ? 'FT/IN' : 'CM'}</Text>
+        </View>
+        <Text style={styles.sectionHint}>Used as a profile baseline and for body metrics.</Text>
+
         {isInches ? (
           <View style={styles.heightRow}>
             <View style={styles.heightPickerWrap}>
@@ -77,11 +89,12 @@ export default function MeasurementsScreen() {
                 style={styles.picker}
                 itemStyle={styles.pickerItem}
               >
-                {HEIGHT_FEET_RANGE.map((v) => (
-                  <Picker.Item key={v} label={`${v} ft`} value={v} />
+                {HEIGHT_FEET_RANGE.map((value) => (
+                  <Picker.Item key={value} label={`${value} ft`} value={value} />
                 ))}
               </Picker>
             </View>
+
             <View style={styles.heightPickerWrap}>
               <Picker
                 selectedValue={heightInches}
@@ -89,8 +102,8 @@ export default function MeasurementsScreen() {
                 style={styles.picker}
                 itemStyle={styles.pickerItem}
               >
-                {HEIGHT_INCHES_RANGE.map((v) => (
-                  <Picker.Item key={v} label={`${v} in`} value={v} />
+                {HEIGHT_INCHES_RANGE.map((value) => (
+                  <Picker.Item key={value} label={`${value} in`} value={value} />
                 ))}
               </Picker>
             </View>
@@ -103,54 +116,67 @@ export default function MeasurementsScreen() {
               style={styles.picker}
               itemStyle={styles.pickerItem}
             >
-              {HEIGHT_CM_RANGE.map((v) => (
-                <Picker.Item key={v} label={`${v} cm`} value={v} />
+              {HEIGHT_CM_RANGE.map((value) => (
+                <Picker.Item key={value} label={`${value} cm`} value={value} />
               ))}
             </Picker>
           </View>
         )}
       </View>
-
-      <View style={styles.footer}>
-        <Button title="Continue" onPress={handleContinue} />
-      </View>
-    </View>
+    </OnboardingScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  sectionCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#3A5052',
+    backgroundColor: 'rgba(16, 24, 28, 0.88)',
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
-  content: {
-    flex: 1,
-    padding: 24,
+  sectionCardWeight: {
+    borderColor: '#4ECDC4',
+    backgroundColor: 'rgba(18, 54, 52, 0.38)',
   },
-  heading: {
-    fontSize: 28,
-    fontFamily: fonts.bold,
+  sectionCardHeight: {
+    borderColor: '#355A5E',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  sectionTitle: {
     color: colors.text,
-    marginBottom: 8,
+    fontSize: 19,
+    fontFamily: fonts.bold,
   },
-  subtitle: {
-    fontSize: 14,
-    fontFamily: fonts.light,
-    color: colors.textMuted,
-    marginBottom: 32,
-  },
-  fieldLabel: {
-    fontSize: 16,
+  sectionUnitBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#568C8F',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    color: '#C2ECE8',
+    fontSize: 11,
+    letterSpacing: 0.4,
     fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-    marginBottom: 8,
+  },
+  sectionHint: {
+    color: '#A3B8B9',
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: fonts.regular,
+    marginBottom: spacing.sm,
   },
   pickerContainer: {
-    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 24,
+    borderColor: '#395557',
+    backgroundColor: 'rgba(8, 12, 14, 0.95)',
     overflow: 'hidden',
   },
   picker: {
@@ -158,24 +184,19 @@ const styles = StyleSheet.create({
   },
   pickerItem: {
     color: colors.text,
-    fontFamily: 'Monospaceland-SemiBold',
+    fontFamily: fonts.bold,
     fontSize: 18,
   },
   heightRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.sm,
   },
   heightPickerWrap: {
     flex: 1,
-    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#395557',
+    backgroundColor: 'rgba(8, 12, 14, 0.95)',
     overflow: 'hidden',
-  },
-  footer: {
-    padding: 24,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
 });
