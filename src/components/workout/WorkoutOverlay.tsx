@@ -174,15 +174,28 @@ export function WorkoutOverlay() {
 
   const { muscleHeatmapData, muscleHeatmapMax } = useMemo(() => {
     const totals = new Map<string, { completed: number; total: number }>();
+    const addContribution = (label: string, completed: number, total: number, weight: number = 1) => {
+      if (!label) return;
+      const key = label.replace(/ /g, '_');
+      const entry = totals.get(key) ?? { completed: 0, total: 0 };
+      entry.total += total * weight;
+      entry.completed += completed * weight;
+      totals.set(key, entry);
+    };
+
     for (const ex of exercises) {
       const group = ex.exercise?.muscle_group;
-      if (!group || group === 'full_body') continue;
+      if (!group) continue;
       const exRows = rows[ex.id] ?? [];
       const done = exRows.filter((r) => r.is_completed).length;
-      const entry = totals.get(group) ?? { completed: 0, total: 0 };
-      entry.total += exRows.length;
-      entry.completed += done;
-      totals.set(group, entry);
+
+      addContribution(group, done, exRows.length, 1);
+
+      const secondary = ex.exercise?.secondary_muscles ?? [];
+      for (const sec of secondary) {
+        if (!sec || sec === group) continue;
+        addContribution(sec, done, exRows.length, 0.5);
+      }
     }
     const endStateMax = Math.max(...[...totals.values()].map((v) => v.total), 1);
     const data = [...totals.entries()].map(([label, { completed }]) => ({

@@ -41,11 +41,31 @@ interface MetricOption {
   label: string;
 }
 
+const EXERCISE_DETAIL_ACCENT_COLORS = [
+  '#FF6B6B',
+  '#FFEAA7',
+  '#96CEB4',
+  '#45B7D1',
+  '#DDA0DD',
+  '#F7DC6F',
+  '#98D8C8',
+  '#4ECDC4',
+  '#F0B27A',
+  '#5DADE2',
+  '#F5B041',
+  '#A569BD',
+  '#EC7063',
+  '#48C9B0',
+  '#7EC8E3',
+  '#82E0AA',
+  '#BB8FCE',
+];
+
 const MUSCLE_GROUP_CHIPS = Object.values(MuscleGroup).map((mg) => ({
   key: mg,
   label: mg.replace(/_/g, ' '),
   value: mg,
-}));
+})).sort((a, b) => a.label.localeCompare(b.label));
 
 const EQUIPMENT_CHIPS = Object.values(Equipment).map((eq) => ({
   key: eq,
@@ -80,13 +100,11 @@ function getMetricOptions(exerciseType: string): MetricOption[] {
       return [
         { key: 'longestDuration', label: 'Longest' },
         { key: 'sessionDuration', label: 'Session' },
-        { key: 'totalDuration', label: 'Total' },
       ];
     case 'duration_weight':
       return [
         { key: 'heaviestWeight', label: 'Weight' },
         { key: 'longestDuration', label: 'Longest' },
-        { key: 'totalDuration', label: 'Total' },
       ];
     case 'distance_duration':
       return [
@@ -134,17 +152,6 @@ function getMinYStep(metricKey: string): number {
   if (metricKey.includes('Reps') || metricKey === 'maxReps' || metricKey === 'totalReps' || metricKey === 'sessionReps') return 2;
   if (metricKey.includes('Pace') || metricKey === 'bestPace') return 0.5;
   return 10;
-}
-
-function getChartColor(metricKey: string): string {
-  if (metricKey.includes('Weight') || metricKey === 'heaviestWeight' || metricKey === 'lightestAssist') return '#FF6B6B';
-  if (metricKey.includes('1RM') || metricKey === 'est1RM') return '#FFEAA7';
-  if (metricKey.includes('Volume') || metricKey === 'bestSetVolume' || metricKey === 'sessionVolume') return '#96CEB4';
-  if (metricKey.includes('Reps') || metricKey === 'maxReps' || metricKey === 'totalReps' || metricKey === 'sessionReps') return '#45B7D1';
-  if (metricKey.includes('Duration') || metricKey === 'longestDuration' || metricKey === 'sessionDuration' || metricKey === 'totalDuration') return '#DDA0DD';
-  if (metricKey.includes('Distance') || metricKey === 'farthestDistance') return '#F7DC6F';
-  if (metricKey.includes('Pace') || metricKey === 'bestPace') return '#98D8C8';
-  return '#FFEAA7';
 }
 
 function ExerciseDetailContent() {
@@ -199,6 +206,10 @@ function ExerciseDetailContent() {
   const config = getExerciseTypeConfig(exerciseType);
   const metricOptions = useMemo(() => getMetricOptions(exerciseType), [exerciseType]);
   const isCustomExercise = !!data && data.exercise.user_id === user?.id;
+  const detailAccentColor = useMemo(() => {
+    const idx = Math.floor(Math.random() * EXERCISE_DETAIL_ACCENT_COLORS.length);
+    return EXERCISE_DETAIL_ACCENT_COLORS[idx];
+  }, [exerciseId]);
 
   const openEditExercise = useCallback(() => {
     if (!data) return;
@@ -302,19 +313,19 @@ function ExerciseDetailContent() {
     switch (exerciseType) {
       case 'weight_reps':
       case 'weighted_bodyweight':
-        return { title: 'Set Records', subtitle: 'Best weight at each rep count', color: '#FF6B6B', isDuration: false };
+        return { title: 'Set Records', subtitle: 'Best weight at each rep count', color: detailAccentColor, isDuration: false };
       case 'assisted_bodyweight':
-        return { title: 'Set Records', subtitle: 'Lightest assist at each rep count', color: '#FF6B6B', isDuration: false };
+        return { title: 'Set Records', subtitle: 'Lightest assist at each rep count', color: detailAccentColor, isDuration: false };
       case 'duration_weight':
-        return { title: 'Weight Records', subtitle: 'Duration at each weight', color: '#DDA0DD', isDuration: true };
+        return { title: 'Weight Records', subtitle: 'Duration at each weight', color: detailAccentColor, isDuration: true };
       case 'distance_duration':
-        return { title: 'Distance Records', subtitle: `Best time at each distance (${dLabel})`, color: '#F7DC6F', isDuration: true };
+        return { title: 'Distance Records', subtitle: `Best time at each distance (${dLabel})`, color: detailAccentColor, isDuration: true };
       case 'bodyweight_reps':
-        return { title: 'Rep Records', subtitle: 'Max reps per session (recent)', color: '#45B7D1', isDuration: false };
+        return null;
       default:
         return null;
     }
-  }, [exerciseType, dUnit]);
+  }, [detailAccentColor, exerciseType, dUnit]);
 
   const yLabelFmt = useMemo(() => {
     if (isDurationMetric(selectedMetric)) return formatDurationValue;
@@ -388,14 +399,14 @@ function ExerciseDetailContent() {
           options={metricOptions}
           selected={selectedMetric}
           onChange={setSelectedMetric}
-          activeColor={getChartColor(selectedMetric)}
+          activeColor={detailAccentColor}
         />
         {hasChartData ? (
           <SimpleLineChart
             data={points}
             title=""
             subtitle={metricOptions.find((o) => o.key === selectedMetric)?.label ?? ''}
-            frontColor={getChartColor(selectedMetric)}
+            frontColor={detailAccentColor}
             formatTooltipValue={getTooltipFormatter(selectedMetric, wUnit, dUnit)}
             minYStep={getMinYStep(selectedMetric)}
             yLabelFormatter={yLabelFmt}
@@ -465,6 +476,8 @@ function ExerciseDetailContent() {
             selected={editExerciseMuscle}
             onChange={(value) => setEditExerciseMuscle(value as MuscleGroup)}
             allowDeselect={false}
+            horizontal={false}
+            maxHeight={170}
           />
 
           <Text style={styles.formFieldLabel}>Secondary Muscles (optional)</Text>
@@ -472,6 +485,8 @@ function ExerciseDetailContent() {
             items={MUSCLE_GROUP_CHIPS}
             selected={editSecondaryMuscles}
             onChange={setEditSecondaryMuscles}
+            horizontal={false}
+            maxHeight={220}
           />
 
           <Text style={styles.formFieldLabel}>Equipment</Text>

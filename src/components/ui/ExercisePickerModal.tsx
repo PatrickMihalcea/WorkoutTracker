@@ -27,7 +27,7 @@ const MUSCLE_GROUP_ITEMS = Object.values(MuscleGroup).map((mg) => ({
   key: mg,
   label: mg.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
   value: mg,
-}));
+})).sort((a, b) => a.label.localeCompare(b.label));
 
 const EQUIPMENT_ITEMS = Object.values(Equipment).map((equipment) => ({
   key: equipment,
@@ -71,33 +71,39 @@ function FilterDropdown<T extends string>({
       <Modal visible={open} transparent animationType="fade">
         <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setOpen(false)}>
           <View style={styles.dropdownMenu}>
-            <TouchableOpacity
-              style={[styles.dropdownItem, selected === null && styles.dropdownItemActive]}
-              onPress={() => {
-                onChange(null);
-                setOpen(false);
-              }}
-              activeOpacity={0.7}
+            <ScrollView
+              style={styles.dropdownScroll}
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
             >
-              <Text style={[styles.dropdownItemText, selected === null && styles.dropdownItemTextActive]}>
-                {allLabel}
-              </Text>
-            </TouchableOpacity>
-            {options.map((option) => (
               <TouchableOpacity
-                key={option.key}
-                style={[styles.dropdownItem, selected === option.value && styles.dropdownItemActive]}
+                style={[styles.dropdownItem, selected === null && styles.dropdownItemActive]}
                 onPress={() => {
-                  onChange(option.value);
+                  onChange(null);
                   setOpen(false);
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.dropdownItemText, selected === option.value && styles.dropdownItemTextActive]}>
-                  {option.label}
+                <Text style={[styles.dropdownItemText, selected === null && styles.dropdownItemTextActive]}>
+                  {allLabel}
                 </Text>
               </TouchableOpacity>
-            ))}
+              {options.map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[styles.dropdownItem, selected === option.value && styles.dropdownItemActive]}
+                  onPress={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.dropdownItemText, selected === option.value && styles.dropdownItemTextActive]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -421,6 +427,8 @@ export function ExercisePickerModal({
               selected={newExerciseMuscle}
               onChange={(value) => setNewExerciseMuscle(value as MuscleGroup)}
               allowDeselect={false}
+              horizontal={false}
+              maxHeight={150}
             />
 
             <Text style={styles.formFieldLabel}>Secondary Muscles (optional)</Text>
@@ -428,6 +436,8 @@ export function ExercisePickerModal({
               items={MUSCLE_GROUP_ITEMS}
               selected={newSecondaryMuscles}
               onChange={setNewSecondaryMuscles}
+              horizontal={false}
+              maxHeight={150}
             />
 
             <Text style={styles.formFieldLabel}>Equipment</Text>
@@ -625,6 +635,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: colors.surface,
     paddingVertical: 6,
+  },
+  dropdownScroll: {
+    maxHeight: '100%',
   },
   dropdownItem: {
     paddingVertical: 12,

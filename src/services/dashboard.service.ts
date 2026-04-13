@@ -85,16 +85,33 @@ export const EARLIEST_DATE = '2016-01-01';
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
   [MuscleGroup.Chest]: '#FF6B6B',
   [MuscleGroup.Back]: '#4ECDC4',
+  [MuscleGroup.UpperBack]: '#58B9B0',
+  [MuscleGroup.LowerBack]: '#3E9D95',
   [MuscleGroup.Shoulders]: '#45B7D1',
+  deltoids: '#5AC4DE',
   [MuscleGroup.Biceps]: '#96CEB4',
   [MuscleGroup.Triceps]: '#FFEAA7',
   [MuscleGroup.Quads]: '#DDA0DD',
+  quadriceps: '#CC8BCF',
   [MuscleGroup.Hamstrings]: '#98D8C8',
+  hamstring: '#86C7B7',
   [MuscleGroup.Glutes]: '#F7DC6F',
+  gluteal: '#E9CD5E',
   [MuscleGroup.Calves]: '#BB8FCE',
   [MuscleGroup.Abs]: '#F0B27A',
+  [MuscleGroup.Obliques]: '#E1A269',
   [MuscleGroup.Forearms]: '#AED6F1',
+  forearm: '#9EC5E1',
   [MuscleGroup.Traps]: '#D5DBDB',
+  trapezius: '#BCC3C3',
+  [MuscleGroup.Tibialis]: '#BDB76B',
+  [MuscleGroup.Adductors]: '#C7B299',
+  [MuscleGroup.Neck]: '#A9A9A9',
+  [MuscleGroup.Head]: '#C0C0C0',
+  [MuscleGroup.Knees]: '#8E9AAF',
+  [MuscleGroup.Hands]: '#C9A66B',
+  [MuscleGroup.Feet]: '#8FA8A1',
+  [MuscleGroup.Ankles]: '#95A5A6',
   [MuscleGroup.Cardio]: '#7EC8E3',
   [MuscleGroup.FullBody]: '#82E0AA',
 };
@@ -319,7 +336,7 @@ function mapToPointsAvg(
     }));
 }
 
-const SESSION_SELECT = 'id, routine_day_id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group, exercise_type))';
+const SESSION_SELECT = 'id, routine_day_id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group, exercise_type, secondary_muscles))';
 const BODY_MEASUREMENT_SELECT = ['logged_on', ...BODY_MEASUREMENT_METRICS.map((m) => m.column)].join(', ');
 
 type RawMeasurement = Pick<BodyMeasurement, 'logged_on' | MeasurementValueColumn>;
@@ -968,7 +985,7 @@ function computeMuscleGroupSplit(sessions: RawSession[]) {
   for (const s of sessions) {
     for (const set of s.sets) {
       const group = set.exercise?.muscle_group ?? 'unknown';
-      if (group === 'unknown' || group === 'full_body') continue;
+      if (group === 'unknown') continue;
       counts.set(group, (counts.get(group) ?? 0) + 1);
       const secondary: string[] = (set.exercise as Record<string, unknown>)?.secondary_muscles as string[] ?? [];
       for (const sec of secondary) {
@@ -981,7 +998,7 @@ function computeMuscleGroupSplit(sessions: RawSession[]) {
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([group, count]) => ({
-      label: group.replace('_', ' '),
+      label: group.replace(/_/g, ' '),
       value: Math.round((count / total) * 100),
       color: MUSCLE_GROUP_COLORS[group] ?? '#888888',
     }));
@@ -994,7 +1011,6 @@ function computeMuscleGroupExercises(sessions: RawSession[]): Record<string, { l
     for (const set of s.sets) {
       if (!set.exercise) continue;
       const group = set.exercise.muscle_group;
-      if (group === 'full_body') continue;
       const name = set.exercise.name;
       if (!groupExerciseCounts.has(group)) {
         groupExerciseCounts.set(group, new Map());

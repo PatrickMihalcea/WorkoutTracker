@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import {
-  View,
   Text,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
 } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { Button, Input } from '../../src/components/ui';
-import { colors, fonts } from '../../src/constants';
+import { colors, fonts, spacing } from '../../src/constants';
+import { AuthScaffold } from '../../src/components/auth/AuthScaffold';
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState('');
@@ -40,98 +38,70 @@ export default function SignUpScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <AuthScaffold
+      title="Create your account"
+      subtitle="Start strong, keep history synced, and unlock full workout tracking."
     >
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Start tracking your workouts</Text>
-        </View>
+      <Input
+        label="Email"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="you@example.com"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
 
-        <Input
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+      <Input
+        label="Password"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="At least 6 characters"
+        secureTextEntry
+      />
 
-        <Input
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="At least 6 characters"
-          secureTextEntry
-        />
+      <Input
+        label="Confirm Password"
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        placeholder="Re-enter password"
+        secureTextEntry
+      />
 
-        <Input
-          label="Confirm Password"
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          placeholder="Re-enter password"
-          secureTextEntry
-        />
+      <Button
+        title="Sign Up"
+        onPress={handleSignUp}
+        loading={loading}
+        style={styles.signUpButton}
+      />
 
-        <Button
-          title="Sign Up"
-          onPress={handleSignUp}
-          loading={loading}
-          style={styles.signUpButton}
-        />
-
-        <Link href="/(auth)/login" style={styles.link}>
-          <Text style={styles.linkText}>
-            Already have an account? <Text style={styles.linkBold}>Log in</Text>
-          </Text>
-        </Link>
-      </View>
-    </KeyboardAvoidingView>
+      <Link href="/(auth)/login" replace style={styles.link}>
+        <Text style={styles.linkText}>
+          Already have an account? <Text style={styles.linkBold}>Log in</Text>
+        </Text>
+      </Link>
+    </AuthScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  title: {
-    fontSize: 32,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    fontFamily: fonts.light,
-    color: colors.textSecondary,
-  },
   signUpButton: {
-    marginTop: 8,
+    marginTop: spacing.xs,
+    backgroundColor: '#CFEFEB',
+    borderColor: '#CFEFEB',
+    borderWidth: 1,
   },
   link: {
     alignSelf: 'center',
-    marginTop: 24,
+    marginTop: spacing.md,
   },
   linkText: {
-    color: colors.textSecondary,
-    fontSize: 15,
+    color: '#9EBABB',
+    fontSize: 14,
     fontFamily: fonts.regular,
   },
   linkBold: {
-    color: colors.text,
+    color: '#DFFCF8',
     fontFamily: fonts.semiBold,
   },
 });

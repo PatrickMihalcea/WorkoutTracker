@@ -16,6 +16,8 @@ interface ChipPickerProps<T extends string | number> {
   chipTextSelectedStyle?: StyleProp<TextStyle>;
   getChipStyle?: (item: { key: string; label: string; value: T }, isSelected: boolean) => StyleProp<ViewStyle> | undefined;
   getChipTextStyle?: (item: { key: string; label: string; value: T }, isSelected: boolean) => StyleProp<TextStyle> | undefined;
+  horizontal?: boolean;
+  maxHeight?: number;
 }
 
 export function ChipPicker<T extends string | number>({
@@ -31,16 +33,20 @@ export function ChipPicker<T extends string | number>({
   chipTextSelectedStyle,
   getChipStyle,
   getChipTextStyle,
+  horizontal = true,
+  maxHeight,
 }: ChipPickerProps<T>) {
   return (
     <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={[styles.scroll, style]}
+      horizontal={horizontal}
+      showsHorizontalScrollIndicator={horizontal}
+      showsVerticalScrollIndicator={!horizontal}
+      style={[styles.scroll, !horizontal && maxHeight ? { maxHeight } : null, style]}
       keyboardShouldPersistTaps={keyboardPersistTaps ? 'always' : undefined}
       keyboardDismissMode={keyboardPersistTaps ? 'none' : undefined}
+      contentContainerStyle={!horizontal ? styles.wrapRow : undefined}
     >
-      <View style={styles.row}>
+      <View style={[styles.row, !horizontal && styles.rowWrap]}>
         {items.map((item) => {
           const isSelected = selected === item.value;
           return (
@@ -85,6 +91,8 @@ interface MultiChipPickerProps<T extends string | number> {
   selected: T[];
   onChange: (values: T[]) => void;
   style?: ViewStyle;
+  horizontal?: boolean;
+  maxHeight?: number;
 }
 
 export function MultiChipPicker<T extends string | number>({
@@ -92,14 +100,18 @@ export function MultiChipPicker<T extends string | number>({
   selected,
   onChange,
   style,
+  horizontal = true,
+  maxHeight,
 }: MultiChipPickerProps<T>) {
   return (
     <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={[styles.scroll, style]}
+      horizontal={horizontal}
+      showsHorizontalScrollIndicator={horizontal}
+      showsVerticalScrollIndicator={!horizontal}
+      style={[styles.scroll, !horizontal && maxHeight ? { maxHeight } : null, style]}
+      contentContainerStyle={!horizontal ? styles.wrapRow : undefined}
     >
-      <View style={styles.row}>
+      <View style={[styles.row, !horizontal && styles.rowWrap]}>
         {items.map((item) => {
           const isSelected = selected.includes(item.value);
           return (
@@ -151,6 +163,12 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 8,
+  },
+  rowWrap: {
+    flexWrap: 'wrap',
+  },
+  wrapRow: {
+    paddingRight: 8,
   },
   chip: {
     paddingHorizontal: 14,

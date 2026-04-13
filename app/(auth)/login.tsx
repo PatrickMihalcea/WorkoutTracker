@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import {
-  View,
   Text,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
 } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { Button, Input } from '../../src/components/ui';
-import { colors, fonts } from '../../src/constants';
+import { colors, fonts, spacing } from '../../src/constants';
+import { AuthScaffold } from '../../src/components/auth/AuthScaffold';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -30,90 +28,62 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <AuthScaffold
+      title="Welcome back"
+      subtitle="Log in to continue your progress and keep your streak moving."
     >
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Workout Tracker</Text>
-          <Text style={styles.subtitle}>Log in to track your gains</Text>
-        </View>
+      <Input
+        label="Email"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="you@example.com"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
 
-        <Input
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+      <Input
+        label="Password"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Your password"
+        secureTextEntry
+      />
 
-        <Input
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Your password"
-          secureTextEntry
-        />
+      <Button
+        title="Log In"
+        onPress={handleLogin}
+        loading={loading}
+        style={styles.loginButton}
+      />
 
-        <Button
-          title="Log In"
-          onPress={handleLogin}
-          loading={loading}
-          style={styles.loginButton}
-        />
-
-        <Link href="/(auth)/signup" style={styles.link}>
-          <Text style={styles.linkText}>
-            Don't have an account? <Text style={styles.linkBold}>Sign up</Text>
-          </Text>
-        </Link>
-      </View>
-    </KeyboardAvoidingView>
+      <Link href="/(auth)/signup" replace style={styles.link}>
+        <Text style={styles.linkText}>
+          Don&apos;t have an account? <Text style={styles.linkBold}>Sign up</Text>
+        </Text>
+      </Link>
+    </AuthScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  title: {
-    fontSize: 32,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    fontFamily: fonts.light,
-    color: colors.textSecondary,
-  },
   loginButton: {
-    marginTop: 8,
+    marginTop: spacing.xs,
+    backgroundColor: '#CFEFEB',
+    borderColor: '#CFEFEB',
+    borderWidth: 1,
   },
   link: {
     alignSelf: 'center',
-    marginTop: 24,
+    marginTop: spacing.md,
   },
   linkText: {
-    color: colors.textSecondary,
-    fontSize: 15,
+    color: '#9EBABB',
+    fontSize: 14,
     fontFamily: fonts.regular,
   },
   linkBold: {
-    color: colors.text,
+    color: '#DFFCF8',
     fontFamily: fonts.semiBold,
   },
 });

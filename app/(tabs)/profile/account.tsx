@@ -20,13 +20,34 @@ function AccountItem({ label, onPress }: AccountItemProps) {
 
 export default function AccountScreen() {
   const router = useRouter();
-  const { signOut } = useAuthStore();
+  const { signOut, deleteAccount, loading } = useAuthStore();
 
   const confirmSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: signOut },
     ]);
+  };
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your profile and workout data. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAccount();
+            } catch (error: unknown) {
+              Alert.alert('Error', (error as Error).message || 'Could not delete account');
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -50,7 +71,17 @@ export default function AccountScreen() {
         title="Sign Out"
         variant="danger"
         onPress={confirmSignOut}
+        disabled={loading}
         style={styles.signOut}
+      />
+
+      <Button
+        title="Delete Account"
+        variant="danger"
+        onPress={confirmDeleteAccount}
+        loading={loading}
+        disabled={loading}
+        style={styles.deleteAccount}
       />
     </View>
   );
@@ -90,5 +121,11 @@ const styles = StyleSheet.create({
   },
   signOut: {
     marginTop: 24,
+  },
+  deleteAccount: {
+    marginTop: 12,
+    borderColor: '#7F2A2A',
+    backgroundColor: '#2B1616',
+    borderWidth: 1,
   },
 });

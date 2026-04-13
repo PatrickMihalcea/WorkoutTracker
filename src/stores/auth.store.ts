@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Session, User } from '@supabase/supabase-js';
-import { authService } from '../services';
+import { accountService, authService } from '../services';
 import { supabase } from '../services/supabase';
 import { useProfileStore } from './profile.store';
 
@@ -14,6 +14,7 @@ interface AuthState {
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   updateEmail: (newEmail: string) => Promise<void>;
   updatePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
@@ -76,6 +77,22 @@ export const useAuthStore = create<AuthState>((set) => ({
     await authService.signOut();
     useProfileStore.getState().setProfile(null);
     set({ session: null, user: null });
+  },
+
+  deleteAccount: async () => {
+    set({ loading: true });
+    try {
+      await accountService.deleteAccount();
+      try {
+        await authService.signOut();
+      } catch {
+        // User may already be invalidated after deletion.
+      }
+      useProfileStore.getState().setProfile(null);
+      set({ session: null, user: null });
+    } finally {
+      set({ loading: false });
+    }
   },
 
   updateEmail: async (newEmail) => {

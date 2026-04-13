@@ -93,6 +93,21 @@ function buildSessionPoints(
     .sort((a, b) => a.date - b.date);
 }
 
+function buildCumulativeSessionPoints(
+  sessions: Map<string, { startedAt: string; sets: RawSet[] }>,
+  valueFn: (sets: RawSet[]) => number,
+): TimeSeriesPoint[] {
+  let runningTotal = 0;
+  return [...sessions.entries()]
+    .map(([sid, { startedAt, sets }]) => {
+      const v = valueFn(sets);
+      runningTotal += v;
+      return toPoint(sid, sessionLabel(startedAt), runningTotal, new Date(startedAt).getTime());
+    })
+    .filter((p) => p.value > 0)
+    .sort((a, b) => a.date - b.date);
+}
+
 function computeWeightRepsTimeSeries(sessions: Map<string, { startedAt: string; sets: RawSet[] }>): Record<string, TimeSeriesPoint[]> {
   return {
     heaviestWeight: buildSessionPoints(sessions, (sets) =>
@@ -145,12 +160,12 @@ function computeAssistedBodyweightTimeSeries(sessions: Map<string, { startedAt: 
 function computeDurationTimeSeries(sessions: Map<string, { startedAt: string; sets: RawSet[] }>): Record<string, TimeSeriesPoint[]> {
   return {
     longestDuration: buildSessionPoints(sessions, (sets) =>
-      sets.reduce((sum, s) => sum + s.duration, 0),
+      Math.max(0, ...sets.map((s) => s.duration)),
     ),
     sessionDuration: buildSessionPoints(sessions, (sets) =>
       sets.reduce((sum, s) => sum + s.duration, 0),
     ),
-    totalDuration: buildSessionPoints(sessions, (sets) =>
+    totalDuration: buildCumulativeSessionPoints(sessions, (sets) =>
       sets.reduce((sum, s) => sum + s.duration, 0),
     ),
   };
@@ -162,9 +177,9 @@ function computeDurationWeightTimeSeries(sessions: Map<string, { startedAt: stri
       Math.max(...sets.map((s) => s.weight)),
     ),
     longestDuration: buildSessionPoints(sessions, (sets) =>
-      sets.reduce((sum, s) => sum + s.duration, 0),
+      Math.max(0, ...sets.map((s) => s.duration)),
     ),
-    totalDuration: buildSessionPoints(sessions, (sets) =>
+    totalDuration: buildCumulativeSessionPoints(sessions, (sets) =>
       sets.reduce((sum, s) => sum + s.duration, 0),
     ),
   };
@@ -176,7 +191,7 @@ function computeDistanceDurationTimeSeries(sessions: Map<string, { startedAt: st
       sets.reduce((sum, s) => sum + s.distance, 0),
     ),
     longestDuration: buildSessionPoints(sessions, (sets) =>
-      sets.reduce((sum, s) => sum + s.duration, 0),
+      Math.max(0, ...sets.map((s) => s.duration)),
     ),
     bestPace: buildSessionPoints(sessions, (sets) => {
       const totalDistance = sets.reduce((sum, s) => sum + s.distance, 0);
@@ -272,7 +287,11 @@ function computePersonalRecords(
   const wLabel = wUnit === 'lbs' ? 'lbs' : 'kg';
   const dLabel = dUnit === 'miles' ? 'mi' : 'km';
   const fmtWeight_ = (w: number) => `${Math.round(w * 10) / 10} ${wLabel}`;
-  const fmtVolume = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v));
+  const fmtVolume = (v: number) => {
+    if (v >= 1000) return `${(v / 1000).toFixed(1)}K`;
+    const rounded = Math.round(v * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  };
   const fmtDist = (d: number) => `${Math.round(d * 10) / 10} ${dLabel}`;
   const fmtPace = (p: number) => `${p.toFixed(2)} ${dLabel}/min`;
 

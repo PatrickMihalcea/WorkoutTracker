@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -35,6 +36,7 @@ export function OnboardingScaffold({
   children,
 }: OnboardingScaffoldProps) {
   const insets = useSafeAreaInsets();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const heroAnim = useRef(new Animated.Value(0)).current;
   const bodyAnim = useRef(new Animated.Value(0)).current;
   const footerAnim = useRef(new Animated.Value(0)).current;
@@ -62,6 +64,23 @@ export function OnboardingScaffold({
       }),
     ]).start();
   }, [bodyAnim, footerAnim, heroAnim, step]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const progressWidth = useMemo<`${number}%`>(
     () => `${Math.min(100, (step / totalSteps) * 100)}%`,
@@ -112,7 +131,8 @@ export function OnboardingScaffold({
     }),
     [footerAnim],
   );
-  const floatingBottom = Math.max(insets.bottom, spacing.md);
+  const safeBottom = Math.max(insets.bottom, spacing.md);
+  const floatingBottom = keyboardHeight > 0 ? keyboardHeight + spacing.sm : safeBottom;
 
   return (
     <View style={styles.root}>
@@ -131,7 +151,7 @@ export function OnboardingScaffold({
         >
           <ScrollView
             style={styles.scroll}
-            contentContainerStyle={[styles.content, { paddingBottom: floatingBottom + 92 }]}
+            contentContainerStyle={[styles.content, { paddingBottom: safeBottom + 92 }]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
