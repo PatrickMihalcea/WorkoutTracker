@@ -30,7 +30,7 @@ const EXERCISES: ExerciseRow[] = [
 
 const ANSWERS: OnboardingRoutineAnswers = {
   days_per_week: 3,
-  session_minutes: 45,
+  session_minutes: 60,
   goal: 'muscle_gain',
   experience: 'beginner',
   equipment: 'bodyweight_minimal',

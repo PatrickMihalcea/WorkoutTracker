@@ -65,7 +65,6 @@ const EQUIPMENT_BY_PREFERENCE: Record<OnboardingRoutineAnswers['equipment'], str
 
 const GOAL_LABELS: Record<OnboardingRoutineAnswers['goal'], string> = {
   muscle_gain: 'Muscle Gain',
-  strength: 'Strength',
   fat_loss: 'Fat Loss',
   general_fitness: 'General Fitness',
 };
@@ -141,11 +140,9 @@ export function filterExercisesForAnswers(
 }
 
 function sessionExerciseCount(answers: OnboardingRoutineAnswers): number {
-  let count = answers.session_minutes === 30 ? 4 : answers.session_minutes === 45 ? 5 : 6;
+  let count = answers.session_minutes === 30 ? 4 : answers.session_minutes === 60 ? 6 : 7;
 
   if (answers.experience === 'beginner') count -= 1;
-  if (answers.goal === 'strength') count -= 1;
-
   return Math.max(3, Math.min(7, count));
 }
 
@@ -175,24 +172,6 @@ function getDayTemplates(answers: OnboardingRoutineAnswers): DayTemplate[] {
         { label: 'Full Body B', day_of_week: 2, selectors: ['legs', 'shoulders', 'arms', 'core'] },
         { label: 'Full Body C', day_of_week: 4, selectors: ['legs', 'back', 'chest', 'core'] },
         { label: 'Full Body D', day_of_week: 5, selectors: ['legs', 'shoulders', 'arms', 'core'] },
-      ];
-    }
-  }
-
-  if (answers.goal === 'strength') {
-    if (answers.days_per_week === 3) {
-      return [
-        { label: 'Full Body Strength A', day_of_week: 1, selectors: ['legs', 'chest', 'back'] },
-        { label: 'Full Body Strength B', day_of_week: 3, selectors: ['legs', 'shoulders', 'back'] },
-        { label: 'Full Body Strength C', day_of_week: 5, selectors: ['legs', 'chest', 'back'] },
-      ];
-    }
-    if (answers.days_per_week === 4) {
-      return [
-        { label: 'Upper Strength', day_of_week: 1, selectors: ['chest', 'back', 'shoulders'] },
-        { label: 'Lower Strength', day_of_week: 2, selectors: ['quads', 'hamstrings', 'glutes'] },
-        { label: 'Upper Accessories', day_of_week: 4, selectors: ['back', 'chest', 'arms'] },
-        { label: 'Lower Accessories', day_of_week: 5, selectors: ['legs', 'glutes', 'core'] },
       ];
     }
   }
@@ -372,12 +351,6 @@ function scoreExercise(
     if (focusMuscles.has(muscle)) score += 6;
   }
 
-  if (answers.goal === 'strength') {
-    if (isBigCompound(exercise)) score += 24;
-    if (isIsolation(exercise)) score -= 4;
-    if (exercise.exercise_type === 'duration') score -= 20;
-  }
-
   if (answers.goal === 'muscle_gain') {
     if (exercise.exercise_type === 'weight_reps') score += 14;
     if (isIsolation(exercise)) score += 8;
@@ -463,21 +436,6 @@ function buildSetPrescription(
     repsMax = 0;
     targetRir = null;
     targetDuration = answers.goal === 'fat_loss' ? 60 : 45;
-  } else if (answers.goal === 'strength' && bigCompound && indexInDay <= 1) {
-    sets = 4;
-    repsMin = 4;
-    repsMax = 6;
-    targetRir = answers.experience === 'advanced' ? 1 : 2;
-  } else if (answers.goal === 'strength' && isolation) {
-    sets = 2;
-    repsMin = 8;
-    repsMax = 12;
-    targetRir = 2;
-  } else if (answers.goal === 'strength') {
-    sets = 3;
-    repsMin = 6;
-    repsMax = 8;
-    targetRir = 2;
   } else if (answers.goal === 'fat_loss') {
     if (isolation) {
       sets = 2;

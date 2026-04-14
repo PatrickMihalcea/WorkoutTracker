@@ -29,7 +29,7 @@ export default function CreateRoutineScreen() {
   const [mode, setMode] = useState<CreateMode>('custom');
   const [name, setName] = useState('');
   const [daysPerWeek, setDaysPerWeek] = useState<3 | 4 | 5>(4);
-  const [sessionMinutes, setSessionMinutes] = useState<30 | 45 | 60>(45);
+  const [sessionMinutes, setSessionMinutes] = useState<30 | 60 | 90>(60);
   const [weekCount, setWeekCount] = useState<RoutineWeekCount>(4);
   const [goal, setGoal] = useState<OnboardingGoal>('muscle_gain');
   const [experience, setExperience] = useState<OnboardingExperience>('beginner');
@@ -167,11 +167,11 @@ export default function CreateRoutineScreen() {
               <ChipPicker
                 allowDeselect={false}
                 selected={sessionMinutes}
-                onChange={(value) => setSessionMinutes((value ?? 45) as 30 | 45 | 60)}
+                onChange={(value) => setSessionMinutes((value ?? 60) as 30 | 60 | 90)}
                 items={[
                   { key: '30', label: '30 min', value: 30 },
-                  { key: '45', label: '45 min', value: 45 },
                   { key: '60', label: '60 min', value: 60 },
+                  { key: '90', label: '90 min', value: 90 },
                 ]}
                 horizontal={false}
               />
@@ -201,7 +201,6 @@ export default function CreateRoutineScreen() {
                 onChange={(value) => setGoal((value ?? 'muscle_gain') as OnboardingGoal)}
                 items={[
                   { key: 'muscle_gain', label: 'Muscle gain', value: 'muscle_gain' },
-                  { key: 'strength', label: 'Strength', value: 'strength' },
                   { key: 'fat_loss', label: 'Fat loss', value: 'fat_loss' },
                   { key: 'general_fitness', label: 'General fitness', value: 'general_fitness' },
                 ]}

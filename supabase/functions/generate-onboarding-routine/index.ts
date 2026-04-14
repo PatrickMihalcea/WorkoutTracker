@@ -69,8 +69,8 @@ function isValidAnswers(value: unknown): value is OnboardingRoutineAnswers {
   const v = value as Record<string, unknown>;
   return (
     (v.days_per_week === 3 || v.days_per_week === 4 || v.days_per_week === 5) &&
-    (v.session_minutes === 30 || v.session_minutes === 45 || v.session_minutes === 60) &&
-    (v.goal === 'muscle_gain' || v.goal === 'strength' || v.goal === 'fat_loss' || v.goal === 'general_fitness') &&
+    (v.session_minutes === 30 || v.session_minutes === 60 || v.session_minutes === 90) &&
+    (v.goal === 'muscle_gain' || v.goal === 'fat_loss' || v.goal === 'general_fitness') &&
     (v.experience === 'beginner' || v.experience === 'intermediate' || v.experience === 'advanced') &&
     (v.equipment === 'full_gym' || v.equipment === 'dumbbells_bench' || v.equipment === 'bodyweight_minimal') &&
     (

@@ -3,7 +3,6 @@ export type RoutineWeekCount = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type OnboardingGoal =
   | 'muscle_gain'
-  | 'strength'
   | 'fat_loss'
   | 'general_fitness';
 
@@ -28,7 +27,7 @@ export type OnboardingFocusMuscle =
 
 export interface OnboardingRoutineAnswers {
   days_per_week: 3 | 4 | 5;
-  session_minutes: 30 | 45 | 60;
+  session_minutes: 30 | 60 | 90;
   goal: OnboardingGoal;
   experience: OnboardingExperience;
   equipment: OnboardingEquipmentPreference;

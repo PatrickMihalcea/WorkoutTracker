@@ -205,22 +205,16 @@ export async function refineDraftWithAi(args: {
   }));
 
   const systemPrompt = [
-  'You are an expert strength and hypertrophy coach.',
+  'You are an expert fitness and hypertrophy coach.',
   'Return strict JSON only. No markdown. No explanations.',
   'Use only exercise_name values from the provided candidate list.',
   'Never invent exercises, names, fields, or enum values.',
   'Preserve the output schema exactly.',
   'Keep exactly the requested number of training days and weeks.',
-  'Each day must contain 3 to 7 exercises, while fitting the selected session length.',
-  'For non-cardio exercises, include at least 2 sets.',
-  'For cardio/duration/distance exercises, 1+ set is allowed.',
-  'For every exercise, sets array length must equal target_sets.',
   'Do not include redundant exercise-level target_sets or target_reps fields; they are derived server-side from sets.',
   'Set numbers must be contiguous starting at 1.',
   'No duplicate exercises within the same day.',
   'Avoid repeating the same exercise on multiple days unless clearly necessary.',
-  'For multi-week plans, exercises should remain the same from week to week for a given day; progression should come from load, reps, sets, RIR, duration, or distance, not from swapping exercises.',
-  'Create week-to-week progression through sets, reps, target_weight, target_rir, target_duration, or target_distance as appropriate.',
   'Build a practical, balanced, recoverable program that respects equipment, session length, goal, experience, focus muscle, and available user body metrics.',
   'Use sex, height, weight, goal, and experience to choose practical starting loads and session difficulty.',
   'Apply only a slight focus-muscle bias. Do not unbalance the program.',
@@ -230,7 +224,6 @@ export async function refineDraftWithAi(args: {
   'For dumbbells, target_weight means per hand unless the exercise is clearly single-arm.',
   'For bodyweight, assisted, duration-only, and cardio movements, target_weight should usually be null.',
   'Prefer conservative, achievable starting weights over aggressive guesses.',
-  'Strength: emphasize stable compounds and lower reps on main lifts.',
   'Muscle gain: emphasize hypertrophy-friendly compounds plus isolations.',
   'Fat loss: keep sessions efficient and include cardio staples.',
   'General fitness: keep the plan balanced, sustainable, and include some cardio.',
@@ -248,10 +241,8 @@ export async function refineDraftWithAi(args: {
             'Use only candidate exercise names.',
             'Fix all listed validation errors.',
             'Do not include explanations.',
-            'For every exercise, sets.length must equal target_sets.',
             'For non-cardio exercises, require at least 2 sets.',
             'For cardio/duration/distance exercises, 1+ set is allowed.',
-            'Do not include exercise-level target_sets or target_reps; they are derived server-side from sets.',
             'Set numbers must be contiguous starting at 1.',
           ],
           validation_errors: repairContext.validation_errors,
@@ -307,7 +298,7 @@ export async function refineDraftWithAi(args: {
           },
         }
       : {
-      task: 'Design a personalized high-quality routine from scratch based on the user profile and preferences. Follow the strict number ofdays request. Balance the routine, only slight bias for a focus muscle group.',
+      task: 'Design a personalized high-quality routine based on the user profile and preferences. Follow the strict number ofdays request. Only slight bias for a focus muscle group, and have workout sets and durations that fit the designated session length for each day.',
       user_preferences: {
         days_per_week: answers.days_per_week,
         session_minutes: answers.session_minutes,
@@ -333,21 +324,14 @@ export async function refineDraftWithAi(args: {
         use_only_candidate_exercises: true,
         preserve_exact_day_count: expectedTotalDays,
         preserve_schema_exactly: true,
-        exercises_per_day_min: 3,
-        exercises_per_day_max: 7,
-        non_cardio_sets_per_exercise_min: 2,
-        cardio_sets_per_exercise_min: 1,
+        exercises_per_day_min: '3 for 30min, 4 for 60min, 6 for 90min',
+        exercises_per_day_max: '4 for 30 min, 6 for 60min, 8 for 90min',
+        non_cardio_sets_per_exercise_min: '2 for 30, 3 for 60, 3|4 for 90',
+        cardio_sets_per_exercise_min: 'Depends on exercise and session length, but can be 1 or more',
         set_numbers_must_be_contiguous_from_1: true,
         focus_muscle_bias: 'very_slight',
-        rewrite_freedom: {
-          split_style: 'high',
-          day_labels: 'high',
-          exercise_selection: 'high',
-          set_rep_structure: 'medium_high',
-        },
         training_quality_priorities: [
           'exercise quality',
-          'fatigue management',
           'goal alignment',
           'equipment fit',
           'session length fit',
@@ -365,7 +349,7 @@ export async function refineDraftWithAi(args: {
           'too many near-identical movement patterns in one session',
           'unbalanced weekly volume',
           'advanced complexity for beginners',
-          'unrealistic volume for 30-minute sessions',
+          'unrealistic volume for selected session length',
         ]
       },
       routine_design_guidance: {
@@ -375,9 +359,8 @@ export async function refineDraftWithAi(args: {
           5: 'Prefer body groups emphasis. '
         },
         by_goal: {
-          muscle_gain: 'Use mostly hypertrophy-friendly exercise selection and set/rep schemes. Usually compounds plus isolations. Most working sets in roughly the 4-12 rep range.',
-          strength: 'Center each day around stable, high-value compound lifts. Main lifts can use lower reps. Accessories should support strength without excessive fatigue.',
-          fat_loss: 'Keep sessions efficient. Favor practical exercise density, moderate volume, simple exercise transitions, and good whole-body training stimulus. And Some cardio',
+          muscle_gain: 'Use mostly hypertrophy-friendly exercise selection and set/rep schemes. Usually compounds plus isolations. Most working sets in roughly the 4-10 rep range.',
+          fat_loss: 'Favor practical exercise density, moderate volume, simple exercise transitions, and good whole-body training stimulus. And Some cardio',
           general_fitness: 'Keep the plan balanced, sustainable, and broadly effective across all major muscle groups. Bit of cardio.'
         },
         by_experience: {
@@ -386,9 +369,9 @@ export async function refineDraftWithAi(args: {
           advanced: 'Allow somewhat greater specificity and volume, but keep the routine practical and coherent.'
         },
         by_session_length: {
-          30: 'Keep sessions compact. Usually 3-4 exercises withfewer sets.',
-          45: 'Usually 4-6 exercises with balanced volume.',
-          60: 'Usually 5-7 exercises.'
+          30: 'Keep sessions compact. Usually 3-4 exercises with 2-3 sets.',
+          60: '4-6 exercises with balanced volume.',
+          90: '6-8 exercises with room for possible warmup, more sets (3-4), and more accessory and conditioning work.'
         }
       },
       output_requirements: {
@@ -423,8 +406,8 @@ export async function refineDraftWithAi(args: {
                     target_weight: 'number non-null',
                     target_reps_min: 'number',
                     target_reps_max: 'number',
-                    target_rir: 'number|null',
-                    target_duration: 'number in seconds',
+                    target_rir: 'number|null should come down to 0-1 for last sets in muscle building. Anything with reps should have a non null RIR value here.',
+                    target_duration: 'number in seconds. If intensive, 45 seconds or less like battle ropes. If more endurance based like running, 10 minutes OR MORE depending on session length.',
                     target_distance: 'number',
                     is_warmup: 'boolean',
                   },

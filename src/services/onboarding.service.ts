@@ -10,7 +10,9 @@ const DEFAULT_WEEK_COUNT_BY_MODE: Record<OnboardingRoutineGenerationMode, number
   template: 4,
   ai: 2,
 };
+
 const MAX_AI_NEW_CALL_ATTEMPTS = 2;
+
 type RepairContext = NonNullable<GenerateOnboardingRoutineRequest['repair_context']>;
 
 class RoutineGenerationInvokeError extends Error {
@@ -33,18 +35,31 @@ function extractRepairContextFromPayload(payload: unknown): RepairContext | null
   if (!payload || typeof payload !== 'object') return null;
   const maybeRepair = (payload as { repair_context?: unknown }).repair_context;
   if (!maybeRepair || typeof maybeRepair !== 'object') return null;
-  const candidate = maybeRepair as { validation_errors?: unknown; previous_output?: unknown };
+
+  const candidate = maybeRepair as {
+    validation_errors?: unknown;
+    previous_output?: unknown;
+  };
+
   if (!Array.isArray(candidate.validation_errors)) return null;
+
   return {
-    validation_errors: candidate.validation_errors
-      .filter((item): item is string => typeof item === 'string'),
+    validation_errors: candidate.validation_errors.filter(
+      (item): item is string => typeof item === 'string',
+    ),
     previous_output: candidate.previous_output,
   };
 }
 
 async function readContextErrorMessage(error: unknown): Promise<string | null> {
   if (!error || typeof error !== 'object') return null;
-  const context = (error as { context?: { json?: () => Promise<unknown>; text?: () => Promise<string> } }).context;
+
+  const context = (
+    error as {
+      context?: { json?: () => Promise<unknown>; text?: () => Promise<string> };
+    }
+  ).context;
+
   if (!context) return null;
 
   try {
@@ -71,8 +86,15 @@ async function readContextErrorMessage(error: unknown): Promise<string | null> {
 
 async function readContextPayload(error: unknown): Promise<unknown | null> {
   if (!error || typeof error !== 'object') return null;
-  const context = (error as { context?: { json?: () => Promise<unknown> } }).context;
+
+  const context = (
+    error as {
+      context?: { json?: () => Promise<unknown> };
+    }
+  ).context;
+
   if (!context || typeof context.json !== 'function') return null;
+
   try {
     return await context.json();
   } catch {
@@ -96,11 +118,12 @@ async function invokeGenerateRoutine(args: {
   headers: Record<string, string>;
 }): Promise<GenerateOnboardingRoutineResponse> {
   const { payload, headers } = args;
+
   const { data, error } = await supabase.functions.invoke('generate-onboarding-routine', {
     body: {
       mode: payload.mode,
       answers: payload.answers,
-      week_count: payload.week_count,
+      week_count: 1,
       repair_context: payload.repair_context,
     },
     headers,
@@ -112,7 +135,8 @@ async function invokeGenerateRoutine(args: {
     const contextMessage = await readContextErrorMessage(error);
     const payloadMessage = extractMessageFromPayload(data ?? contextPayload);
     const payloadRepair = extractRepairContextFromPayload(data ?? contextPayload);
-    const message = contextMessage ?? payloadMessage ?? error.message ?? 'Routine generation failed.';
+    const message =
+      contextMessage ?? payloadMessage ?? error.message ?? 'Routine generation failed.';
     throw new RoutineGenerationInvokeError(message, payloadRepair ?? contextRepair);
   }
 
@@ -136,15 +160,11 @@ async function ensureAdditionalWeeks(args: {
   const { routineId, targetWeekCount } = args;
   if (targetWeekCount <= 1) return;
 
-  const routine = await routineService.getById(routineId);
-  let currentWeekCount = routine.week_count;
-  while (currentWeekCount < targetWeekCount) {
-    const newWeek = await routineService.addWeekWithMode({
-      routineId,
-      mode: 'progressive_ai',
-    });
-    currentWeekCount = newWeek;
-  }
+  await routineService.buildRoutineWeeksFromBaseline({
+    routineId,
+    baselineWeekIndex: 1,
+    totalWeekCount: targetWeekCount,
+  });
 }
 
 export const onboardingService = {
@@ -152,6 +172,7 @@ export const onboardingService = {
     payload: GenerateOnboardingRoutineRequest,
   ): Promise<GenerateOnboardingRoutineResponse> {
     const targetWeekCount = payload.week_count ?? DEFAULT_WEEK_COUNT_BY_MODE[payload.mode];
+
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -174,6 +195,7 @@ export const onboardingService = {
         generated = await invokeGenerateRoutine({
           payload: {
             ...payload,
+            week_count: 1,
             repair_context: repairContext ?? undefined,
           },
           headers,
@@ -182,16 +204,20 @@ export const onboardingService = {
       } catch (error: unknown) {
         const err = error instanceof Error ? error : new Error(String(error));
         lastError = err;
+
         if (error instanceof RoutineGenerationInvokeError && error.repairContext) {
           repairContext = error.repairContext;
         }
+
         const shouldRetry =
           payload.mode === 'ai' &&
           attempt < maxAttempts &&
           isRetryableAiError(err.message);
+
         if (!shouldRetry) {
           throw err;
         }
+
         console.warn(
           `[onboarding] AI generation attempt ${attempt}/${maxAttempts} failed; retrying as a new call: ${err.message}`,
         );
@@ -206,6 +232,7 @@ export const onboardingService = {
       routineId: generated.routine_id,
       targetWeekCount,
     });
+
     return generated;
   },
 };
