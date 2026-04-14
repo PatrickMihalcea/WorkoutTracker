@@ -1,4 +1,5 @@
 export type GenerationMode = 'template' | 'ai';
+export type RoutineWeekCount = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type OnboardingGoal =
   | 'muscle_gain'
@@ -19,6 +20,8 @@ export type OnboardingFocusMuscle =
   | 'back'
   | 'shoulders'
   | 'arms'
+  | 'biceps'
+  | 'triceps'
   | 'legs'
   | 'glutes'
   | 'core';
@@ -35,6 +38,11 @@ export interface OnboardingRoutineAnswers {
 export interface GenerateOnboardingRoutineRequest {
   mode: GenerationMode;
   answers: OnboardingRoutineAnswers;
+  week_count?: RoutineWeekCount;
+  repair_context?: {
+    validation_errors: string[];
+    previous_output: unknown;
+  };
 }
 
 export interface GenerateOnboardingRoutineResponse {
@@ -49,8 +57,17 @@ export interface ExerciseRow {
   muscle_group: string;
   equipment: string;
   exercise_type: string;
-  secondary_muscles: string[] | null;
+  secondary_muscles: string[] | string | null;
   user_id: string | null;
+}
+
+export interface UserProfileContext {
+  sex: 'male' | 'female' | 'other' | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  height_unit: 'cm' | 'in' | null;
+  weight_unit: 'kg' | 'lbs' | null;
+  distance_unit: 'km' | 'miles' | null;
 }
 
 export interface PlannedSet {
@@ -75,7 +92,7 @@ export interface PlannedExercise {
 export interface PlannedDay {
   day_of_week: number;
   label: string;
-  week_index: 1;
+  week_index: number;
   exercises: PlannedExercise[];
 }
 

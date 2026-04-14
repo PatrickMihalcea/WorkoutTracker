@@ -50,5 +50,5 @@ Deno.test('AI failure falls back to template', async () => {
   });
 
   assert(result.generationModeUsed === 'fallback_template', 'expected fallback template mode');
-  assert(result.draft.days.length === 3, 'expected 3 template days after fallback');
+  assert(result.draft.days.length === 12, 'expected 4 weeks of 3 template days after fallback');
 });

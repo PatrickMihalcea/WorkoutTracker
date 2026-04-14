@@ -24,6 +24,10 @@ interface OnboardingScaffoldProps {
   onBack?: () => void;
   footer: ReactNode;
   children: ReactNode;
+  showStepProgress?: boolean;
+  footerFloating?: boolean;
+  backgroundVariant?: 'gradient' | 'solid';
+  solidBackgroundColor?: string;
 }
 
 export function OnboardingScaffold({
@@ -34,6 +38,10 @@ export function OnboardingScaffold({
   onBack,
   footer,
   children,
+  showStepProgress = true,
+  footerFloating = true,
+  backgroundVariant = 'gradient',
+  solidBackgroundColor = colors.background,
 }: OnboardingScaffoldProps) {
   const insets = useSafeAreaInsets();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -135,14 +143,16 @@ export function OnboardingScaffold({
   const floatingBottom = keyboardHeight > 0 ? keyboardHeight + spacing.sm : safeBottom;
 
   return (
-    <View style={styles.root}>
-      <LinearGradient
-        colors={['#030507', '#0A171E', '#123038', '#050709']}
-        locations={[0, 0.38, 0.72, 1]}
-        start={{ x: 0.05, y: 0 }}
-        end={{ x: 0.95, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
+    <View style={[styles.root, { backgroundColor: solidBackgroundColor }]}>
+      {backgroundVariant === 'gradient' ? (
+        <LinearGradient
+          colors={['#030507', '#0A171E', '#123038', '#050709']}
+          locations={[0, 0.38, 0.72, 1]}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.95, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
@@ -151,7 +161,10 @@ export function OnboardingScaffold({
         >
           <ScrollView
             style={styles.scroll}
-            contentContainerStyle={[styles.content, { paddingBottom: safeBottom + 92 }]}
+            contentContainerStyle={[
+              styles.content,
+              { paddingBottom: footerFloating ? safeBottom + 92 : safeBottom + spacing.lg },
+            ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -163,12 +176,14 @@ export function OnboardingScaffold({
               ) : (
                 <View style={styles.backButtonPlaceholder} />
               )}
-              <Text style={styles.stepText}>{`Step ${step} of ${totalSteps}`}</Text>
+              {showStepProgress ? <Text style={styles.stepText}>{`Step ${step} of ${totalSteps}`}</Text> : null}
             </View>
 
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: progressWidth }]} />
-            </View>
+            {showStepProgress ? (
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: progressWidth }]} />
+              </View>
+            ) : null}
 
             <Animated.View style={heroStyle}>
               <Text style={styles.title}>{title}</Text>
@@ -178,11 +193,19 @@ export function OnboardingScaffold({
             <Animated.View style={bodyStyle}>
               {children}
             </Animated.View>
+
+            {!footerFloating ? (
+              <Animated.View style={[styles.inlineCtaWrap, footerStyle]}>
+                {footer}
+              </Animated.View>
+            ) : null}
           </ScrollView>
 
-          <Animated.View style={[styles.floatingCtaWrap, { bottom: floatingBottom }, footerStyle]}>
-            {footer}
-          </Animated.View>
+          {footerFloating ? (
+            <Animated.View style={[styles.floatingCtaWrap, { bottom: floatingBottom }, footerStyle]}>
+              {footer}
+            </Animated.View>
+          ) : null}
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
@@ -270,5 +293,8 @@ const styles = StyleSheet.create({
     left: spacing.lg,
     right: spacing.lg,
     zIndex: 20,
+  },
+  inlineCtaWrap: {
+    marginTop: spacing.md,
   },
 });

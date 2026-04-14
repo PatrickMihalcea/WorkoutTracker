@@ -88,34 +88,36 @@ export default function RoutineListScreen() {
     >
       <Card style={StyleSheet.flatten([styles.routineCard, item.is_active ? styles.activeCard : undefined])}>
         <View style={styles.routineHeader}>
-          <View>
+          <View style={styles.routineInfo}>
             <Text style={styles.routineName}>{item.name}</Text>
             <Text style={[styles.routineMeta, item.is_active && styles.routineMetaActive]}>
               {item.week_count} {item.week_count === 1 ? 'week' : 'weeks'} · Current {item.current_week}
             </Text>
           </View>
-          <OverflowMenu
-            items={[
-              {
-                label: 'Set Active',
-                onPress: () => handleSetActive(item),
-                disabled: item.is_active,
-              },
-              {
-                label: 'Edit',
-                onPress: () => router.push(`/(tabs)/routines/${item.id}`),
-              },
-              {
-                label: 'Duplicate',
-                onPress: () => handleDuplicate(item),
-              },
-              {
-                label: 'Delete',
-                onPress: () => handleDelete(item),
-                destructive: true,
-              },
-            ] as OverflowMenuItem[]}
-          />
+          <View style={styles.menuWrap}>
+            <OverflowMenu
+              items={[
+                {
+                  label: 'Set Active',
+                  onPress: () => handleSetActive(item),
+                  disabled: item.is_active,
+                },
+                {
+                  label: 'Edit',
+                  onPress: () => router.push(`/(tabs)/routines/${item.id}`),
+                },
+                {
+                  label: 'Duplicate',
+                  onPress: () => handleDuplicate(item),
+                },
+                {
+                  label: 'Delete',
+                  onPress: () => handleDelete(item),
+                  destructive: true,
+                },
+              ] as OverflowMenuItem[]}
+            />
+          </View>
         </View>
       </Card>
     </TouchableOpacity>
@@ -188,12 +190,24 @@ const styles = StyleSheet.create({
   routineHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  routineInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: spacing.xs,
+  },
+  menuWrap: {
+    marginLeft: spacing.xs,
+    justifyContent: 'flex-start',
     alignItems: 'center',
   },
   routineName: {
     fontSize: 18,
     fontFamily: fonts.bold,
     color: colors.text,
+    flexShrink: 1,
+    lineHeight: 22,
   },
   routineMeta: {
     marginTop: 2,

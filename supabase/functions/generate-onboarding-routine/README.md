@@ -2,10 +2,24 @@
 
 Creates a user's first active routine during onboarding.
 
+## Invocation modes
+
+The function supports async job processing to avoid long request timeouts.
+
+- `POST { action: "start", mode, answers }` -> returns `202` with `job_id`
+- `POST { action: "status", job_id }` -> returns `queued` / `running` / `failed` / `completed`
+
+Legacy direct payload (`{ mode, answers }`) still works and runs synchronously.
+
+Week defaults:
+
+- `template` mode: 4 weeks
+- `ai` mode: 2 weeks
+
 ## Required Supabase secrets
 
 - `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
+- `SUPABASE_PUBLISHABLE_KEY` (preferred) or `SUPABASE_ANON_KEY` (legacy)
 
 ## Optional OpenAI secrets
 

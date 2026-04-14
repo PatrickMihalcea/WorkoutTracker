@@ -19,9 +19,13 @@ export type OnboardingFocusMuscle =
   | 'back'
   | 'shoulders'
   | 'arms'
+  | 'biceps'
+  | 'triceps'
   | 'legs'
   | 'glutes'
   | 'core';
+
+export type RoutineWeekCount = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface OnboardingRoutineAnswers {
   days_per_week: 3 | 4 | 5;
@@ -35,6 +39,11 @@ export interface OnboardingRoutineAnswers {
 export interface GenerateOnboardingRoutineRequest {
   mode: OnboardingRoutineGenerationMode;
   answers: OnboardingRoutineAnswers;
+  week_count?: RoutineWeekCount;
+  repair_context?: {
+    validation_errors: string[];
+    previous_output: unknown;
+  };
 }
 
 export interface GenerateOnboardingRoutineResponse {

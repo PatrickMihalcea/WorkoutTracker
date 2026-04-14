@@ -1,54 +1,331 @@
-import { useState } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
+
+import { OnboardingScaffold } from '../../../src/components/onboarding/OnboardingScaffold';
+import { RoutineCreationLoadingOverlay } from '../../../src/components/routine/RoutineCreationLoadingOverlay';
+import { Button, ChipPicker, Input } from '../../../src/components/ui';
+import { colors, fonts, spacing } from '../../../src/constants';
+import {
+  OnboardingEquipmentPreference,
+  OnboardingExperience,
+  OnboardingFocusMuscle,
+  OnboardingGoal,
+  OnboardingRoutineGenerationMode,
+  RoutineWeekCount,
+} from '../../../src/models';
+import { onboardingService } from '../../../src/services';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
-import { Button, Input } from '../../../src/components/ui';
-import { colors } from '../../../src/constants';
+
+type CreateMode = 'custom' | OnboardingRoutineGenerationMode;
 
 export default function CreateRoutineScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { createRoutine } = useRoutineStore();
+
+  const [mode, setMode] = useState<CreateMode>('custom');
   const [name, setName] = useState('');
+  const [daysPerWeek, setDaysPerWeek] = useState<3 | 4 | 5>(4);
+  const [sessionMinutes, setSessionMinutes] = useState<30 | 45 | 60>(45);
+  const [weekCount, setWeekCount] = useState<RoutineWeekCount>(4);
+  const [goal, setGoal] = useState<OnboardingGoal>('muscle_gain');
+  const [experience, setExperience] = useState<OnboardingExperience>('beginner');
+  const [equipment, setEquipment] = useState<OnboardingEquipmentPreference>('full_gym');
+  const [focusMuscle, setFocusMuscle] = useState<OnboardingFocusMuscle>('none');
   const [loading, setLoading] = useState(false);
 
-  const handleCreate = async () => {
-    if (!name.trim()) {
-      Alert.alert('Error', 'Please enter a routine name');
-      return;
-    }
-    if (!user) return;
+  const handleModeChange = (nextMode: CreateMode) => {
+    setMode(nextMode);
+    if (nextMode === 'template') setWeekCount(4);
+    if (nextMode === 'ai') setWeekCount(2);
+  };
 
+  const ctaTitle = useMemo(() => {
+    if (mode === 'custom') return 'Create Custom Routine';
+    if (mode === 'ai') return 'Build with AI';
+    return 'Build Routine';
+  }, [mode]);
+
+  const handleCreate = async () => {
     setLoading(true);
     try {
-      const routine = await createRoutine(name.trim(), user.id, 1);
-      router.replace(`/(tabs)/routines/${routine.id}`);
+      if (mode === 'custom') {
+        if (!name.trim()) {
+          Alert.alert('Error', 'Please enter a routine name');
+          return;
+        }
+        if (!user) {
+          Alert.alert('Error', 'You must be signed in to create a routine.');
+          return;
+        }
+
+        const routine = await createRoutine(name.trim(), user.id, 1);
+        router.replace(`/(tabs)/routines/${routine.id}`);
+        return;
+      }
+
+      const generated = await onboardingService.generateFirstRoutine({
+        mode,
+        week_count: weekCount,
+        answers: {
+          days_per_week: daysPerWeek,
+          session_minutes: sessionMinutes,
+          goal,
+          experience,
+          equipment,
+          focus_muscle: focusMuscle,
+        },
+      });
+
+      router.replace(`/(tabs)/routines/${generated.routine_id}`);
     } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
+      Alert.alert('Error', (error as Error).message || 'Could not create routine.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Input
-        label="Routine Name"
-        value={name}
-        onChangeText={setName}
-        placeholder='e.g. "Push Pull Legs" or "Upper Lower"'
-        autoFocus
-      />
-      <Button title="Create" onPress={handleCreate} loading={loading} />
+    <>
+      <OnboardingScaffold
+        step={1}
+        totalSteps={1}
+        showStepProgress={false}
+        footerFloating={false}
+        backgroundVariant={mode === 'custom' ? 'solid' : 'gradient'}
+        solidBackgroundColor={mode === 'custom' ? '#000000' : colors.background}
+        onBack={() => router.back()}
+        title="Create a new routine"
+        subtitle="Build it from scratch or generate one."
+        footer={<Button title={ctaTitle} onPress={handleCreate} loading={loading} />}
+      >
+        <View style={styles.modeColumn}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={[styles.modeCard, mode === 'custom' && styles.modeCardActive]}
+            onPress={() => handleModeChange('custom')}
+          >
+            <Text style={[styles.modeTitle, mode === 'custom' && styles.modeTitleActive]}>Custom</Text>
+            <Text style={[styles.modeHint, mode === 'custom' && styles.modeHintActive]}>
+              Start empty and build your routine manually.
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={[styles.modeCard, mode === 'template' && styles.modeCardActive]}
+            onPress={() => handleModeChange('template')}
+          >
+            <Text style={[styles.modeTitle, mode === 'template' && styles.modeTitleActive]}>Fast Start</Text>
+            <Text style={[styles.modeHint, mode === 'template' && styles.modeHintActive]}>
+              Use a pre-made template and adjust to your needs.
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={[styles.modeCard, mode === 'ai' && styles.modeCardActive]}
+            onPress={() => handleModeChange('ai')}
+          >
+            <Text style={[styles.modeTitle, mode === 'ai' && styles.modeTitleActive]}>Personalized by AI</Text>
+            <Text style={[styles.modeHint, mode === 'ai' && styles.modeHintActive]}>
+              Generate a tailored starter plan from your preferences.
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {mode === 'custom' ? (
+          <View style={styles.block}>
+            <Input
+              label="Routine Name"
+              value={name}
+              onChangeText={setName}
+              placeholder='e.g. "Push Pull Legs" or "Upper Lower"'
+              autoFocus
+            />
+          </View>
+        ) : (
+          <>
+            <QuestionBlock label="Days per week">
+              <ChipPicker
+                allowDeselect={false}
+                selected={daysPerWeek}
+                onChange={(value) => setDaysPerWeek((value ?? 4) as 3 | 4 | 5)}
+                items={[
+                  { key: '3', label: '3 days', value: 3 },
+                  { key: '4', label: '4 days', value: 4 },
+                  { key: '5', label: '5 days', value: 5 },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+
+            <QuestionBlock label="Session length">
+              <ChipPicker
+                allowDeselect={false}
+                selected={sessionMinutes}
+                onChange={(value) => setSessionMinutes((value ?? 45) as 30 | 45 | 60)}
+                items={[
+                  { key: '30', label: '30 min', value: 30 },
+                  { key: '45', label: '45 min', value: 45 },
+                  { key: '60', label: '60 min', value: 60 },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+
+            <QuestionBlock label="Plan length">
+              <ChipPicker
+                allowDeselect={false}
+                selected={weekCount}
+                onChange={(value) => setWeekCount((value ?? 4) as RoutineWeekCount)}
+                items={[
+                  { key: '1', label: '1 week', value: 1 },
+                  { key: '2', label: '2 weeks', value: 2 },
+                  { key: '3', label: '3 weeks', value: 3 },
+                  { key: '4', label: '4 weeks', value: 4 },
+                  { key: '5', label: '5 weeks', value: 5 },
+                  { key: '6', label: '6 weeks', value: 6 },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+
+            <QuestionBlock label="Primary goal">
+              <ChipPicker
+                allowDeselect={false}
+                selected={goal}
+                onChange={(value) => setGoal((value ?? 'muscle_gain') as OnboardingGoal)}
+                items={[
+                  { key: 'muscle_gain', label: 'Muscle gain', value: 'muscle_gain' },
+                  { key: 'strength', label: 'Strength', value: 'strength' },
+                  { key: 'fat_loss', label: 'Fat loss', value: 'fat_loss' },
+                  { key: 'general_fitness', label: 'General fitness', value: 'general_fitness' },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+
+            <QuestionBlock label="Experience level">
+              <ChipPicker
+                allowDeselect={false}
+                selected={experience}
+                onChange={(value) => setExperience((value ?? 'beginner') as OnboardingExperience)}
+                items={[
+                  { key: 'beginner', label: 'Beginner', value: 'beginner' },
+                  { key: 'intermediate', label: 'Intermediate', value: 'intermediate' },
+                  { key: 'advanced', label: 'Advanced', value: 'advanced' },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+
+            <QuestionBlock label="Equipment">
+              <ChipPicker
+                allowDeselect={false}
+                selected={equipment}
+                onChange={(value) => setEquipment((value ?? 'full_gym') as OnboardingEquipmentPreference)}
+                items={[
+                  { key: 'full_gym', label: 'Full gym', value: 'full_gym' },
+                  { key: 'dumbbells_bench', label: 'Dumbbells + bench', value: 'dumbbells_bench' },
+                  { key: 'bodyweight_minimal', label: 'Bodyweight / minimal', value: 'bodyweight_minimal' },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+
+            <QuestionBlock label="Slight muscle focus (optional)">
+              <ChipPicker
+                allowDeselect={false}
+                selected={focusMuscle}
+                onChange={(value) => setFocusMuscle((value ?? 'none') as OnboardingFocusMuscle)}
+                items={[
+                  { key: 'none', label: 'None', value: 'none' },
+                  { key: 'chest', label: 'Chest', value: 'chest' },
+                  { key: 'back', label: 'Back', value: 'back' },
+                  { key: 'arms', label: 'Arms', value: 'arms' },
+                  { key: 'biceps', label: 'Biceps', value: 'biceps' },
+                  { key: 'triceps', label: 'Triceps', value: 'triceps' },
+                  { key: 'shoulders', label: 'Shoulders', value: 'shoulders' },
+                  { key: 'legs', label: 'Legs', value: 'legs' },
+                  { key: 'glutes', label: 'Glutes', value: 'glutes' },
+                  { key: 'core', label: 'Core', value: 'core' },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+          </>
+        )}
+      </OnboardingScaffold>
+
+      <RoutineCreationLoadingOverlay visible={loading} mode={mode} context="routine" />
+    </>
+  );
+}
+
+function QuestionBlock({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <View style={styles.block}>
+      <Text style={styles.blockLabel}>{label}</Text>
+      {children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 20,
+  modeColumn: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  modeCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#34595C',
+    backgroundColor: 'rgba(12, 20, 23, 0.9)',
+    paddingHorizontal: spacing.sm + spacing.xs,
+    paddingVertical: spacing.sm + spacing.xs,
+  },
+  modeCardActive: {
+    borderColor: '#4ECDC4',
+    backgroundColor: 'rgba(78, 205, 196, 0.12)',
+  },
+  modeTitle: {
+    color: colors.text,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+  },
+  modeTitleActive: {
+    color: '#D9FFFC',
+  },
+  modeHint: {
+    marginTop: 4,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+  },
+  modeHintActive: {
+    color: '#9EDAD5',
+  },
+  block: {
+    marginBottom: spacing.xs,
+  },
+  blockLabel: {
+    marginBottom: 8,
+    color: colors.textSecondary,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  note: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
   },
 });

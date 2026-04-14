@@ -9,6 +9,7 @@ import {
   RoutineWithDays,
   RoutineDayWithExercises,
 } from '../models';
+import { buildProgressedSets } from './progression.engine';
 import { supabase } from './supabase';
 
 function daySortValue(dayOfWeek: number | null): number {
@@ -43,7 +44,24 @@ function generateGroupId(): string {
   return id;
 }
 
+export type AddWeekMode = 'copy_exact' | 'empty' | 'progressive_ai';
+export const MAX_ROUTINE_WEEKS = 8;
+
 export const routineService = {
+  async getUserUnitPreferences(userId: string): Promise<{ weightUnit: 'kg' | 'lbs'; distanceUnit: 'km' | 'miles' }> {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('weight_unit, distance_unit')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error) throw error;
+
+    return {
+      weightUnit: data?.weight_unit === 'lbs' ? 'lbs' : 'kg',
+      distanceUnit: data?.distance_unit === 'miles' ? 'miles' : 'km',
+    };
+  },
+
   async getAll(): Promise<Routine[]> {
     const { data, error } = await supabase
       .from('routines')
@@ -146,6 +164,36 @@ export const routineService = {
     return (data as RoutineDay[]).sort(compareRoutineDays);
   },
 
+  async getWeekWithExercises(routineId: string, weekIndex: number): Promise<RoutineDayWithExercises[]> {
+    const { data, error } = await supabase
+      .from('routine_days')
+      .select(`
+        *,
+        exercises:routine_day_exercises (
+          *,
+          exercise:exercises (
+            exercise_type
+          ),
+          sets:routine_day_exercise_sets (*)
+        )
+      `)
+      .eq('routine_id', routineId)
+      .eq('week_index', weekIndex);
+    if (error) throw error;
+
+    return (data as RoutineDayWithExercises[])
+      .sort(compareRoutineDays)
+      .map((day) => ({
+        ...day,
+        exercises: [...day.exercises]
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((exercise) => ({
+            ...exercise,
+            sets: [...(exercise.sets ?? [])].sort((a, b) => a.set_number - b.set_number),
+          })),
+      }));
+  },
+
   async create(routine: RoutineInsert): Promise<Routine> {
     const { data, error } = await supabase
       .from('routines')
@@ -188,6 +236,9 @@ export const routineService = {
   async setWeekCount(id: string, weekCount: number): Promise<Routine> {
     if (!Number.isInteger(weekCount) || weekCount < 1) {
       throw new Error('Week count must be at least 1');
+    }
+    if (weekCount > MAX_ROUTINE_WEEKS) {
+      throw new Error(`Week count cannot exceed ${MAX_ROUTINE_WEEKS}`);
     }
 
     const routine = await this.getById(id);
@@ -300,6 +351,60 @@ export const routineService = {
     if (deleteError) throw deleteError;
 
     await this.duplicateWeekTemplate(routineId, sourceWeekIndex, targetWeekIndex);
+  },
+
+  async addWeekWithMode(args: {
+    routineId: string;
+    mode: AddWeekMode;
+    sourceWeekIndex?: number;
+  }): Promise<number> {
+    const { routineId, mode, sourceWeekIndex } = args;
+    const routine = await this.getById(routineId);
+    if (routine.week_count >= MAX_ROUTINE_WEEKS) {
+      throw new Error(`You can have up to ${MAX_ROUTINE_WEEKS} weeks`);
+    }
+    const newWeek = routine.week_count + 1;
+    const sourceWeek = sourceWeekIndex ?? routine.week_count;
+    const unitPreferences = mode === 'progressive_ai'
+      ? await this.getUserUnitPreferences(routine.user_id)
+      : null;
+
+    if (mode !== 'empty' && (sourceWeek < 1 || sourceWeek > routine.week_count)) {
+      throw new Error(`Week must be between 1 and ${routine.week_count}`);
+    }
+
+    const { error: bumpError } = await supabase
+      .from('routines')
+      .update({ week_count: newWeek })
+      .eq('id', routineId);
+    if (bumpError) throw bumpError;
+
+    try {
+      if (mode !== 'empty') {
+        const weekDelta = mode === 'progressive_ai'
+          ? Math.max(1, newWeek - sourceWeek)
+          : 0;
+        await this.duplicateWeekTemplate(routineId, sourceWeek, newWeek, {
+          weekDelta,
+          targetUnits: unitPreferences,
+        });
+      }
+
+      return newWeek;
+    } catch (error) {
+      await supabase
+        .from('routine_days')
+        .delete()
+        .eq('routine_id', routineId)
+        .eq('week_index', newWeek);
+
+      await supabase
+        .from('routines')
+        .update({ week_count: routine.week_count })
+        .eq('id', routineId);
+
+      throw error;
+    }
   },
 
   async setActive(id: string, userId: string): Promise<void> {
@@ -444,8 +549,17 @@ export const routineService = {
     if (error) throw error;
   },
 
-  async duplicateWeekTemplate(routineId: string, sourceWeekIndex: number, targetWeekIndex: number): Promise<void> {
+  async duplicateWeekTemplate(
+    routineId: string,
+    sourceWeekIndex: number,
+    targetWeekIndex: number,
+    options?: {
+      weekDelta?: number;
+      targetUnits?: { weightUnit?: 'kg' | 'lbs' | null; distanceUnit?: 'km' | 'miles' | null } | null;
+    },
+  ): Promise<void> {
     if (sourceWeekIndex < 1 || targetWeekIndex < 1) return;
+    const weekDelta = Math.max(0, options?.weekDelta ?? 0);
 
     const { data, error } = await supabase
       .from('routine_days')
@@ -472,26 +586,41 @@ export const routineService = {
       const groupMap = new Map<string, string>();
       const exercises = [...sourceDay.exercises].sort((a, b) => a.sort_order - b.sort_order);
       for (const ex of exercises) {
-        const setsPayload = (ex.sets ?? [])
-          .sort((a, b) => a.set_number - b.set_number)
-          .map((s) => ({
-            set_number: s.set_number,
-            target_weight: s.target_weight,
-            target_reps_min: s.target_reps_min,
-            target_reps_max: s.target_reps_max,
-            target_rir: s.target_rir ?? null,
-            target_duration: s.target_duration ?? 0,
-            target_distance: s.target_distance ?? 0,
-            is_warmup: s.is_warmup ?? false,
-          }));
+        const progressionWeekIndex = weekDelta > 0
+          ? sourceWeekIndex + weekDelta
+          : sourceWeekIndex;
+        const progressedSets = buildProgressedSets({
+          sourceSets: ex.sets ?? [],
+          weekIndex: progressionWeekIndex,
+          exerciseType: ex.exercise?.exercise_type ?? null,
+          exerciseId: ex.exercise_id,
+          options: options?.targetUnits
+            ? {
+                targetUnits: {
+                  weightUnit: options.targetUnits.weightUnit,
+                  distanceUnit: options.targetUnits.distanceUnit,
+                },
+              }
+            : undefined,
+        });
+        const setsPayload: Omit<RoutineDayExerciseSetInsert, 'routine_day_exercise_id'>[] = progressedSets.map((s) => ({
+          set_number: s.set_number,
+          target_weight: s.target_weight,
+          target_reps_min: s.target_reps_min,
+          target_reps_max: s.target_reps_max,
+          target_rir: s.target_rir ?? null,
+          target_duration: s.target_duration ?? 0,
+          target_distance: s.target_distance ?? 0,
+          is_warmup: s.is_warmup ?? false,
+        }));
 
         const newEntry = await this.addExerciseToDay(
           {
             routine_day_id: newDay.id,
             exercise_id: ex.exercise_id,
             sort_order: ex.sort_order,
-            target_sets: ex.target_sets,
-            target_reps: ex.target_reps,
+            target_sets: setsPayload.length > 0 ? setsPayload.length : ex.target_sets,
+            target_reps: setsPayload[0]?.target_reps_min ?? ex.target_reps,
           },
           setsPayload,
         );

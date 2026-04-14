@@ -1,0 +1,2 @@
+[functions.generate-onboarding-routine]
+verify_jwt = false
