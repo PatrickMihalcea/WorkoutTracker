@@ -4,7 +4,7 @@
     "slug": "workout-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/Setora.png",
     "userInterfaceStyle": "dark",
     "scheme": "workout-tracker",
     "newArchEnabled": true,
@@ -17,16 +17,17 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.patrickmihalcea.workouttracker",
       "infoPlist": {
-        "NSUserNotificationsUsageDescription": "Workout Tracker uses notifications for rest timers and daily workout reminders."
+        "NSUserNotificationsUsageDescription": "Workout Tracker uses notifications for rest timers and daily workout reminders.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/Setora.png",
         "backgroundColor": "#0f172a"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.workouttracker.app"
+      "package": "com.patrickmihalcea.workouttracker"
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -35,6 +36,12 @@
     "plugins": [
       "expo-router",
       "expo-notifications"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fc602efb-0f30-4edc-aece-e9663e734d6a"
+      }
+    }
   }
 }
