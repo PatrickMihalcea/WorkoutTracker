@@ -19,6 +19,9 @@
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "Setora uses notifications for rest timers and daily workout reminders.",
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "aps-environment": "production"
       }
     },
     "android": {
