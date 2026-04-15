@@ -105,6 +105,7 @@ export default function DisplayNameScreen() {
   return (
     <OnboardingScaffold
       step={1}
+      totalSteps={5}
       title="Build your athlete profile"
       subtitle="Lock in your identity so your stats, records, and progress feel truly yours."
       footer={<Button title="Continue" onPress={handleContinue} loading={loading} />}

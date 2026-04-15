@@ -48,6 +48,7 @@ export default function MeasurementsScreen() {
   return (
     <OnboardingScaffold
       step={3}
+      totalSteps={5}
       onBack={() => router.back()}
       title="Finish your setup"
       subtitle="Final numbers. Accurate body metrics unlock cleaner trends and smarter progress tracking."

@@ -16,7 +16,7 @@ A React Native (Expo) app for tracking weekly workout routines with sets, weight
 1. Create a free project at [supabase.com](https://supabase.com)
 2. Go to the **SQL Editor** in your Supabase dashboard
 3. Paste and run the contents of `supabase/migrations/001_initial_schema.sql`
-4. Copy your project URL and anon key from **Settings > API**
+4. Copy your project URL and **publishable key** from **Settings > API**
 
 ### 2. Environment Variables
 
@@ -28,7 +28,7 @@ Edit `.env` and fill in your Supabase credentials:
 
 ```
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
 ### 3. Install & Run

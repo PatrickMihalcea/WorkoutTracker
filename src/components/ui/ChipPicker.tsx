@@ -36,6 +36,51 @@ export function ChipPicker<T extends string | number>({
   horizontal = true,
   maxHeight,
 }: ChipPickerProps<T>) {
+  const useScrollContainer = horizontal || !!maxHeight;
+  const content = (
+    <View style={[styles.row, !horizontal && styles.rowWrap]}>
+      {items.map((item) => {
+        const isSelected = selected === item.value;
+        return (
+          <TouchableOpacity
+            key={item.key}
+            activeOpacity={0.85}
+            style={[
+              styles.chip,
+              chipStyle,
+              isSelected && styles.chipSelected,
+              isSelected && chipSelectedStyle,
+              getChipStyle?.(item, isSelected),
+            ]}
+            onPress={() => {
+              if (isSelected && allowDeselect) {
+                onChange(null);
+              } else {
+                onChange(item.value);
+              }
+            }}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                chipTextStyle,
+                isSelected && styles.chipTextSelected,
+                isSelected && chipTextSelectedStyle,
+                getChipTextStyle?.(item, isSelected),
+              ]}
+            >
+              {item.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+
+  if (!useScrollContainer) {
+    return <View style={[styles.scroll, style]}>{content}</View>;
+  }
+
   return (
     <ScrollView
       horizontal={horizontal}
@@ -46,42 +91,7 @@ export function ChipPicker<T extends string | number>({
       keyboardDismissMode={keyboardPersistTaps ? 'none' : undefined}
       contentContainerStyle={!horizontal ? styles.wrapRow : undefined}
     >
-      <View style={[styles.row, !horizontal && styles.rowWrap]}>
-        {items.map((item) => {
-          const isSelected = selected === item.value;
-          return (
-            <TouchableOpacity
-              key={item.key}
-              style={[
-                styles.chip,
-                chipStyle,
-                isSelected && styles.chipSelected,
-                isSelected && chipSelectedStyle,
-                getChipStyle?.(item, isSelected),
-              ]}
-              onPress={() => {
-                if (isSelected && allowDeselect) {
-                  onChange(null);
-                } else {
-                  onChange(item.value);
-                }
-              }}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  chipTextStyle,
-                  isSelected && styles.chipTextSelected,
-                  isSelected && chipTextSelectedStyle,
-                  getChipTextStyle?.(item, isSelected),
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {content}
     </ScrollView>
   );
 }

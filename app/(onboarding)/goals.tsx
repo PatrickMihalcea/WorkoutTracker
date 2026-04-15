@@ -69,9 +69,8 @@ export default function GoalsScreen() {
       await updateProfile({
         body_weight_kg_goal: bodyWeightKgGoal,
         body_fat_pct_goal: bodyFatPctGoal,
-        onboarding_complete: true,
       });
-      router.replace('/(tabs)/today');
+      router.push('/(onboarding)/first-routine');
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message || 'Could not save goals.');
     } finally {
@@ -82,10 +81,11 @@ export default function GoalsScreen() {
   return (
     <OnboardingScaffold
       step={4}
+      totalSteps={5}
       onBack={() => router.back()}
       title="Set your goals"
       subtitle="Optional targets help shape your long-term trend lines. You can skip any field and edit later."
-      footer={<Button title="Complete Setup" onPress={handleContinue} loading={saving} />}
+      footer={<Button title="Continue" onPress={handleContinue} loading={saving} />}
     >
       <View style={[styles.goalCard, styles.goalCardPrimary]}>
         <View style={styles.goalTopRow}>

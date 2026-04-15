@@ -617,9 +617,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.text,
+    lineHeight: 20,
+    includeFontPadding: false,
   },
   exerciseNameLink: {
-    textDecorationLine: 'underline',
+    color: '#98c6fb',
   },
   exerciseNameTapTarget: {
     alignSelf: 'flex-start',

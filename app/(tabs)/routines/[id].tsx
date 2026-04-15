@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, useDeferredValue } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   LayoutAnimation,
   UIManager,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -19,6 +20,7 @@ import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
 import { routineService, notificationService } from '../../../src/services';
+import { MAX_ROUTINE_WEEKS, type AddWeekMode } from '../../../src/services/routine.service';
 import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
 import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast, ExercisePickerModal, SupersetBracket, ChipPicker } from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
@@ -122,6 +124,10 @@ export default function RoutineDetailScreen() {
   const [dayLabel, setDayLabel] = useState('');
   const [selectedWeek, setSelectedWeek] = useState<number>(0);
   const [updatingWeeks, setUpdatingWeeks] = useState(false);
+  const [addingWeek, setAddingWeek] = useState(false);
+  const [showAddWeekModal, setShowAddWeekModal] = useState(false);
+  const [addWeekMode, setAddWeekMode] = useState<AddWeekMode>('progressive_ai');
+  const [selectedAddWeekSource, setSelectedAddWeekSource] = useState<number | null>(null);
   const [showCopyWeekModal, setShowCopyWeekModal] = useState(false);
   const [copyActionMode, setCopyActionMode] = useState<'from' | 'to' | null>(null);
   const [selectedCopyWeekValue, setSelectedCopyWeekValue] = useState<number | 'new' | null>(null);
@@ -181,33 +187,48 @@ export default function RoutineDetailScreen() {
       }));
   }, [currentRoutine]);
 
-  const weekItems = useMemo(() => {
-    if (!currentRoutine) return [];
-    return Array.from({ length: currentRoutine.week_count }, (_, index) => {
-      const week = index + 1;
-      return { key: String(week), label: `Week ${week}`, value: week };
-    });
+  const visibleWeekCount = useMemo(() => {
+    if (!currentRoutine) return 0;
+    return Math.min(currentRoutine.week_count, MAX_ROUTINE_WEEKS);
   }, [currentRoutine]);
+
+  const weekItems = useMemo(() => {
+    if (!currentRoutine || visibleWeekCount <= 0) return [];
+    return Array.from({ length: visibleWeekCount }, (_, index) => {
+      const week = index + 1;
+      return { key: String(week), label: `W${week}`, value: week };
+    });
+  }, [currentRoutine, visibleWeekCount]);
 
   const copyWeekOptions = useMemo(() => {
     if (!currentRoutine || !copyActionMode) return [];
     const viewedWeek = selectedWeek;
-    const weekChoices = Array.from({ length: currentRoutine.week_count }, (_, index) => {
+    const weekChoices = Array.from({ length: visibleWeekCount }, (_, index) => {
       const week = index + 1;
       return { key: `week-${week}`, label: `Week ${week}`, value: week as number | 'new' };
     }).filter((item) => item.value !== viewedWeek);
 
-    if (copyActionMode === 'to') {
+    if (copyActionMode === 'to' && currentRoutine.week_count < MAX_ROUTINE_WEEKS) {
       weekChoices.push({ key: 'week-new', label: '+ New Week', value: 'new' });
     }
 
     return weekChoices;
-  }, [currentRoutine, copyActionMode, selectedWeek]);
+  }, [currentRoutine, copyActionMode, selectedWeek, visibleWeekCount]);
+
+  const addWeekSourceOptions = useMemo(() => {
+    if (!currentRoutine) return [];
+    return Array.from({ length: visibleWeekCount }, (_, index) => {
+      const week = index + 1;
+      return { key: `add-week-${week}`, label: `Week ${week}`, value: week };
+    });
+  }, [currentRoutine, visibleWeekCount]);
+
+  const deferredSelectedWeek = useDeferredValue(selectedWeek);
 
   const selectedWeekDays = useMemo(() => {
     if (!currentRoutine) return [];
-    return currentRoutine.days.filter((d) => d.week_index === selectedWeek);
-  }, [currentRoutine, selectedWeek]);
+    return currentRoutine.days.filter((d) => d.week_index === deferredSelectedWeek);
+  }, [currentRoutine, deferredSelectedWeek]);
 
   useEffect(() => {
     if (id) fetchRoutineDetail(id);
@@ -216,11 +237,22 @@ export default function RoutineDetailScreen() {
   useEffect(() => {
     if (!currentRoutine) return;
     setSelectedWeek((prev) => {
-      if (prev < 1) return currentRoutine.current_week;
-      if (prev > currentRoutine.week_count) return currentRoutine.current_week;
+      const fallbackWeek = Math.min(currentRoutine.current_week, visibleWeekCount || 1);
+      if (prev < 1) return fallbackWeek;
+      if (prev > visibleWeekCount) return fallbackWeek;
       return prev;
     });
-  }, [currentRoutine]);
+  }, [currentRoutine, visibleWeekCount]);
+
+  useEffect(() => {
+    if (!currentRoutine) return;
+    setSelectedAddWeekSource((prev) => {
+      if (prev && prev >= 1 && prev <= visibleWeekCount) return prev;
+      return selectedWeek >= 1 && selectedWeek <= visibleWeekCount
+        ? selectedWeek
+        : visibleWeekCount;
+    });
+  }, [currentRoutine, selectedWeek, visibleWeekCount]);
 
   const handleAddDay = async () => {
     if (!id || !dayLabel.trim()) {
@@ -384,19 +416,60 @@ export default function RoutineDetailScreen() {
     }
   }, [id, fetchRoutineDetail, router]);
 
-  const handleAddWeek = useCallback(async () => {
+  const openAddWeekMenu = useCallback(() => {
+    if (!currentRoutine || updatingWeeks) return;
+    if (currentRoutine.week_count >= MAX_ROUTINE_WEEKS) {
+      Alert.alert('Maximum reached', `You can have up to ${MAX_ROUTINE_WEEKS} weeks.`);
+      return;
+    }
+    setAddWeekMode('progressive_ai');
+    setSelectedAddWeekSource(selectedWeek >= 1 && selectedWeek <= visibleWeekCount
+      ? selectedWeek
+      : visibleWeekCount);
+    setShowAddWeekModal(true);
+  }, [currentRoutine, selectedWeek, updatingWeeks, visibleWeekCount]);
+
+  const handleConfirmAddWeek = useCallback(async () => {
     if (!currentRoutine || !id || updatingWeeks) return;
+    if (addWeekMode !== 'empty' && selectedAddWeekSource == null) return;
+    if (currentRoutine.week_count >= MAX_ROUTINE_WEEKS) {
+      Alert.alert('Maximum reached', `You can have up to ${MAX_ROUTINE_WEEKS} weeks.`);
+      return;
+    }
+
+    setAddingWeek(true);
     setUpdatingWeeks(true);
     try {
-      await routineService.setWeekCount(id, currentRoutine.week_count + 1);
-      setSelectedWeek(currentRoutine.week_count + 1);
+      const newWeek = await routineService.addWeekWithMode({
+        routineId: id,
+        mode: addWeekMode,
+        sourceWeekIndex: addWeekMode === 'empty' ? undefined : selectedAddWeekSource ?? undefined,
+      });
+      setSelectedWeek(newWeek);
       await fetchRoutineDetail(id);
+      setShowAddWeekModal(false);
+
+      if (addWeekMode === 'empty') {
+        setToastMessage(`Created empty Week ${newWeek}.`);
+      } else if (addWeekMode === 'copy_exact') {
+        setToastMessage(`Copied Week ${selectedAddWeekSource} to new Week ${newWeek}.`);
+      } else {
+        setToastMessage(`Built Week ${newWeek} with progressive overload.`);
+      }
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     } finally {
+      setAddingWeek(false);
       setUpdatingWeeks(false);
     }
-  }, [currentRoutine, id, fetchRoutineDetail, updatingWeeks]);
+  }, [
+    currentRoutine,
+    id,
+    updatingWeeks,
+    addWeekMode,
+    selectedAddWeekSource,
+    fetchRoutineDetail,
+  ]);
 
   const handleDeleteSelectedWeek = useCallback(async () => {
     if (!currentRoutine || !id || currentRoutine.week_count <= 1 || updatingWeeks) return;
@@ -454,13 +527,17 @@ export default function RoutineDetailScreen() {
 
   const executeCopyToNewWeek = useCallback(async (sourceWeek: number) => {
     if (!currentRoutine || !id || updatingWeeks) return;
-    const nextWeek = currentRoutine.week_count + 1;
+    if (currentRoutine.week_count >= MAX_ROUTINE_WEEKS) {
+      Alert.alert('Maximum reached', `You can have up to ${MAX_ROUTINE_WEEKS} weeks.`);
+      return;
+    }
     setUpdatingWeeks(true);
     try {
-      await routineService.setWeekCount(id, nextWeek);
-      if (sourceWeek !== currentRoutine.week_count) {
-        await routineService.copyWeek(id, sourceWeek, nextWeek);
-      }
+      const nextWeek = await routineService.addWeekWithMode({
+        routineId: id,
+        mode: 'copy_exact',
+        sourceWeekIndex: sourceWeek,
+      });
       setSelectedWeek(nextWeek);
       await fetchRoutineDetail(id);
       setToastMessage(`Copied Week ${sourceWeek} to new Week ${nextWeek}.`);
@@ -793,14 +870,20 @@ export default function RoutineDetailScreen() {
         )}
 
         <Text style={styles.weekMeta}>
-          Active Week: {currentRoutine.current_week} / {currentRoutine.week_count}
+          Active Week: {Math.min(currentRoutine.current_week, MAX_ROUTINE_WEEKS)} / {visibleWeekCount}
         </Text>
         <ChipPicker
           items={weekItems}
           selected={selectedWeek}
-          onChange={(week) => setSelectedWeek(week ?? currentRoutine.current_week)}
+          onChange={(week) => {
+            if (typeof week === 'number') {
+              setSelectedWeek(week);
+            }
+          }}
           allowDeselect={false}
           keyboardPersistTaps
+          horizontal={false}
+          chipStyle={styles.weekChip}
           getChipStyle={(item, isSelected) => {
             const isActiveWeek = item.value === currentRoutine.current_week;
             if (!isActiveWeek) return undefined;
@@ -812,6 +895,12 @@ export default function RoutineDetailScreen() {
             return isSelected ? styles.weekChipActiveTextSelected : styles.weekChipActiveText;
           }}
         />
+        {addingWeek && (
+          <View style={styles.weekLoadingNotice}>
+            <ActivityIndicator size="small" color="#4ECDC4" />
+            <Text style={styles.weekLoadingText}>Building your new week...</Text>
+          </View>
+        )}
         <View style={styles.weekActionsInline}>
           <TouchableOpacity
             style={[
@@ -829,10 +918,10 @@ export default function RoutineDetailScreen() {
             style={[
               styles.weekMiniBtn,
               styles.weekPlusBtn,
-              updatingWeeks && styles.weekMiniBtnDisabled,
+              (updatingWeeks || currentRoutine.week_count >= MAX_ROUTINE_WEEKS) && styles.weekMiniBtnDisabled,
             ]}
-            onPress={handleAddWeek}
-            disabled={updatingWeeks}
+            onPress={openAddWeekMenu}
+            disabled={updatingWeeks || currentRoutine.week_count >= MAX_ROUTINE_WEEKS}
             activeOpacity={0.7}
           >
             <Text style={[styles.weekMiniBtnText, styles.weekPlusText]}>+</Text>
@@ -887,13 +976,13 @@ export default function RoutineDetailScreen() {
           </>
         )}
 
-        <Text style={styles.subHeader}>Routine · Week {selectedWeek}</Text>
+        <Text style={styles.subHeader}>Routine · Week {deferredSelectedWeek}</Text>
 
         {selectedWeekDays.length > 0 ? (
           selectedWeekDays.map(renderDay)
         ) : (
           <Card style={styles.emptyWeekCard}>
-            <Text style={styles.emptyWeekText}>No days in Week {selectedWeek} yet.</Text>
+            <Text style={styles.emptyWeekText}>No days in Week {deferredSelectedWeek} yet.</Text>
           </Card>
         )}
 
@@ -935,6 +1024,69 @@ export default function RoutineDetailScreen() {
             title="Copy"
             onPress={handleConfirmCopyWeekSelection}
             disabled={selectedCopyWeekValue == null || updatingWeeks}
+          />
+        </View>
+      </BottomSheetModal>
+
+      <BottomSheetModal
+        visible={showAddWeekModal}
+        title="Add Week"
+        onClose={() => {
+          if (!addingWeek) setShowAddWeekModal(false);
+        }}
+      >
+        <Text style={styles.copyWeekHelper}>
+          Choose how Week {currentRoutine.week_count + 1} should be created.
+        </Text>
+
+        <ChipPicker
+          items={[
+            { key: 'add-copy', label: 'Copy From', value: 'copy_exact' as AddWeekMode },
+            { key: 'add-empty', label: 'Make Empty', value: 'empty' as AddWeekMode },
+            { key: 'add-ai', label: 'AI Progressively Overload', value: 'progressive_ai' as AddWeekMode },
+          ]}
+          selected={addWeekMode}
+          onChange={(value) => setAddWeekMode((value ?? 'progressive_ai') as AddWeekMode)}
+          allowDeselect={false}
+          keyboardPersistTaps
+          horizontal={false}
+          style={addingWeek ? styles.disabledSection : undefined}
+        />
+
+        {addWeekMode !== 'empty' && (
+          <>
+            <Text style={styles.fieldLabel}>Source Week</Text>
+            <ChipPicker
+              items={addWeekSourceOptions}
+              selected={selectedAddWeekSource}
+              onChange={(value) => setSelectedAddWeekSource(value ?? null)}
+              allowDeselect={false}
+              keyboardPersistTaps
+              horizontal={false}
+              maxHeight={180}
+              style={addingWeek ? styles.disabledSection : undefined}
+            />
+          </>
+        )}
+
+        {addingWeek && (
+          <View style={styles.weekLoadingNotice}>
+            <ActivityIndicator size="small" color="#4ECDC4" />
+            <Text style={styles.weekLoadingText}>Adding week and applying progression...</Text>
+          </View>
+        )}
+
+        <View style={styles.modalActions}>
+          <Button
+            title="Cancel"
+            variant="ghost"
+            onPress={() => setShowAddWeekModal(false)}
+            disabled={addingWeek}
+          />
+          <Button
+            title={addingWeek ? 'Adding...' : 'Add Week'}
+            onPress={handleConfirmAddWeek}
+            disabled={addingWeek || updatingWeeks || (addWeekMode !== 'empty' && selectedAddWeekSource == null)}
           />
         </View>
       </BottomSheetModal>
@@ -1038,13 +1190,20 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 6,
   },
-  weekChipActive: {
+  weekChip: {
+    minHeight: 30,
     borderWidth: 1,
+    borderColor: 'transparent',
+    borderRadius: 14,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  weekChipActive: {
     borderColor: '#2D6666',
-    backgroundColor: 'rgba(78, 205, 196, 0.12)',
+    backgroundColor: 'transparent',
   },
   weekChipActiveSelected: {
-    borderWidth: 1,
     borderColor: '#4ECDC4',
     backgroundColor: '#1D3E3E',
     shadowColor: '#4ECDC4',
@@ -1054,18 +1213,30 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   weekChipActiveText: {
-    color: '#88CFC8',
-    fontFamily: fonts.bold,
+    color: '#9EDAD5',
+    fontFamily: fonts.semiBold,
   },
   weekChipActiveTextSelected: {
     color: '#D9F6F2',
-    fontFamily: fonts.bold,
+    fontFamily: fonts.semiBold,
   },
   weekActionsInline: {
     flexDirection: 'row',
     alignItems: 'stretch',
     gap: 8,
     marginBottom: 8,
+  },
+  weekLoadingNotice: {
+    marginTop: -6,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  weekLoadingText: {
+    color: '#9EDAD5',
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
   },
   weekMiniBtn: {
     width: 42,
@@ -1156,9 +1327,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.semiBold,
     color: colors.text,
+    lineHeight: 20,
+    includeFontPadding: false,
   },
   exerciseNameLink: {
-    textDecorationLine: 'underline',
+    color: '#98c6fb',
   },
   exerciseNameTapTarget: {
     alignSelf: 'flex-start',
@@ -1185,6 +1358,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 12,
     marginTop: 8,
+  },
+  disabledSection: {
+    opacity: 0.65,
   },
   fieldLabel: {
     color: colors.textSecondary,

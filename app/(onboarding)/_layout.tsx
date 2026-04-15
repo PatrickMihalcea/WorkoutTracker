@@ -12,6 +12,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="units" />
       <Stack.Screen name="goals" />
       <Stack.Screen name="measurements" />
+      <Stack.Screen name="first-routine" />
     </Stack>
   );
 }

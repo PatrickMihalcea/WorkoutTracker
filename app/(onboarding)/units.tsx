@@ -67,6 +67,7 @@ export default function UnitsScreen() {
   return (
     <OnboardingScaffold
       step={2}
+      totalSteps={5}
       onBack={() => router.back()}
       title="Dial in your units"
       subtitle="Choose how your numbers appear so every set, rep, and distance reads naturally to you."
