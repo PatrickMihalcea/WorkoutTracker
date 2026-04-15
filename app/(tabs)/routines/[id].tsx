@@ -110,7 +110,7 @@ export default function RoutineDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuthStore();
-  const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
+  const { currentRoutine, fetchRoutineDetail, loading } = useRoutineStore();
   const { profile, updateProfile } = useProfileStore();
   const { expand: expandWorkout } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
@@ -772,7 +772,13 @@ export default function RoutineDetailScreen() {
     },
   ], [activeSession, handleStartDay, handleDuplicateDay, handleDeleteDay, router]);
 
-  if (!currentRoutine) return null;
+  if (loading || !currentRoutine) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="small" color={colors.textSecondary} style={{ marginTop: 40 }} />
+      </View>
+    );
+  }
 
   const renderDay = (day: RoutineDayWithExercises) => {
     const groups: SupersetGroups = {};

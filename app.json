@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Workout Tracker",
+    "name": "Setora",
     "slug": "workout-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.patrickmihalcea.workouttracker",
       "infoPlist": {
-        "NSUserNotificationsUsageDescription": "Workout Tracker uses notifications for rest timers and daily workout reminders.",
+        "NSUserNotificationsUsageDescription": "Setora uses notifications for rest timers and daily workout reminders.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },

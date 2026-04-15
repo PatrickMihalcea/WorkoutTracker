@@ -19,7 +19,7 @@ import { routineService } from '../../../src/services';
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { activeRoutine, fetchActiveRoutine } = useRoutineStore();
+  const { activeRoutine, activeRoutineInitialized, fetchActiveRoutine } = useRoutineStore();
   const { session: activeSession, startWorkout, resumeWorkout } = useWorkoutStore();
   const { profile } = useProfileStore();
   const { expand: expandWorkout } = useWorkoutOverlay();
@@ -147,6 +147,14 @@ export default function HomeScreen() {
     setChosenDay(day);
     setShowChooseModal(false);
   };
+
+  if (!activeRoutineInitialized) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="small" color={colors.textSecondary} />
+      </View>
+    );
+  }
 
   if (!activeRoutine) {
     return (
@@ -495,6 +503,12 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.background,
   },
   scrollView: {

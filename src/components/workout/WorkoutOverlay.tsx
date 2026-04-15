@@ -5,12 +5,13 @@ import {
   Image,
   TouchableOpacity,
   Pressable,
-  FlatList,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Alert,
   Animated,
+  AppState,
   useWindowDimensions,
 } from 'react-native';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
@@ -151,6 +152,15 @@ export function WorkoutOverlay() {
     const id = setInterval(() => tickRestTimer(), 1000);
     return () => clearInterval(id);
   }, [restTimer !== null]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        tickRestTimer();
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -446,48 +456,6 @@ export function WorkoutOverlay() {
     </ScaleDecorator>
   ), [rows, previousSets, weightUnit, distanceUnit]);
 
-  const renderNormalItem = useCallback(({ item, index }: { item: RoutineDayExercise; index: number }) => {
-    const position = getSupersetPosition(exercises, index, supersetGroups);
-    const needsNoMargin = position === 'first' || position === 'middle';
-    const myGroup = supersetGroups[item.id] ?? null;
-    const prevGroup = index > 0 ? (supersetGroups[exercises[index - 1].id] ?? null) : null;
-    const nextGroup = index < exercises.length - 1 ? (supersetGroups[exercises[index + 1].id] ?? null) : null;
-    const canPrev = index > 0 && (!myGroup || myGroup !== prevGroup);
-    const canNext = index < exercises.length - 1 && (!myGroup || myGroup !== nextGroup);
-    const card = (
-      <ExerciseCard
-        entry={item}
-        rows={rows[item.id] ?? []}
-        previousSets={previousSets[item.exercise_id] ?? []}
-        weightUnit={weightUnit}
-        distanceUnit={distanceUnit}
-        isCollapsed={collapsedCards[item.id] ?? false}
-        onToggleCollapse={() => toggleCollapse(item.id)}
-        onLongPress={() => setReordering(true)}
-        onUpdateRowLocal={handleUpdateLocal}
-        onUpdateRow={handleUpdate}
-        onToggleRow={handleToggle}
-        onDeleteRow={handleDelete}
-        onAddRow={handleAdd}
-        onAddWarmup={handleAddWarmup}
-        onToggleWarmup={handleToggleWarmup}
-        onRemove={() => handleRemoveExercise(item.id)}
-        supersetGroup={myGroup}
-        canSupersetPrev={canPrev}
-        canSupersetNext={canNext}
-        onSupersetPrev={() => handleSupersetPrev(item.id)}
-        onSupersetNext={() => handleSupersetNext(item.id)}
-        onSeparate={() => handleSeparate(item.id)}
-        onSwap={() => handleSwap(item.id)}
-        onDuplicate={() => handleDuplicate(item.id)}
-        onDetails={() => router.push(`/exercise/${item.exercise_id}`)}
-        noBottomMargin={needsNoMargin}
-      />
-    );
-    return <SupersetBracket position={position}>{card}</SupersetBracket>;
-  }, [rows, previousSets, weightUnit, distanceUnit, collapsedCards, supersetGroups, exercises, toggleCollapse]);
-
-  const keyExtractor = useCallback((item: RoutineDayExercise) => item.id, []);
 
   const normalFooter = useCallback(() => (
     <View>
@@ -572,15 +540,53 @@ export function WorkoutOverlay() {
                   contentContainerStyle={styles.scrollContent}
                 />
               ) : (
-                <FlatList
-                  data={exercises}
-                  keyExtractor={keyExtractor}
-                  renderItem={renderNormalItem}
-                  ListFooterComponent={normalFooter}
+                <ScrollView
                   contentContainerStyle={styles.scrollContent}
                   keyboardShouldPersistTaps="handled"
                   automaticallyAdjustKeyboardInsets
-                />
+                >
+                  {exercises.map((item, index) => {
+                    const position = getSupersetPosition(exercises, index, supersetGroups);
+                    const needsNoMargin = position === 'first' || position === 'middle';
+                    const myGroup = supersetGroups[item.id] ?? null;
+                    const prevGroup = index > 0 ? (supersetGroups[exercises[index - 1].id] ?? null) : null;
+                    const nextGroup = index < exercises.length - 1 ? (supersetGroups[exercises[index + 1].id] ?? null) : null;
+                    const canPrev = index > 0 && (!myGroup || myGroup !== prevGroup);
+                    const canNext = index < exercises.length - 1 && (!myGroup || myGroup !== nextGroup);
+                    const card = (
+                      <ExerciseCard
+                        entry={item}
+                        rows={rows[item.id] ?? []}
+                        previousSets={previousSets[item.exercise_id] ?? []}
+                        weightUnit={weightUnit}
+                        distanceUnit={distanceUnit}
+                        isCollapsed={collapsedCards[item.id] ?? false}
+                        onToggleCollapse={() => toggleCollapse(item.id)}
+                        onLongPress={() => setReordering(true)}
+                        onUpdateRowLocal={handleUpdateLocal}
+                        onUpdateRow={handleUpdate}
+                        onToggleRow={handleToggle}
+                        onDeleteRow={handleDelete}
+                        onAddRow={handleAdd}
+                        onAddWarmup={handleAddWarmup}
+                        onToggleWarmup={handleToggleWarmup}
+                        onRemove={() => handleRemoveExercise(item.id)}
+                        supersetGroup={myGroup}
+                        canSupersetPrev={canPrev}
+                        canSupersetNext={canNext}
+                        onSupersetPrev={() => handleSupersetPrev(item.id)}
+                        onSupersetNext={() => handleSupersetNext(item.id)}
+                        onSeparate={() => handleSeparate(item.id)}
+                        onSwap={() => handleSwap(item.id)}
+                        onDuplicate={() => handleDuplicate(item.id)}
+                        onDetails={() => router.push(`/exercise/${item.exercise_id}`)}
+                        noBottomMargin={needsNoMargin}
+                      />
+                    );
+                    return <SupersetBracket key={item.id} position={position}>{card}</SupersetBracket>;
+                  })}
+                  {normalFooter()}
+                </ScrollView>
               )}
             </View>
 

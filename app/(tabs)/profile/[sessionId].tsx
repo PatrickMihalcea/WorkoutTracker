@@ -968,8 +968,8 @@ export default function SessionDetailScreen() {
                         {cfg.showRir && <Text style={[styles.tableCol, styles.colRir]}>RIR</Text>}
                       </View>
 
-                      {group.sets.map((set) => (
-                        <View key={set.id} style={styles.tableRow}>
+                      {group.sets.map((set, setIdx) => (
+                        <View key={set.id} style={[styles.tableRow, setIdx % 2 === 1 && styles.tableRowAlt]}>
                           <Text style={[styles.tableCell, styles.colSet]}>{set.set_number}</Text>
                           {showWeight && <Text style={[styles.tableCell, styles.colFlex]}>{formatWeight(set.weight, weightUnit)}</Text>}
                           {showReps && <Text style={[styles.tableCell, styles.colFlex]}>{set.reps_performed}</Text>}
@@ -1316,7 +1316,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingBottom: 12,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   exerciseHeaderText: {
     flex: 1,
@@ -1327,7 +1330,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   exerciseNameLink: {
-    textDecorationLine: 'underline',
+    color: '#98c6fb',
   },
   exerciseNameTapTarget: {
     alignSelf: 'flex-start',
@@ -1361,6 +1364,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  tableRowAlt: {
+    backgroundColor: '#1e1e1e',
   },
   tableCell: {
     fontSize: 14,

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { Animated, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { WorkoutRow, SetLog, WeightUnit, DistanceUnit, ExerciseType } from '../../models';
 import { colors, fonts } from '../../constants';
 import { formatWeight, formatDistance } from '../../utils/units';
@@ -29,6 +29,7 @@ interface SetRowProps {
   enableWarmupSwipe?: boolean;
   showInlineDelete?: boolean;
   onInlineDelete?: () => void;
+  isAlt?: boolean;
 }
 
 export function SetRow({
@@ -53,6 +54,7 @@ export function SetRow({
   enableWarmupSwipe = true,
   showInlineDelete = false,
   onInlineDelete,
+  isAlt = false,
 }: SetRowProps) {
   type RowFieldKey = 'weight' | 'reps' | 'duration' | 'distance';
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
@@ -60,6 +62,28 @@ export function SetRow({
 
   const [showRirPicker, setShowRirPicker] = useState(false);
   const [showDurationPicker, setShowDurationPicker] = useState(false);
+  const [localCompleted, setLocalCompleted] = useState(row.is_completed);
+  const completedAnim = useRef(new Animated.Value(row.is_completed ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (localCompleted !== row.is_completed) {
+      setLocalCompleted(row.is_completed);
+      Animated.timing(completedAnim, {
+        toValue: row.is_completed ? 1 : 0,
+        duration: 180,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [row.is_completed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const animateCompletion = (completing: boolean) => {
+    setLocalCompleted(completing);
+    Animated.timing(completedAnim, {
+      toValue: completing ? 1 : 0,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  };
 
   const suggestedRepsAutofill = suggestedReps?.includes('-')
     ? suggestedReps.split('-')[1]
@@ -95,6 +119,7 @@ export function SetRow({
     onUpdateRowLocal({ rir: rirStr });
     onUpdateRow({ rir: rirStr });
     if (rirStr && !row.is_completed) {
+      animateCompletion(true);
       markDone(rirStr);
     }
   };
@@ -129,6 +154,7 @@ export function SetRow({
   };
 
   const handleToggle = () => {
+    animateCompletion(!row.is_completed);
     if (!row.is_completed) {
       markDone();
     } else {
@@ -164,6 +190,13 @@ export function SetRow({
   const durationSeconds = row.duration ? parseFloat(row.duration) || 0 : 0;
   const suggestedDurationNum = suggestedDuration ? parseFloat(suggestedDuration) || 0 : 0;
 
+  const baseRowBg = isAlt ? '#1e1e1e' : colors.surface;
+  const doneBg = completionColor && completionColor !== 'transparent' ? completionColor : baseRowBg;
+  const animatedRowBg = completedAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [baseRowBg, doneBg],
+  });
+
   return (
     <>
       <SwipeToDeleteRow
@@ -171,11 +204,7 @@ export function SetRow({
         expandedHeight={60}
         onSwipeRight={enableWarmupSwipe ? onToggleWarmup : undefined}
       >
-        <View style={[
-            styles.row,
-            row.is_completed && styles.rowSaved,
-            row.is_completed && completionColor && completionColor !== 'transparent' && { backgroundColor: completionColor },
-          ]}>
+        <Animated.View style={[styles.row, { backgroundColor: animatedRowBg }]}>
             <View style={styles.setLabel}>
               {isWarmup ? (
                 <View style={styles.warmupCircle}>
@@ -184,7 +213,7 @@ export function SetRow({
               ) : (
                 <Text style={[
                   styles.setNumber,
-                  row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+                  localCompleted && completionColor && completionColor !== 'transparent' && { color: '#000000' },
                 ]}>{displaySetNumber}</Text>
               )}
             </View>
@@ -192,7 +221,7 @@ export function SetRow({
             <View style={styles.previousCol}>
               <Text style={[
                 styles.previousText,
-                row.is_completed && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+                localCompleted && completionColor && completionColor !== 'transparent' && { color: '#000000' },
               ]}>
                 {buildPreviousText()}
               </Text>
@@ -251,12 +280,12 @@ export function SetRow({
 
             {showCompletionToggle && (
               <TouchableOpacity
-                style={[styles.saveButton, row.is_completed && styles.saveButtonDone]}
+                style={[styles.saveButton, localCompleted && styles.saveButtonDone]}
                 onPress={handleToggle}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.saveButtonText, row.is_completed && styles.saveButtonTextDone]}>
-                  {row.is_completed ? '✓' : '+'}
+                <Text style={[styles.saveButtonText, localCompleted && styles.saveButtonTextDone]}>
+                  {localCompleted ? '✓' : '+'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -269,7 +298,7 @@ export function SetRow({
                 <Text style={styles.inlineDeleteText}>×</Text>
               </TouchableOpacity>
             )}
-          </View>
+          </Animated.View>
       </SwipeToDeleteRow>
 
       {config.showRir && (
@@ -298,7 +327,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 2,
     gap: 4,
-    backgroundColor: colors.surface,
   },
   rowSaved: {},
   setLabel: {

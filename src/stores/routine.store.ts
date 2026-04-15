@@ -7,6 +7,7 @@ import { useProfileStore } from './profile.store';
 interface RoutineState {
   routines: Routine[];
   activeRoutine: RoutineWithDays | null;
+  activeRoutineInitialized: boolean;
   currentRoutine: RoutineWithDays | null;
   loading: boolean;
 
@@ -24,6 +25,7 @@ interface RoutineState {
 export const useRoutineStore = create<RoutineState>((set) => ({
   routines: [],
   activeRoutine: null,
+  activeRoutineInitialized: false,
   currentRoutine: null,
   loading: false,
 
@@ -40,9 +42,9 @@ export const useRoutineStore = create<RoutineState>((set) => ({
   fetchActiveRoutine: async () => {
     try {
       const routine = await routineService.getActive();
-      set({ activeRoutine: routine });
+      set({ activeRoutine: routine, activeRoutineInitialized: true });
     } catch {
-      // No active routine
+      set({ activeRoutineInitialized: true });
     }
   },
 

@@ -12,11 +12,11 @@ import { weightUnitLabel, distanceUnitLabel, formatWeight } from '../../utils/un
 import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
 import { useThemeColors } from '../../hooks/useThemeColors';
 
-const ANIM_DURATION = 500;
+const ANIM_DURATION = 300;
 
-const slowLayout: LayoutAnimationConfig = {
-  duration: ANIM_DURATION,
-  update: { type: LayoutAnimation.Types.easeInEaseOut },
+const collapseLayout: LayoutAnimationConfig = {
+  duration: 320,
+  update: { type: LayoutAnimation.Types.spring, springDamping: 0.88 },
   delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
   create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
 };
@@ -106,7 +106,7 @@ export function ExerciseCard({
     prevAllDone.current = allDone;
 
     if (allDone && canAnimate) {
-      LayoutAnimation.configureNext(slowLayout);
+      LayoutAnimation.configureNext(collapseLayout);
       onToggleCollapse?.();
       Animated.timing(colorAnim, {
         toValue: 1,
@@ -132,7 +132,7 @@ export function ExerciseCard({
   const doneTextColor = (allDone && canAnimate) ? '#000000' : undefined;
 
   const handleToggle = () => {
-    LayoutAnimation.configureNext(slowLayout);
+    LayoutAnimation.configureNext(collapseLayout);
     onToggleCollapse?.();
   };
 
@@ -282,7 +282,7 @@ export function ExerciseCard({
           <View style={styles.actionCol} />
         </View>
 
-        {sortedRows.map((row) => {
+        {sortedRows.map((row, rowIdx) => {
           const displayNum = row.is_warmup ? 'W' : ++workingSetIndex;
 
           const origIndex = rows.indexOf(row);
@@ -330,6 +330,7 @@ export function ExerciseCard({
               key={row.id}
               row={row}
               displaySetNumber={displayNum}
+              isAlt={rowIdx % 2 === 1}
               previousSet={previousSets[origIndex]}
               weightUnit={weightUnit}
               distanceUnit={distanceUnit}
@@ -388,7 +389,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingBottom: 12,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
     backgroundColor: colors.surface,
   },
   headerCollapsed: {
@@ -403,7 +407,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   exerciseNameLink: {
-    textDecorationLine: 'underline',
+    color: '#98c6fb',
   },
   exerciseNameTapTarget: {
     alignSelf: 'flex-start',

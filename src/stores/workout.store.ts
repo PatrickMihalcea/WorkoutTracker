@@ -26,6 +26,7 @@ interface PreviousSetsMap {
 export interface RestTimer {
   remaining: number;
   total: number;
+  endsAt: number;
 }
 
 type SupersetGroups = Record<string, string | null>;
@@ -667,7 +668,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   startRestTimer: (seconds) => {
-    set({ restTimer: { remaining: seconds, total: seconds } });
+    set({ restTimer: { remaining: seconds, total: seconds, endsAt: Date.now() + seconds * 1000 } });
     const profile = useProfileStore.getState().profile;
     const enabled = profile?.notify_rest_timer_enabled ?? true;
     if (enabled) {
@@ -678,7 +679,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   tickRestTimer: () => {
     const { restTimer } = get();
     if (!restTimer) return;
-    const next = restTimer.remaining - 1;
+    const next = Math.ceil((restTimer.endsAt - Date.now()) / 1000);
     if (next <= 0) {
       set({ restTimer: null });
       void notificationService.cancelRestTimerNotification();
@@ -690,13 +691,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   adjustRestTimer: (delta) => {
     const { restTimer } = get();
     if (!restTimer) return;
-    const newRemaining = Math.max(0, restTimer.remaining + delta);
+    const newEndsAt = restTimer.endsAt + delta * 1000;
+    const newRemaining = Math.ceil((newEndsAt - Date.now()) / 1000);
     const newTotal = Math.max(0, restTimer.total + delta);
     if (newRemaining <= 0) {
       set({ restTimer: null });
       void notificationService.cancelRestTimerNotification();
     } else {
-      set({ restTimer: { remaining: newRemaining, total: newTotal } });
+      set({ restTimer: { remaining: newRemaining, total: newTotal, endsAt: newEndsAt } });
       const profile = useProfileStore.getState().profile;
       const enabled = profile?.notify_rest_timer_enabled ?? true;
       if (enabled) {

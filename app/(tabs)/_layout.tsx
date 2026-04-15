@@ -110,6 +110,7 @@ function TabLayoutInner() {
           lazy: true,
           lazyPreloadDistance: 1,
           animationEnabled: true,
+          sceneStyle: { backgroundColor: colors.background },
         }}
       >
       <SwipeableTabs.Screen
