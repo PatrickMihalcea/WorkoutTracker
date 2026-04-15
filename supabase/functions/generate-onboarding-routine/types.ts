@@ -56,8 +56,9 @@ export interface ExerciseRow {
   muscle_group: string;
   equipment: string;
   exercise_type: string;
-  secondary_muscles: string[] | string | null;
   user_id: string | null;
+  difficulty_tier: string;
+  movement_pattern: string;
 }
 
 export interface UserProfileContext {

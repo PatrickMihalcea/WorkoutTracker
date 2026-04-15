@@ -44,6 +44,8 @@ const SUPPORTED_EXERCISE_TYPES = new Set([
   'assisted_bodyweight',
   'duration',
   'duration_weight',
+  'distance_duration',
+  'weight_distance',
 ]);
 
 const EQUIPMENT_BY_PREFERENCE: Record<OnboardingRoutineAnswers['equipment'], string[]> = {
@@ -123,6 +125,19 @@ function focusToSelectors(focus: OnboardingFocusMuscle): MuscleSelector[] {
   }
 }
 
+function allowedDifficultyTiers(
+  experience: OnboardingRoutineAnswers['experience'],
+): string[] {
+  switch (experience) {
+    case 'beginner':
+      return ['beginner'];
+    case 'intermediate':
+      return ['beginner', 'intermediate'];
+    case 'advanced':
+      return ['beginner', 'intermediate', 'advanced'];
+  }
+}
+
 export function focusToMuscles(focus: OnboardingFocusMuscle): string[] {
   return focusToSelectors(focus).flatMap(expandSelector);
 }
@@ -132,10 +147,12 @@ export function filterExercisesForAnswers(
   answers: OnboardingRoutineAnswers,
 ): ExerciseRow[] {
   const allowedEquipment = new Set(EQUIPMENT_BY_PREFERENCE[answers.equipment]);
+  const allowedDifficulties = new Set(allowedDifficultyTiers(answers.experience));
+
   return exercises
-    .filter((exercise) => exercise.user_id === null)
     .filter((exercise) => allowedEquipment.has(exercise.equipment))
     .filter((exercise) => SUPPORTED_EXERCISE_TYPES.has(exercise.exercise_type))
+    .filter((exercise) => allowedDifficulties.has(exercise.difficulty_tier))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -331,25 +348,6 @@ function scoreExercise(
   const name = exercise.name.toLowerCase();
 
   if (expandedSelector.has(exercise.muscle_group)) score += 100;
-
-  const secondary = Array.isArray(exercise.secondary_muscles)
-    ? exercise.secondary_muscles
-    : typeof exercise.secondary_muscles === 'string'
-      ? exercise.secondary_muscles
-          .replace(/[{}]/g, '')
-          .split(',')
-          .map((item: string) => item.trim())
-          .filter(Boolean)
-      : [];
-
-  for (const muscle of secondary) {
-    if (expandedSelector.has(muscle)) score += 18;
-  }
-
-  if (focusMuscles.has(exercise.muscle_group)) score += 24;
-  for (const muscle of secondary) {
-    if (focusMuscles.has(muscle)) score += 6;
-  }
 
   if (answers.goal === 'muscle_gain') {
     if (exercise.exercise_type === 'weight_reps') score += 14;

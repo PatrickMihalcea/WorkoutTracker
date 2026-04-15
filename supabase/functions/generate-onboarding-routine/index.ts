@@ -311,16 +311,19 @@ async function generateAndPersistRoutine(args: {
 
   const { data: exerciseRows, error: exercisesError } = await supabase
     .from('exercises')
-    .select('id, name, muscle_group, equipment, exercise_type, secondary_muscles, user_id')
+    .select('id, name, muscle_group, equipment, exercise_type, difficulty_tier, movement_pattern, user_id')
     .is('user_id', null);
   if (exercisesError) {
     throw new Error(`Failed to load exercise library: ${exercisesError.message}`);
   }
 
+  const exerciseLibrary = exerciseRows ?? [];
+  const filteredExercises = filterExercisesForAnswers(exerciseLibrary, answers);
+
   const { draft, generationModeUsed } = await buildDraftWithOptionalAi({
     mode,
     answers,
-    exercises: exerciseRows,
+    exercises: filteredExercises,
     userContext,
     weekCount: generationWeekCount,
     repairContext: repairContext ?? null,
@@ -328,7 +331,7 @@ async function generateAndPersistRoutine(args: {
     openAiModel: Deno.env.get('OPENAI_MODEL') ?? 'gpt-4.1-mini',
   });
 
-  const allowedIds = new Set(filterExercisesForAnswers(exerciseRows, answers).map((item) => item.id));
+  const allowedIds = new Set(filteredExercises.map((item) => item.id));
   const weekOneValidationErrors = validateRoutineDraft(draft, allowedIds, answers.days_per_week, generationWeekCount);
   if (weekOneValidationErrors.length > 0) {
     throw new Error(`Generated week 1 draft invalid: ${weekOneValidationErrors[0]}`);

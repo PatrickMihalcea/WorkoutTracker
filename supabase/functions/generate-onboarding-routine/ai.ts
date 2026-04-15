@@ -93,12 +93,22 @@ function toBooleanOr(value: unknown, fallback: boolean): boolean {
 function normalizeAiDraft(
   rawDraft: unknown,
   allowedExercises: ExerciseRow[],
+  expectedDaysPerWeek: number,
+  expectedWeekCount: number,
   userContext?: UserProfileContext | null,
 ): RoutineDraft {
   const draft = rawDraft as RoutineDraft;
   if (!draft || typeof draft !== 'object' || !Array.isArray(draft.days)) {
     throw new Error('AI draft is not a valid object');
   }
+
+  const normalizedWeekCount = Math.max(1, Math.floor(expectedWeekCount));
+  const expectedTotalDays = expectedDaysPerWeek * normalizedWeekCount;
+
+  const trimmedDays =
+    draft.days.length > expectedTotalDays
+      ? draft.days.slice(0, expectedTotalDays)
+      : draft.days;
 
   const idSet = new Set(allowedExercises.map((item) => item.id));
   const idByName = new Map<string, string>();
@@ -110,7 +120,7 @@ function normalizeAiDraft(
     }
   }
 
-  const normalizedDays = draft.days.map((day) => {
+  const normalizedDays = trimmedDays.map((day) => {
     const exercises = (day.exercises ?? []).map((exercise) => {
       const maybeId =
         typeof exercise.exercise_id === 'string' && idSet.has(exercise.exercise_id)
@@ -130,8 +140,15 @@ function normalizeAiDraft(
       }
 
       const sets = (exercise.sets ?? []).map((setRow, setIndex) => {
-        const targetWeight = roundWeightForUnit(toFiniteNumberOr(setRow.target_weight, 0), userContext?.weight_unit);
-        const targetDistance = roundDistanceForUnit(toFiniteNumberOr(setRow.target_distance, 0), userContext?.distance_unit);
+        const targetWeight = roundWeightForUnit(
+          toFiniteNumberOr(setRow.target_weight, 0),
+          userContext?.weight_unit,
+        );
+        const targetDistance = roundDistanceForUnit(
+          toFiniteNumberOr(setRow.target_distance, 0),
+          userContext?.distance_unit,
+        );
+
         return {
           ...setRow,
           set_number: toIntAtLeast(setRow.set_number, setIndex + 1, 1),
@@ -144,6 +161,7 @@ function normalizeAiDraft(
           is_warmup: toBooleanOr(setRow.is_warmup, false),
         };
       });
+
       const firstSet = sets.find((setRow) => !setRow.is_warmup) ?? sets[0];
       const derivedTargetReps = firstSet?.target_reps_min ?? 0;
 
@@ -210,22 +228,21 @@ export async function refineDraftWithAi(args: {
   'Use only exercise_name values from the provided candidate list.',
   'Never invent exercises, names, fields, or enum values.',
   'Preserve the output schema exactly.',
-  'Keep exactly the requested number of training days and weeks.',
-  'Do not include redundant exercise-level target_sets or target_reps fields; they are derived server-side from sets.',
+  'Keep exactly the requested number of training days.',
   'Set numbers must be contiguous starting at 1.',
   'No duplicate exercises within the same day.',
-  'Avoid repeating the same exercise on multiple days unless clearly necessary.',
+  'Avoid repeating the same exercise on multiple days, variance is better.',
   'Build a practical, balanced, recoverable program that respects equipment, session length, goal, experience, focus muscle, and available user body metrics.',
   'Use sex, height, weight, goal, and experience to choose practical starting loads and session difficulty.',
   'Apply only a slight focus-muscle bias. Do not unbalance the program.',
-  'Order exercises well: main compounds first, then secondary lifts, then isolations, then core or finishers.',
-  'Use realistic sets, reps, weights, durations, distances, and RIR based on exercise type and user profile.',
+  'Order exercises well: main compounds first, then secondary lifts, then isolations, then core or cardio.',
+  'Use realistic sets, reps, weights (and RIR), distances, and durations based on exercise type and user profile.',
   'Fill every relevant target field for each exercise. Only leave a field null when that exercise type does not use it.',
   'For dumbbells, target_weight means per hand unless the exercise is clearly single-arm.',
-  'For bodyweight, assisted, duration-only, and cardio movements, target_weight should usually be null.',
+  'For bodyweight, assisted, duration-only, and cardio movements, target_weight usually be null.',
   'Prefer conservative, achievable starting weights over aggressive guesses.',
   'Muscle gain: emphasize hypertrophy-friendly compounds plus isolations.',
-  'Fat loss: keep sessions efficient and include cardio staples.',
+  'Fat loss: higher rep and distance, lower weight and longer form cardio with distance (e.g., running, cycling).',
   'General fitness: keep the plan balanced, sustainable, and include some cardio.',
   'Beginner: prefer simpler, more stable exercises.',
   'Intermediate: use standard staples with moderate variety.',
@@ -278,17 +295,17 @@ export async function refineDraftWithAi(args: {
                 exercises: [
                   {
                     exercise_name: 'string',
-                    sort_order: 'number',
+                    sort_order: 'number, warmups first',
                     sets: [
                       {
-                        set_number: 'number (contiguous sequence from 1 to sets.length)',
-                        target_weight: 'number',
+                        set_number: 'number (contiguous sequence from 1 to sets.length). Non-cardio muset have at least 2 sets.',
+                        target_weight: 'number non-null',
                         target_reps_min: 'number',
                         target_reps_max: 'number',
-                        target_rir: 'number|null',
-                        target_duration: 'number',
-                        target_distance: 'number',
-                        is_warmup: 'boolean',
+                        target_rir: 'number|null  Anything with reps should have a non null RIR value here. Descending values.',
+                        target_duration: 'number in seconds. If intensive, 45 seconds or less. If more endurance based like running, 10 minutes OR MORE depending on session length.',
+                        target_distance: 'number in km. All distance based exercises should have this filled.',
+                        is_warmup: 'boolean, use for longer workouts with more sets. Should always come before non-warmup sets.',
                       },
                     ],
                   },
@@ -298,7 +315,7 @@ export async function refineDraftWithAi(args: {
           },
         }
       : {
-      task: 'Design a personalized high-quality routine based on the user profile and preferences. Follow the strict number ofdays request. Only slight bias for a focus muscle group, and have workout sets and durations that fit the designated session length for each day.',
+      task: 'Design a personalized high-quality routine based on the user profile and preferences. Follow the strict number of days request. Only slight bias for a focus muscle group, and have workout sets, distances, and durations that fit the designated session length for each day.',
       user_preferences: {
         days_per_week: answers.days_per_week,
         session_minutes: answers.session_minutes,
@@ -324,18 +341,17 @@ export async function refineDraftWithAi(args: {
         use_only_candidate_exercises: true,
         preserve_exact_day_count: expectedTotalDays,
         preserve_schema_exactly: true,
-        exercises_per_day_min: '3 for 30min, 4 for 60min, 6 for 90min',
+        exercises_per_day_min: '3 or 4 for 30min, 4 or 5 for 60min, 6 or 7 for 90min',
         exercises_per_day_max: '4 for 30 min, 6 for 60min, 8 for 90min',
         non_cardio_sets_per_exercise_min: '2 for 30, 3 for 60, 3|4 for 90',
         cardio_sets_per_exercise_min: 'Depends on exercise and session length, but can be 1 or more',
         set_numbers_must_be_contiguous_from_1: true,
         focus_muscle_bias: 'very_slight',
         training_quality_priorities: [
-          'exercise quality',
           'goal alignment',
-          'equipment fit',
-          'session length fit',
           'balanced weekly coverage',
+          'variation in exercises and cardio. Use exact names',
+          'follow the planning rules and constraints',
         ],
         exercise_ordering: [
           'main compound first',
@@ -343,12 +359,13 @@ export async function refineDraftWithAi(args: {
           'isolations after compounds',
           'core or least technical work near the end'
         ],
+        set_ordering: 'warmup sets first, then working sets. No interleaving. Only use warmup sets for 60 and 90 minute sessions, and only when it helps meet the set count requirements while keeping the working sets practical.',
         avoid: [
           'invalid exercise names',
           'duplicate exercises across the same day',
           'too many near-identical movement patterns in one session',
+          'repetitive use of exercises especially across days. same cardio every day for example.',
           'unbalanced weekly volume',
-          'advanced complexity for beginners',
           'unrealistic volume for selected session length',
         ]
       },
@@ -356,12 +373,12 @@ export async function refineDraftWithAi(args: {
         by_days_per_week: {
           3: 'Prefer full body or upper/lower/full body style distribution',
           4: 'Prefer upper/lower, torso/limbs, or balanced hypertrophy split.',
-          5: 'Prefer body groups emphasis. '
+          5: 'Prefer body groups emphasis.'
         },
         by_goal: {
-          muscle_gain: 'Use mostly hypertrophy-friendly exercise selection and set/rep schemes. Usually compounds plus isolations. Most working sets in roughly the 4-10 rep range.',
-          fat_loss: 'Favor practical exercise density, moderate volume, simple exercise transitions, and good whole-body training stimulus. And Some cardio',
-          general_fitness: 'Keep the plan balanced, sustainable, and broadly effective across all major muscle groups. Bit of cardio.'
+          muscle_gain: 'Use hypertrophy-friendly exercise selection and set/rep schemes. Usually compounds plus isolations. Most working sets in roughly the 4-10 rep range.',
+          fat_loss: 'Favor practical exercise density, moderate volume, with higher reps. Simple exercise transitions, and distance based cardio with reasonable pacing (elliptical, cycling, running etc.). Add cardio. For 90 minute sessions, can even be over 20 minutes (1200 seconds).',
+          general_fitness: 'Keep the plan well rounded, and broadly effective across all major muscle groups. Bit of cardio.'
         },
         by_experience: {
           beginner: 'Prefer simple, stable, easy-to-learn exercises. Avoid overly technical or unnecessarily fatiguing combinations.',
@@ -371,7 +388,7 @@ export async function refineDraftWithAi(args: {
         by_session_length: {
           30: 'Keep sessions compact. Usually 3-4 exercises with 2-3 sets.',
           60: '4-6 exercises with balanced volume.',
-          90: '6-8 exercises with room for possible warmup, more sets (3-4), and more accessory and conditioning work.'
+          90: '6-8 exercises with room for warmup sets!, more sets (3-4), and more accessory and longer conditioning work.'
         }
       },
       output_requirements: {
@@ -399,17 +416,17 @@ export async function refineDraftWithAi(args: {
             exercises: [
               {
                 exercise_name: 'string',
-                sort_order: 'number',
+                sort_order: 'number, warmups first',
                 sets: [
                   {
                     set_number: 'number (contiguous sequence from 1 to sets.length). Non-cardio muset have at least 2 sets.',
                     target_weight: 'number non-null',
                     target_reps_min: 'number',
                     target_reps_max: 'number',
-                    target_rir: 'number|null should come down to 0-1 for last sets in muscle building. Anything with reps should have a non null RIR value here.',
-                    target_duration: 'number in seconds. If intensive, 45 seconds or less like battle ropes. If more endurance based like running, 10 minutes OR MORE depending on session length.',
-                    target_distance: 'number',
-                    is_warmup: 'boolean',
+                    target_rir: 'number|null  Anything with reps should have a non null RIR value here. Descending values.',
+                    target_duration: 'number in seconds. If intensive, 45 seconds or less. If more endurance based like running, 10 minutes OR MORE depending on session length.',
+                    target_distance: 'number in km. All distance based exercises should have this filled.',
+                    is_warmup: 'boolean, use for longer workouts with more sets. Should always come before non-warmup sets.',
                   },
                 ],
               },
@@ -441,7 +458,7 @@ export async function refineDraftWithAi(args: {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.7,
+        temperature: 0.6,
         top_p: 0.95,
         response_format: { type: 'json_object' },
         messages: [
@@ -491,7 +508,13 @@ export async function refineDraftWithAi(args: {
     );
     let refined: RoutineDraft;
     try {
-      refined = normalizeAiDraft(parsed, allowedExercises, userContext);
+      refined = normalizeAiDraft(
+        parsed,
+        allowedExercises,
+        answers.days_per_week,
+        expectedWeekCount,
+        userContext,
+      );
       console.log(
         JSON.stringify({
           event: 'ai_refinement_normalized',
