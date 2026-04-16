@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Keyboard,
   TouchableOpacity,
@@ -7,9 +7,10 @@ import {
   Platform,
   Animated,
 } from 'react-native';
-import { colors } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export function KeyboardDismiss() {
+  const { colors } = useTheme();
   const [visible, setVisible] = useState(false);
   const [bottom] = useState(new Animated.Value(0));
 
@@ -43,6 +44,21 @@ export function KeyboardDismiss() {
     };
   }, [bottom]);
 
+  const styles = useMemo(() => StyleSheet.create({
+    container: { position: 'absolute', right: 12, zIndex: 9999, elevation: 9999 },
+    button: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    arrow: { fontSize: 16, lineHeight: 18, color: colors.text },
+  }), [colors]);
+
   if (!visible) return null;
 
   return (
@@ -53,27 +69,3 @@ export function KeyboardDismiss() {
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    right: 12,
-    zIndex: 9999,
-    elevation: 9999,
-  },
-  button: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  arrow: {
-    fontSize: 16,
-    lineHeight: 18,
-    color: colors.text,
-  },
-});

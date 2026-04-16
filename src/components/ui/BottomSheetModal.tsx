@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Modal,
   KeyboardAvoidingView,
@@ -15,7 +15,8 @@ import {
   ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, fonts, gradients } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fonts } from '../../constants';
 import { KeyboardDismiss } from './KeyboardDismiss';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -43,6 +44,7 @@ export function BottomSheetModal({
   sheetStyle,
   onClose,
 }: BottomSheetModalProps) {
+  const { colors, gradients } = useTheme();
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const sheetTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const [modalVisible, setModalVisible] = useState(false);
@@ -70,6 +72,37 @@ export function BottomSheetModal({
       return () => clearTimeout(fallback);
     }
   }, [visible]);
+
+  const styles = useMemo(() => StyleSheet.create({
+    wrapper: { flex: 1, justifyContent: 'flex-end' },
+    overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+    sheetWrapper: { maxHeight: '85%' },
+    sheetWrapperFull: { flex: 1, marginTop: 48 },
+    sheet: {
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      borderTopWidth: 1,
+      borderLeftWidth: 1,
+      borderRightWidth: 1,
+      borderColor: colors.border,
+      paddingTop: 24,
+      paddingHorizontal: 24,
+      paddingBottom: 24,
+      maxHeight: '100%',
+      overflow: 'hidden',
+    },
+    scrollBody: { flexShrink: 1 },
+    viewBody: { flexGrow: 1, flexShrink: 1 },
+    sheetFull: { flex: 1, maxHeight: undefined },
+    title: {
+      fontSize: 20,
+      fontFamily: fonts.bold,
+      color: colors.text,
+      marginBottom: 20,
+    },
+    closeBtnOverlay: { position: 'absolute', top: 16, right: 16, zIndex: 10 },
+    closeBtn: { fontSize: 18, color: colors.textMuted },
+  }), [colors]);
 
   const Body = scrollable ? ScrollView : View;
   const bodyProps = scrollable ? { keyboardShouldPersistTaps: 'handled' as const } : {};
@@ -114,61 +147,3 @@ export function BottomSheetModal({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  wrapper: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  sheetWrapper: {
-    maxHeight: '85%',
-  },
-  sheetWrapperFull: {
-    flex: 1,
-    marginTop: 48,
-  },
-  sheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: colors.border,
-    paddingTop: 24,
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    maxHeight: '100%',
-    overflow: 'hidden',
-  },
-  scrollBody: {
-    flexShrink: 1,
-  },
-  viewBody: {
-    flexGrow: 1,
-    flexShrink: 1,
-  },
-  sheetFull: {
-    flex: 1,
-    maxHeight: undefined,
-  },
-  title: {
-    fontSize: 20,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 20,
-  },
-  closeBtnOverlay: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    zIndex: 10,
-  },
-  closeBtn: {
-    fontSize: 18,
-    color: colors.textMuted,
-  },
-});

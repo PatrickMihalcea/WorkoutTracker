@@ -6,6 +6,7 @@ export type HeightUnit = 'cm' | 'in';
 export type DistanceUnit = 'km' | 'miles';
 
 export interface ColorPreferences {
+  themeId?: string;
   setCompletion?: string;
   accent?: string;
 }

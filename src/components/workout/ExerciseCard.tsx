@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation, Animated } from 'react-native';
 import type { LayoutAnimationConfig } from 'react-native';
 import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit, DistanceUnit } from '../../models';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 import { Card } from '../ui/Card';
 import { SwipeToDeleteRow } from '../ui/SwipeToDeleteRow';
 import { OverflowMenu } from '../ui/OverflowMenu';
@@ -80,6 +81,7 @@ export function ExerciseCard({
   onDetails,
   noBottomMargin,
 }: ExerciseCardProps) {
+  const { colors } = useTheme();
   const { setCompletion } = useThemeColors();
   const exerciseName = entry.exercise?.name ?? 'Unknown Exercise';
   const muscleGroup = (entry.exercise?.muscle_group ?? '').replace(/_/g, ' ');
@@ -191,6 +193,96 @@ export function ExerciseCard({
   const showMenu = !reorderCollapsed && (onSwap || onDuplicate || onRemove);
 
   const marginOverride = noBottomMargin ? { marginBottom: 0 } : undefined;
+
+  const styles = useMemo(() => StyleSheet.create({
+    card: {
+      marginBottom: 6,
+      paddingVertical: 10,
+    },
+    cardCollapsed: {
+      marginBottom: 6,
+      paddingVertical: 10,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingBottom: 12,
+      marginBottom: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    headerCollapsed: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: 'transparent',
+    },
+    exerciseName: {
+      fontSize: 17,
+      fontFamily: fonts.bold,
+      color: colors.text,
+    },
+    exerciseNameLink: {
+      color: '#98c6fb',
+    },
+    exerciseNameTapTarget: {
+      alignSelf: 'flex-start',
+    },
+    muscleGroup: {
+      fontSize: 13,
+      fontFamily: fonts.light,
+      color: colors.textMuted,
+      marginTop: 2,
+      textTransform: 'capitalize',
+    },
+    setCount: {
+      fontSize: 16,
+      fontFamily: fonts.bold,
+      color: colors.text,
+      marginRight: 4,
+    },
+    columnHeaders: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 2,
+      paddingBottom: 6,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      gap: 4,
+    },
+    colHeader: {
+      fontSize: 11,
+      fontFamily: fonts.bold,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+    setLabelCol: { width: 28, alignItems: 'center', justifyContent: 'center' },
+    previousCol: { width: 72, alignItems: 'center', justifyContent: 'center' },
+    inputCol: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    rirCol: { width: 40, alignItems: 'center', justifyContent: 'center' },
+    actionCol: { width: 32, marginLeft: 4 },
+    addSetRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 24,
+      marginTop: 4,
+    },
+    addSetButton: {
+      alignItems: 'center',
+      paddingVertical: 10,
+    },
+    addSetText: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      fontFamily: fonts.semiBold,
+    },
+    addWarmupText: {
+      color: '#FFD93D',
+      fontSize: 14,
+      fontFamily: fonts.semiBold,
+    },
+  }), [colors]);
 
   if (reorderCollapsed) {
     return (
@@ -365,93 +457,3 @@ export function ExerciseCard({
     </SwipeToDeleteRow>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    marginBottom: 6,
-    paddingVertical: 10,
-  },
-  cardCollapsed: {
-    marginBottom: 6,
-    paddingVertical: 10,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 12,
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerCollapsed: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  exerciseName: {
-    fontSize: 17,
-    fontFamily: fonts.bold,
-    color: colors.text,
-  },
-  exerciseNameLink: {
-    color: '#98c6fb',
-  },
-  exerciseNameTapTarget: {
-    alignSelf: 'flex-start',
-  },
-  muscleGroup: {
-    fontSize: 13,
-    fontFamily: fonts.light,
-    color: colors.textMuted,
-    marginTop: 2,
-    textTransform: 'capitalize',
-  },
-  setCount: {
-    fontSize: 16,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginRight: 4,
-  },
-  columnHeaders: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 2,
-    paddingBottom: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: 4,
-  },
-  colHeader: {
-    fontSize: 11,
-    fontFamily: fonts.bold,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  setLabelCol: { width: 28, alignItems: 'center', justifyContent: 'center' },
-  previousCol: { width: 72, alignItems: 'center', justifyContent: 'center' },
-  inputCol: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  rirCol: { width: 40, alignItems: 'center', justifyContent: 'center' },
-  actionCol: { width: 32, marginLeft: 4 },
-  addSetRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 24,
-    marginTop: 4,
-  },
-  addSetButton: {
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  addSetText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-  },
-  addWarmupText: {
-    color: '#FFD93D',
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-  },
-});

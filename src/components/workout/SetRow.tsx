@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Animated, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { WorkoutRow, SetLog, WeightUnit, DistanceUnit, ExerciseType } from '../../models';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 import { formatWeight, formatDistance } from '../../utils/units';
 import { getExerciseTypeConfig } from '../../utils/exerciseType';
 import { formatDurationValue } from '../../utils/duration';
@@ -54,6 +55,7 @@ export function SetRow({
   showInlineDelete = false,
   onInlineDelete,
 }: SetRowProps) {
+  const { colors } = useTheme();
   type RowFieldKey = 'weight' | 'reps' | 'duration' | 'distance';
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
   const config = getExerciseTypeConfig(exerciseType);
@@ -194,6 +196,123 @@ export function SetRow({
     outputRange: ['transparent', hasCompletionColor ? completionColor! : 'transparent'],
   });
 
+  const styles = useMemo(() => StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 2,
+      gap: 4,
+    },
+    rowSaved: {},
+    setLabel: {
+      width: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    setNumber: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      fontFamily: fonts.semiBold,
+    },
+    warmupCircle: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: '#FFD93D',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    warmupText: {
+      color: '#000',
+      fontSize: 12,
+      fontFamily: fonts.bold,
+    },
+    previousCol: {
+      width: 72,
+      alignItems: 'center',
+    },
+    previousText: {
+      color: colors.textMuted,
+      fontSize: 12,
+      fontFamily: fonts.light,
+      textAlign: 'center',
+    },
+    input: {
+      flex: 1,
+      backgroundColor: 'rgba(255,255,255,0.07)',
+      borderRadius: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 4,
+      textAlign: 'center',
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+    },
+    fieldInput: {
+      flex: 1,
+    },
+    durationText: {
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+      textAlign: 'center',
+    },
+    durationPlaceholder: {
+      color: colors.textMuted,
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+      textAlign: 'center',
+    },
+    rirCol: {
+      width: 40,
+      alignItems: 'center',
+    },
+    saveButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.text,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 4,
+    },
+    saveButtonDone: {
+      backgroundColor: colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: colors.textSecondary,
+    },
+    saveButtonText: {
+      color: colors.background,
+      fontSize: 16,
+      fontFamily: fonts.bold,
+    },
+    saveButtonTextDone: {
+      color: colors.textSecondary,
+    },
+    inputDone: {
+      backgroundColor: 'rgba(0,0,0,0.12)',
+      color: '#000000',
+    },
+    rirDone: {
+      borderWidth: 1.5,
+      borderColor: '#000000',
+    },
+    inlineDeleteButton: {
+      width: 28,
+      height: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 2,
+    },
+    inlineDeleteText: {
+      fontSize: 18,
+      color: colors.textMuted,
+      fontFamily: fonts.bold,
+      lineHeight: 18,
+    },
+  }), [colors]);
+
   return (
     <>
       <SwipeToDeleteRow
@@ -328,120 +447,3 @@ export function SetRow({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 2,
-    gap: 4,
-  },
-  rowSaved: {},
-  setLabel: {
-    width: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  setNumber: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-  },
-  warmupCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#FFD93D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  warmupText: {
-    color: '#000',
-    fontSize: 12,
-    fontFamily: fonts.bold,
-  },
-  previousCol: {
-    width: 72,
-    alignItems: 'center',
-  },
-  previousText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontFamily: fonts.light,
-    textAlign: 'center',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    textAlign: 'center',
-    color: colors.text,
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-  },
-  fieldInput: {
-    flex: 1,
-  },
-  durationText: {
-    color: colors.text,
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-    textAlign: 'center',
-  },
-  durationPlaceholder: {
-    color: colors.textMuted,
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-    textAlign: 'center',
-  },
-  rirCol: {
-    width: 40,
-    alignItems: 'center',
-  },
-  saveButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.text,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-  saveButtonDone: {
-    backgroundColor: colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.textSecondary,
-  },
-  saveButtonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontFamily: fonts.bold,
-  },
-  saveButtonTextDone: {
-    color: colors.textSecondary,
-  },
-  inputDone: {
-    backgroundColor: 'rgba(0,0,0,0.12)',
-    color: '#000000',
-  },
-  rirDone: {
-    borderWidth: 1.5,
-    borderColor: '#000000',
-  },
-  inlineDeleteButton: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 2,
-  },
-  inlineDeleteText: {
-    fontSize: 18,
-    color: colors.danger,
-    fontFamily: fonts.bold,
-    lineHeight: 18,
-  },
-});

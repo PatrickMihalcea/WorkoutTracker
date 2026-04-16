@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fonts } from '../../constants';
 
 export interface HeaderDropdownOption<T extends string> {
   key: T;
@@ -20,11 +21,34 @@ export function HeaderDropdown<T extends string>({
   onSelect,
   fallbackLabel,
 }: HeaderDropdownProps<T>) {
+  const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const label = useMemo(
     () => options.find((o) => o.key === selectedKey)?.label ?? fallbackLabel,
     [options, selectedKey, fallbackLabel],
   );
+
+  const styles = useMemo(() => StyleSheet.create({
+    dropdown: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    dropdownText: { fontSize: 17, fontFamily: fonts.bold, color: colors.text },
+    dropdownChevron: { fontSize: 14, color: colors.textSecondary, marginTop: 1 },
+    overlay: { flex: 1, paddingTop: 90, alignItems: 'center' },
+    menu: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      paddingVertical: 4,
+      minWidth: 180,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    menuItem: { paddingVertical: 12, paddingHorizontal: 20 },
+    menuItemActive: { backgroundColor: colors.accentDim },
+    menuItemText: { fontSize: 16, fontFamily: fonts.regular, color: colors.text },
+    menuItemTextActive: { fontFamily: fonts.bold, color: colors.accent },
+  }), [colors]);
 
   return (
     <>
@@ -56,53 +80,3 @@ export function HeaderDropdown<T extends string>({
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  dropdown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dropdownText: {
-    fontSize: 17,
-    fontFamily: fonts.bold,
-    color: colors.text,
-  },
-  dropdownChevron: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 1,
-  },
-  overlay: {
-    flex: 1,
-    paddingTop: 90,
-    alignItems: 'center',
-  },
-  menu: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingVertical: 4,
-    minWidth: 180,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  menuItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-  },
-  menuItemActive: {
-    backgroundColor: 'rgba(78, 205, 196, 0.12)',
-  },
-  menuItemText: {
-    fontSize: 16,
-    fontFamily: fonts.regular,
-    color: colors.text,
-  },
-  menuItemTextActive: {
-    fontFamily: fonts.bold,
-    color: '#4ECDC4',
-  },
-});

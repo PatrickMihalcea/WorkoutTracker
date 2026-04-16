@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Animated, StyleProp, StyleSheet, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, gradients } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface CardProps {
   children: React.ReactNode;
@@ -11,6 +11,18 @@ interface CardProps {
 }
 
 export function Card({ children, style, gradientColors }: CardProps) {
+  const { colors, gradients } = useTheme();
+  const styles = useMemo(() => StyleSheet.create({
+    card: {
+      borderRadius: 16,
+      paddingVertical: 16,
+      paddingHorizontal: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+  }), [colors]);
+
   return (
     <Animated.View style={[styles.card, style]}>
       <LinearGradient
@@ -23,14 +35,3 @@ export function Card({ children, style, gradientColors }: CardProps) {
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-});

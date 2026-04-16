@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAuthStore } from '../../stores/auth.store';
 import { useProfileStore } from '../../stores/profile.store';
 import { dashboardService, RoutineChartData } from '../../services';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 import {
   ChartFilterBar,
   MetricChips,
@@ -35,6 +36,7 @@ interface RoutineStatsChartProps {
 }
 
 export function RoutineStatsChart({ routineId }: RoutineStatsChartProps) {
+  const { colors } = useTheme();
   const { user } = useAuthStore();
   const { profile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
@@ -162,6 +164,31 @@ export function RoutineStatsChart({ routineId }: RoutineStatsChartProps) {
 
   const showInitialPlaceholder = !chartData;
 
+  const styles = useMemo(() => StyleSheet.create({
+    chartArea: {
+      minHeight: SVG_HEIGHT + 50,
+    },
+    dimmed: {
+      opacity: 0.3,
+    },
+    spinnerOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    placeholder: {
+      height: SVG_HEIGHT + 50,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    emptyText: {
+      fontSize: 13,
+      fontFamily: fonts.regular,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+  }), [colors]);
+
   return (
     <View>
       <ChartFilterBar
@@ -204,28 +231,3 @@ export function RoutineStatsChart({ routineId }: RoutineStatsChartProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  chartArea: {
-    minHeight: SVG_HEIGHT + 50,
-  },
-  dimmed: {
-    opacity: 0.3,
-  },
-  spinnerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholder: {
-    height: SVG_HEIGHT + 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 13,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-});

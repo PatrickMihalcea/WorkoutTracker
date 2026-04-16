@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useMemo } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -10,7 +10,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { colors, fonts, spacing } from '../../constants';
+import { fonts, spacing } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface AuthScaffoldProps {
   title: string;
@@ -19,6 +20,56 @@ interface AuthScaffoldProps {
 }
 
 export function AuthScaffold({ title, subtitle, children }: AuthScaffoldProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    safeArea: {
+      flex: 1,
+    },
+    keyboardWrap: {
+      flex: 1,
+    },
+    content: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.xl,
+    },
+    hero: {
+      marginBottom: spacing.lg,
+    },
+    kicker: {
+      color: '#8DB6B2',
+      fontSize: 11,
+      fontFamily: fonts.semiBold,
+      letterSpacing: 1.4,
+      textTransform: 'uppercase',
+      marginBottom: 8,
+    },
+    title: {
+      color: colors.text,
+      fontSize: 34,
+      lineHeight: 40,
+      fontFamily: fonts.bold,
+      marginBottom: 6,
+    },
+    subtitle: {
+      color: '#A7C0C0',
+      fontSize: 15,
+      lineHeight: 22,
+      fontFamily: fonts.regular,
+    },
+    formCard: {
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: '#365D62',
+      backgroundColor: 'rgba(14, 24, 28, 0.88)',
+      padding: spacing.md,
+    },
+  }), [colors]);
   return (
     <View style={styles.root}>
       <LinearGradient
@@ -54,53 +105,3 @@ export function AuthScaffold({ title, subtitle, children }: AuthScaffoldProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  keyboardWrap: {
-    flex: 1,
-  },
-  content: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-  },
-  hero: {
-    marginBottom: spacing.lg,
-  },
-  kicker: {
-    color: '#8DB6B2',
-    fontSize: 11,
-    fontFamily: fonts.semiBold,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 34,
-    lineHeight: 40,
-    fontFamily: fonts.bold,
-    marginBottom: 6,
-  },
-  subtitle: {
-    color: '#A7C0C0',
-    fontSize: 15,
-    lineHeight: 22,
-    fontFamily: fonts.regular,
-  },
-  formCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#365D62',
-    backgroundColor: 'rgba(14, 24, 28, 0.88)',
-    padding: spacing.md,
-  },
-});

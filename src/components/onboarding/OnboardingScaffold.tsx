@@ -14,7 +14,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient';
 import { ReactNode } from 'react';
 
-import { colors, fonts, spacing } from '../../constants';
+import { fonts, spacing } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface OnboardingScaffoldProps {
   step: number;
@@ -41,8 +42,10 @@ export function OnboardingScaffold({
   showStepProgress = true,
   footerFloating = true,
   backgroundVariant = 'gradient',
-  solidBackgroundColor = colors.background,
+  solidBackgroundColor,
 }: OnboardingScaffoldProps) {
+  const { colors } = useTheme();
+  const resolvedBg = solidBackgroundColor ?? colors.background;
   const insets = useSafeAreaInsets();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const heroAnim = useRef(new Animated.Value(0)).current;
@@ -142,8 +145,95 @@ export function OnboardingScaffold({
   const safeBottom = Math.max(insets.bottom, spacing.md);
   const floatingBottom = keyboardHeight > 0 ? keyboardHeight + spacing.sm : safeBottom;
 
+  const styles = useMemo(() => StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    safeArea: {
+      flex: 1,
+    },
+    keyboardWrap: {
+      flex: 1,
+    },
+    scroll: {
+      flex: 1,
+    },
+    content: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.xl,
+    },
+    headerRow: {
+      minHeight: 30,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.sm,
+    },
+    backButton: {
+      paddingVertical: 4,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: '#2A4F4F',
+      backgroundColor: 'rgba(13, 24, 24, 0.65)',
+    },
+    backButtonPlaceholder: {
+      width: 56,
+    },
+    backButtonText: {
+      fontSize: 13,
+      color: '#9AD9D3',
+      fontFamily: fonts.semiBold,
+    },
+    stepText: {
+      fontSize: 12,
+      color: colors.textMuted,
+      fontFamily: fonts.semiBold,
+      letterSpacing: 0.4,
+      textTransform: 'uppercase',
+    },
+    progressTrack: {
+      height: 7,
+      width: '100%',
+      borderRadius: 999,
+      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+      overflow: 'hidden',
+      marginBottom: spacing.xl,
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: 999,
+      backgroundColor: colors.accent,
+    },
+    title: {
+      color: colors.text,
+      fontFamily: fonts.bold,
+      fontSize: 34,
+      lineHeight: 40,
+      marginBottom: spacing.xs,
+    },
+    subtitle: {
+      color: '#B1C4C4',
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      lineHeight: 22,
+      marginBottom: spacing.lg,
+    },
+    floatingCtaWrap: {
+      position: 'absolute',
+      left: spacing.lg,
+      right: spacing.lg,
+      zIndex: 20,
+    },
+    inlineCtaWrap: {
+      marginTop: spacing.md,
+    },
+  }), [colors]);
+
   return (
-    <View style={[styles.root, { backgroundColor: solidBackgroundColor }]}>
+    <View style={[styles.root, { backgroundColor: resolvedBg }]}>
       {backgroundVariant === 'gradient' ? (
         <LinearGradient
           colors={['#030507', '#0A171E', '#123038', '#050709']}
@@ -211,90 +301,3 @@ export function OnboardingScaffold({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  keyboardWrap: {
-    flex: 1,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  headerRow: {
-    minHeight: 30,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  backButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#2A4F4F',
-    backgroundColor: 'rgba(13, 24, 24, 0.65)',
-  },
-  backButtonPlaceholder: {
-    width: 56,
-  },
-  backButtonText: {
-    fontSize: 13,
-    color: '#9AD9D3',
-    fontFamily: fonts.semiBold,
-  },
-  stepText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontFamily: fonts.semiBold,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  progressTrack: {
-    height: 7,
-    width: '100%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    overflow: 'hidden',
-    marginBottom: spacing.xl,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#4ECDC4',
-  },
-  title: {
-    color: colors.text,
-    fontFamily: fonts.bold,
-    fontSize: 34,
-    lineHeight: 40,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    color: '#B1C4C4',
-    fontFamily: fonts.regular,
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: spacing.lg,
-  },
-  floatingCtaWrap: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    zIndex: 20,
-  },
-  inlineCtaWrap: {
-    marginTop: spacing.md,
-  },
-});

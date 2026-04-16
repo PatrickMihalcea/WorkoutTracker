@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,8 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Button, BottomSheetModal, ExercisePickerModal } from '../ui';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 import {
   Exercise,
   WeightUnit,
@@ -115,6 +116,52 @@ export function AddExerciseModal({
     resetAndClose();
   };
 
+  const { colors } = useTheme();
+  const styles = useMemo(() => StyleSheet.create({
+    formBody: {
+      flex: 1,
+    },
+    actionButtons: {
+      paddingBottom: 20,
+    },
+    fieldLabel: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      fontFamily: fonts.regular,
+      marginBottom: 8,
+      marginTop: 12,
+    },
+    exercisePickerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      marginBottom: 16,
+    },
+    exercisePickerText: {
+      fontSize: 16,
+      fontFamily: fonts.semiBold,
+      color: colors.text,
+      flex: 1,
+    },
+    exercisePickerPlaceholder: {
+      fontSize: 16,
+      fontFamily: fonts.regular,
+      color: colors.textMuted,
+      flex: 1,
+    },
+    exercisePickerArrow: {
+      fontSize: 16,
+      color: colors.textMuted,
+      marginLeft: 8,
+    },
+  }), [colors]);
+
   return (
       <BottomSheetModal
         visible={visible}
@@ -165,48 +212,3 @@ export function AddExerciseModal({
       </BottomSheetModal>
   );
 }
-
-const styles = StyleSheet.create({
-  formBody: {
-    flex: 1,
-  },
-  actionButtons: {
-    paddingBottom: 20,
-  },
-  fieldLabel: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  exercisePickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  exercisePickerText: {
-    fontSize: 16,
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-    flex: 1,
-  },
-  exercisePickerPlaceholder: {
-    fontSize: 16,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-    flex: 1,
-  },
-  exercisePickerArrow: {
-    fontSize: 16,
-    color: colors.textMuted,
-    marginLeft: 8,
-  },
-});

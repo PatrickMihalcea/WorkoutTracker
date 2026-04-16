@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
 import {
   ChartMode,
   GranularityMode,
   TIME_RANGES,
   GRANULARITY_MODES,
 } from './chartUtils';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export interface ChartFilterBarProps {
   selectedRange: number;
@@ -25,7 +26,63 @@ export function TimeRangeDropdown({
   onChange: (v: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { colors } = useTheme();
   const currentLabel = TIME_RANGES.find((r) => r.value === selected)?.label ?? 'All';
+
+  const styles = useMemo(() => StyleSheet.create({
+    dropdownTrigger: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 10,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    dropdownTriggerText: {
+      fontSize: 13,
+      fontFamily: fonts.bold,
+      color: colors.text,
+      marginRight: 4,
+    },
+    dropdownChevron: {
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+    dropdownOverlay: {
+      flex: 1,
+      justifyContent: 'center' as const,
+      alignItems: 'center' as const,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    dropdownMenu: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+      minWidth: 180,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    dropdownItem: {
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 8,
+    },
+    dropdownItemActive: {
+      backgroundColor: colors.text,
+    },
+    dropdownItemText: {
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+      color: colors.textSecondary,
+      textAlign: 'center' as const,
+    },
+    dropdownItemTextActive: {
+      color: colors.background,
+    },
+  }), [colors]);
 
   return (
     <View>
@@ -84,6 +141,34 @@ export function GranularityPicker({
   onChange: (m: GranularityMode) => void;
   isAll?: boolean;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => StyleSheet.create({
+    granularityRow: {
+      flexDirection: 'row' as const,
+      gap: 0,
+      borderRadius: 10,
+      overflow: 'hidden' as const,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    granularityChip: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+    },
+    granularityChipActive: {
+      backgroundColor: colors.text,
+    },
+    granularityChipText: {
+      fontSize: 13,
+      fontFamily: fonts.bold,
+      color: colors.textMuted,
+    },
+    granularityChipTextActive: {
+      color: colors.background,
+    },
+  }), [colors]);
+
   const modes = isAll ? GRANULARITY_MODES.filter((m) => m.key !== 'W') : GRANULARITY_MODES;
   return (
     <View style={styles.granularityRow}>
@@ -112,16 +197,42 @@ export function ChartModeToggle({
   selected: ChartMode;
   onChange: (m: ChartMode) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => StyleSheet.create({
+    row: {
+      flexDirection: 'row' as const,
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      overflow: 'hidden' as const,
+    },
+    chip: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 8,
+    },
+    chipActive: {
+      backgroundColor: colors.text,
+    },
+    chipText: {
+      fontSize: 12,
+      fontFamily: fonts.semiBold,
+      color: colors.textMuted,
+    },
+    chipTextActive: {
+      color: colors.background,
+    },
+  }), [colors]);
+
   return (
-    <View style={chartModeStyles.row}>
+    <View style={styles.row}>
       {(['rel', 'abs'] as ChartMode[]).map((m) => (
         <TouchableOpacity
           key={m}
-          style={[chartModeStyles.chip, selected === m && chartModeStyles.chipActive]}
+          style={[styles.chip, selected === m && styles.chipActive]}
           onPress={() => onChange(m)}
           activeOpacity={0.7}
         >
-          <Text style={[chartModeStyles.chipText, selected === m && chartModeStyles.chipTextActive]}>
+          <Text style={[styles.chipText, selected === m && styles.chipTextActive]}>
             {m === 'rel' ? 'Rel' : 'Abs'}
           </Text>
         </TouchableOpacity>
@@ -139,7 +250,7 @@ export function ChartFilterBar({
   onChangeGranularity,
 }: ChartFilterBarProps) {
   return (
-    <View style={styles.filterBar}>
+    <View style={filterBarStyles.filterBar}>
       <TimeRangeDropdown selected={selectedRange} onChange={onChangeRange} />
       <ChartModeToggle selected={chartMode} onChange={onChangeChartMode} />
       {chartMode === 'abs' && (
@@ -153,115 +264,12 @@ export function ChartFilterBar({
   );
 }
 
-const chartModeStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row' as const,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    overflow: 'hidden' as const,
-  },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  chipActive: {
-    backgroundColor: colors.text,
-  },
-  chipText: {
-    fontSize: 12,
-    fontFamily: fonts.semiBold,
-    color: colors.textMuted,
-  },
-  chipTextActive: {
-    color: colors.background,
-  },
-});
-
-const styles = StyleSheet.create({
+const filterBarStyles = StyleSheet.create({
   filterBar: {
     flexDirection: 'row',
     justifyContent: 'flex-start',
     alignItems: 'center',
     gap: 8,
     paddingBottom: 8,
-  },
-
-  dropdownTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  dropdownTriggerText: {
-    fontSize: 13,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginRight: 4,
-  },
-  dropdownChevron: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  dropdownOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  dropdownMenu: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minWidth: 180,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  dropdownItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  dropdownItemActive: {
-    backgroundColor: colors.text,
-  },
-  dropdownItemText: {
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  dropdownItemTextActive: {
-    color: colors.background,
-  },
-
-  granularityRow: {
-    flexDirection: 'row',
-    gap: 0,
-    borderRadius: 10,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  granularityChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  granularityChipActive: {
-    backgroundColor: colors.text,
-  },
-  granularityChipText: {
-    fontSize: 13,
-    fontFamily: fonts.bold,
-    color: colors.textMuted,
-  },
-  granularityChipTextActive: {
-    color: colors.background,
   },
 });

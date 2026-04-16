@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Body from 'react-native-body-highlighter';
 import { useProfileStore } from '../../stores/profile.store';
 import { Card } from '../ui';
-import { colors, fonts, spacing } from '../../constants';
+import { fonts, spacing } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface MuscleSlice {
   label: string;
@@ -104,6 +105,7 @@ interface MuscleHeatmapProps {
 }
 
 export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set distribution by muscle group', bare = false, maxValue }: MuscleHeatmapProps) {
+  const { colors } = useTheme();
   const { profile } = useProfileStore();
   const bodyGender = profile?.sex === 'female' ? 'female' : 'male';
   const isEmpty = data.length === 0;
@@ -111,6 +113,59 @@ export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set 
   const bodyData = toBodyData(data, maxValue);
 
   const Wrapper = bare ? View : Card;
+
+  const styles = useMemo(() => StyleSheet.create({
+    card: {
+      marginBottom: spacing.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    bareContainer: {
+      paddingBottom: spacing.sm,
+    },
+    title: {
+      fontSize: 16,
+      fontFamily: fonts.bold,
+      color: colors.text,
+      marginBottom: 4,
+    },
+    subtitle: {
+      fontSize: 12,
+      fontFamily: fonts.regular,
+      color: colors.textSecondary,
+      marginBottom: 12,
+    },
+    bodyRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-evenly',
+      alignItems: 'flex-start',
+    },
+    bodyHalf: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    legend: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginTop: 8,
+    },
+    legendLabel: {
+      fontSize: 11,
+      fontFamily: fonts.regular,
+      color: colors.textSecondary,
+    },
+    legendBar: {
+      flexDirection: 'row',
+      borderRadius: 4,
+      overflow: 'hidden',
+    },
+    legendSegment: {
+      width: 24,
+      height: 8,
+    },
+  }), [colors]);
 
   return (
       <Wrapper style={bare ? styles.bareContainer : styles.card}>
@@ -154,56 +209,3 @@ export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set 
     </Wrapper>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  bareContainer: {
-    paddingBottom: spacing.sm,
-  },
-  title: {
-    fontSize: 16,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 12,
-    fontFamily: fonts.regular,
-    color: colors.textSecondary,
-    marginBottom: 12,
-  },
-  bodyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    alignItems: 'flex-start',
-  },
-  bodyHalf: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  legend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  legendLabel: {
-    fontSize: 11,
-    fontFamily: fonts.regular,
-    color: colors.textSecondary,
-  },
-  legendBar: {
-    flexDirection: 'row',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  legendSegment: {
-    width: 24,
-    height: 8,
-  },
-});

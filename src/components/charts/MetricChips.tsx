@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export interface MetricChipsProps<K extends string> {
   options: { key: K; label: string }[];
@@ -15,6 +16,35 @@ export function MetricChips<K extends string>({
   onChange,
   activeColor = '#FFEAA7',
 }: MetricChipsProps<K>) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => StyleSheet.create({
+    metricRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginBottom: 8,
+    },
+    metricChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 14,
+      backgroundColor: colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    metricChipActive: {
+      backgroundColor: '#FFEAA7',
+      borderColor: '#FFEAA7',
+    },
+    metricChipText: {
+      fontSize: 12,
+      fontFamily: fonts.semiBold,
+      color: colors.textSecondary,
+    },
+    metricChipTextActive: {
+      color: '#000',
+    },
+  }), [colors]);
   return (
     <View style={styles.metricRow}>
       {options.map((opt) => (
@@ -37,32 +67,3 @@ export function MetricChips<K extends string>({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  metricRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 8,
-  },
-  metricChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 14,
-    backgroundColor: colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  metricChipActive: {
-    backgroundColor: '#FFEAA7',
-    borderColor: '#FFEAA7',
-  },
-  metricChipText: {
-    fontSize: 12,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-  metricChipTextActive: {
-    color: '#000',
-  },
-});
