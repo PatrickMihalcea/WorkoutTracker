@@ -110,7 +110,7 @@ export default function RoutineDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuthStore();
-  const { currentRoutine, fetchRoutineDetail, loading } = useRoutineStore();
+  const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
   const { profile, updateProfile } = useProfileStore();
   const { expand: expandWorkout } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
@@ -392,17 +392,27 @@ export default function RoutineDetailScreen() {
     setShowAddExercise(true);
   };
 
-  const handleStartDay = useCallback(async (day: RoutineDayWithExercises) => {
-    if (activeSession) {
-      setToastMessage('Cannot start during active workout.');
-      return;
-    }
+  const handleStartDay = useCallback((day: RoutineDayWithExercises) => {
     if (!user) return;
-    try {
-      await startWorkout(user.id, day.id, day.exercises, day.week_index);
-      expandWorkout();
-    } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message);
+    const doStart = async () => {
+      try {
+        await startWorkout(user.id, day.id, day.exercises, day.week_index);
+        expandWorkout();
+      } catch (error: unknown) {
+        Alert.alert('Error', (error as Error).message);
+      }
+    };
+    if (activeSession) {
+      Alert.alert(
+        'Workout In Progress',
+        'Starting this workout will cancel your current session. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Start Anyway', style: 'destructive', onPress: () => void doStart() },
+        ],
+      );
+    } else {
+      void doStart();
     }
   }, [activeSession, user, startWorkout, expandWorkout]);
 
@@ -431,7 +441,7 @@ export default function RoutineDetailScreen() {
 
   const handleConfirmAddWeek = useCallback(async () => {
     if (!currentRoutine || !id || updatingWeeks) return;
-    if (addWeekMode !== 'empty' && selectedAddWeekSource == null) return;
+    if (addWeekMode === 'copy_exact' && selectedAddWeekSource == null) return;
     if (currentRoutine.week_count >= MAX_ROUTINE_WEEKS) {
       Alert.alert('Maximum reached', `You can have up to ${MAX_ROUTINE_WEEKS} weeks.`);
       return;
@@ -443,7 +453,7 @@ export default function RoutineDetailScreen() {
       const newWeek = await routineService.addWeekWithMode({
         routineId: id,
         mode: addWeekMode,
-        sourceWeekIndex: addWeekMode === 'empty' ? undefined : selectedAddWeekSource ?? undefined,
+        sourceWeekIndex: addWeekMode === 'copy_exact' ? selectedAddWeekSource ?? undefined : undefined,
       });
       setSelectedWeek(newWeek);
       await fetchRoutineDetail(id);
@@ -759,7 +769,6 @@ export default function RoutineDetailScreen() {
     {
       label: 'Start Day',
       onPress: () => handleStartDay(day),
-      disabled: !!activeSession,
     },
     {
       label: 'Duplicate',
@@ -772,13 +781,7 @@ export default function RoutineDetailScreen() {
     },
   ], [activeSession, handleStartDay, handleDuplicateDay, handleDeleteDay, router]);
 
-  if (loading || !currentRoutine) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="small" color={colors.textSecondary} style={{ marginTop: 40 }} />
-      </View>
-    );
-  }
+  if (!currentRoutine) return null;
 
   const renderDay = (day: RoutineDayWithExercises) => {
     const groups: SupersetGroups = {};
@@ -793,10 +796,10 @@ export default function RoutineDetailScreen() {
             onPress={() => router.push(`/(tabs)/routines/day/${day.id}`)}
             activeOpacity={0.7}
           >
-            <Text style={styles.dayLabel}>{day.label}</Text>
             <Text style={styles.dayOfWeek}>
               {day.day_of_week ? DAY_LABELS[day.day_of_week as DayOfWeek] : 'No day assigned'} · Week {day.week_index}
             </Text>
+            <Text style={styles.dayLabel}>{day.label}</Text>
           </TouchableOpacity>
           <OverflowMenu items={buildDayMenuItems(day)} />
         </View>
@@ -1049,7 +1052,7 @@ export default function RoutineDetailScreen() {
           items={[
             { key: 'add-copy', label: 'Copy From', value: 'copy_exact' as AddWeekMode },
             { key: 'add-empty', label: 'Make Empty', value: 'empty' as AddWeekMode },
-            { key: 'add-ai', label: 'AI Progressively Overload', value: 'progressive_ai' as AddWeekMode },
+            { key: 'add-ai', label: 'AI Progressively Overload', value: 'progressive_ai' as AddWeekMode, tooltip: 'Our agent analyzes your entire routine and automatically increases weights, reps, or sets to keep you progressing without changing the exercises. \n\nNote: Week 5 is modified to be a deloading week.' },
           ]}
           selected={addWeekMode}
           onChange={(value) => setAddWeekMode((value ?? 'progressive_ai') as AddWeekMode)}
@@ -1059,7 +1062,7 @@ export default function RoutineDetailScreen() {
           style={addingWeek ? styles.disabledSection : undefined}
         />
 
-        {addWeekMode !== 'empty' && (
+        {addWeekMode === 'copy_exact' && (
           <>
             <Text style={styles.fieldLabel}>Source Week</Text>
             <ChipPicker
@@ -1179,7 +1182,7 @@ const styles = StyleSheet.create({
   subHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    alignSelf: 'flex-start',
     marginTop: 12,
     marginBottom: 8,
   },
@@ -1286,6 +1289,7 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: 12,
     color: colors.textMuted,
+    marginLeft: 6,
   },
   dayCard: {
     marginBottom: 16,
@@ -1314,8 +1318,8 @@ const styles = StyleSheet.create({
   dayOfWeek: {
     fontSize: 13,
     fontFamily: fonts.light,
-    color: colors.textMuted,
-    marginTop: 2,
+    color: colors.primaryLight,
+    paddingBottom: 4,
   },
   exerciseRow: {
     flexDirection: 'row',

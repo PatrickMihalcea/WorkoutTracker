@@ -1,15 +1,18 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../src/stores/auth.store';
 import { useProfileStore } from '../src/stores/profile.store';
 import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
 import { colors } from '../src/constants';
 import { notificationService } from '../src/services';
+
+const HAS_OPENED_KEY = 'has_opened_before';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -18,6 +21,16 @@ export default function RootLayout() {
   const { profile, loading: profileLoading } = useProfileStore();
   const segments = useSegments();
   const router = useRouter();
+  const [hasOpenedBefore, setHasOpenedBefore] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(HAS_OPENED_KEY).then((value) => {
+      setHasOpenedBefore(value === 'true');
+      if (value !== 'true') {
+        void AsyncStorage.setItem(HAS_OPENED_KEY, 'true');
+      }
+    });
+  }, []);
 
   const [fontsLoaded] = useFonts({
     'Monospaceland-Regular': require('../assets/fonts/Monospaceland/Monospaceland-Regular.ttf'),
@@ -34,7 +47,7 @@ export default function RootLayout() {
     void notificationService.initialize();
   }, []);
 
-  const ready = fontsLoaded && initialized && !profileLoading;
+  const ready = fontsLoaded && initialized && !profileLoading && hasOpenedBefore !== null;
 
   const onLayoutRootView = useCallback(async () => {
     if (ready) {
@@ -49,7 +62,7 @@ export default function RootLayout() {
     const inOnboarding = segments[0] === '(onboarding)';
 
     if (!session && !inAuthGroup) {
-      router.replace('/(auth)/login');
+      router.replace(hasOpenedBefore ? '/(auth)/login' : '/(auth)/signup');
     } else if (session && inAuthGroup) {
       if (!profile || !profile.onboarding_complete) {
         router.replace('/(onboarding)/display-name');

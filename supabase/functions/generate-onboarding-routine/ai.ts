@@ -23,6 +23,16 @@ export class AiDraftValidationError extends Error {
   }
 }
 
+class NormalizationErrors extends Error {
+  readonly validationErrors: string[];
+
+  constructor(errors: string[]) {
+    super(`AI draft failed normalization with ${errors.length} error(s): ${errors.join('; ')}`);
+    this.name = 'NormalizationErrors';
+    this.validationErrors = errors;
+  }
+}
+
 function safeJsonParse<T>(text: string): T | null {
   try {
     return JSON.parse(text) as T;
@@ -99,7 +109,9 @@ function normalizeAiDraft(
 ): RoutineDraft {
   const draft = rawDraft as RoutineDraft;
   if (!draft || typeof draft !== 'object' || !Array.isArray(draft.days)) {
-    throw new Error('AI draft is not a valid object');
+    throw new NormalizationErrors([
+      'Draft is not a valid object — expected { routine_name: string, days: [...] }',
+    ]);
   }
 
   const normalizedWeekCount = Math.max(1, Math.floor(expectedWeekCount));
@@ -112,14 +124,161 @@ function normalizeAiDraft(
 
   const idSet = new Set(allowedExercises.map((item) => item.id));
   const idByName = new Map<string, string>();
+  for (const ex of allowedExercises) {
+    const key = normalizeExerciseName(ex.name);
+    if (!idByName.has(key)) idByName.set(key, ex.id);
+  }
 
-  for (const exercise of allowedExercises) {
-    const key = normalizeExerciseName(exercise.name);
-    if (!idByName.has(key)) {
-      idByName.set(key, exercise.id);
+  // ─── Full scan: collect every problem with location context ─────────────────
+  const errors: string[] = [];
+
+  for (let di = 0; di < trimmedDays.length; di++) {
+    const day = trimmedDays[di];
+    const dayLabel = day?.label && typeof day.label === 'string' && day.label.trim().length >= 2
+      ? `"${day.label}"`
+      : `index ${di}`;
+    const dayRef = `Day ${di + 1} (${dayLabel})`;
+
+    if (!day || typeof day !== 'object') {
+      errors.push(`${dayRef}: day entry is not a valid object`);
+      continue;
+    }
+
+    if (!day.label || typeof day.label !== 'string' || day.label.trim().length < 2) {
+      errors.push(`${dayRef}: label is missing or too short — provide a descriptive name (e.g. "Push Day")`);
+    }
+
+    if (typeof day.day_of_week !== 'number' || day.day_of_week < 1 || day.day_of_week > 7) {
+      errors.push(`${dayRef}: day_of_week must be an integer 1–7, got ${JSON.stringify(day.day_of_week)}`);
+    }
+
+    if (
+      !Number.isInteger(day.week_index) ||
+      day.week_index < 1 ||
+      day.week_index > normalizedWeekCount
+    ) {
+      errors.push(
+        `${dayRef}: week_index must be an integer 1–${normalizedWeekCount}, got ${JSON.stringify(day.week_index)}`,
+      );
+    }
+
+    if (!Array.isArray(day.exercises)) {
+      errors.push(`${dayRef}: exercises must be an array, got ${typeof day.exercises}`);
+      continue;
+    }
+
+    if (day.exercises.length < 3) {
+      errors.push(`${dayRef}: has ${day.exercises.length} exercise(s) — minimum is 3`);
+    }
+
+    for (let ei = 0; ei < day.exercises.length; ei++) {
+      const exercise = day.exercises[ei];
+      const exerciseNameRaw = (exercise as { exercise_name?: unknown }).exercise_name;
+      const exLabel = typeof exerciseNameRaw === 'string' ? `"${exerciseNameRaw}"` : `index ${ei}`;
+      const exRef = `${dayRef}, Exercise ${ei + 1} (${exLabel})`;
+
+      // ── Exercise library resolution ──────────────────────────────────────────
+      const knownById =
+        typeof exercise.exercise_id === 'string' && idSet.has(exercise.exercise_id);
+      if (!knownById) {
+        if (typeof exerciseNameRaw === 'string') {
+          if (!idByName.has(normalizeExerciseName(exerciseNameRaw))) {
+            errors.push(
+              `${exRef}: exercise_name "${exerciseNameRaw}" is not in the allowed library — replace with an exact name from the candidates list`,
+            );
+          }
+          // else: name resolves fine, continue
+        } else {
+          errors.push(
+            `${exRef}: no exercise_name provided and exercise_id is not in the library — add an exercise_name from the candidates list`,
+          );
+        }
+      }
+
+      // ── Sets ────────────────────────────────────────────────────────────────
+      if (!Array.isArray(exercise.sets)) {
+        errors.push(`${exRef}: sets must be an array, got ${typeof exercise.sets}`);
+        continue;
+      }
+
+      const isCardioLike =
+        exercise.sets.length > 0 &&
+        exercise.sets.every(
+          (s) => (s?.target_duration ?? 0) > 0 || (s?.target_distance ?? 0) > 0,
+        );
+      const minSets = isCardioLike ? 1 : 2;
+
+      if (exercise.sets.length < minSets) {
+        errors.push(
+          `${exRef}: has ${exercise.sets.length} set(s) — ${isCardioLike ? 'cardio/duration exercises need at least 1 set' : 'non-cardio exercises need at least 2 sets'}`,
+        );
+      }
+
+      // set_number must be contiguous starting at 1
+      const actualSetNumbers = exercise.sets.map((s) => s?.set_number);
+      const badSetNumbers = actualSetNumbers.filter((n, i) => n !== i + 1);
+      if (badSetNumbers.length > 0) {
+        errors.push(
+          `${exRef}: set_number values must be contiguous starting at 1 — got [${actualSetNumbers.join(', ')}]`,
+        );
+      }
+
+      for (let si = 0; si < exercise.sets.length; si++) {
+        const setRow = exercise.sets[si];
+        const setRef = `${exRef}, Set ${si + 1}`;
+
+        if (
+          setRow.target_reps_min != null &&
+          typeof setRow.target_reps_min === 'number' &&
+          setRow.target_reps_min < 0
+        ) {
+          errors.push(`${setRef}: target_reps_min must be >= 0, got ${setRow.target_reps_min}`);
+        }
+
+        if (
+          setRow.target_reps_max != null &&
+          typeof setRow.target_reps_max === 'number' &&
+          setRow.target_reps_max < 0
+        ) {
+          errors.push(`${setRef}: target_reps_max must be >= 0, got ${setRow.target_reps_max}`);
+        }
+
+        if (
+          typeof setRow.target_reps_min === 'number' &&
+          typeof setRow.target_reps_max === 'number' &&
+          setRow.target_reps_max > 0 &&
+          setRow.target_reps_max < setRow.target_reps_min
+        ) {
+          errors.push(
+            `${setRef}: target_reps_max (${setRow.target_reps_max}) must be >= target_reps_min (${setRow.target_reps_min})`,
+          );
+        }
+
+        if (
+          setRow.target_duration != null &&
+          typeof setRow.target_duration === 'number' &&
+          setRow.target_duration < 0
+        ) {
+          errors.push(`${setRef}: target_duration must be >= 0, got ${setRow.target_duration}`);
+        }
+
+        if (
+          setRow.target_distance != null &&
+          typeof setRow.target_distance === 'number' &&
+          setRow.target_distance < 0
+        ) {
+          errors.push(`${setRef}: target_distance must be >= 0, got ${setRow.target_distance}`);
+        }
+      }
     }
   }
 
+  if (errors.length > 0) {
+    throw new NormalizationErrors(errors);
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // All checks passed — normalize values.
   const normalizedDays = trimmedDays.map((day) => {
     const exercises = (day.exercises ?? []).map((exercise) => {
       const maybeId =
@@ -135,6 +294,7 @@ function normalizeAiDraft(
         }
       }
 
+      // mappedId is guaranteed non-null — the scan above would have thrown otherwise.
       if (!mappedId) {
         throw new Error('AI draft contains an exercise that is not in the allowed library');
       }
@@ -522,14 +682,17 @@ export async function refineDraftWithAi(args: {
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
+      const validationErrors =
+        error instanceof NormalizationErrors ? error.validationErrors : [message];
       console.warn(
         JSON.stringify({
           event: 'ai_refinement_normalization_failed',
-          error_message: message,
+          error_count: validationErrors.length,
+          errors: validationErrors,
         }),
       );
       throw new AiDraftValidationError(`AI draft validation failed: ${message}`, {
-        validation_errors: [message],
+        validation_errors: validationErrors,
         previous_output: {
           raw_output: parsed,
           constraints: {

@@ -10,12 +10,14 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { routineService, sessionService } from '../../../src/services';
 import type { SessionRecordAchieved, SessionRecordMetric } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useWorkoutStore } from '../../../src/stores/workout.store';
+import { useAuthStore } from '../../../src/stores/auth.store';
 import { Card, Input, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle } from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { SetRow } from '../../../src/components/workout/SetRow';
@@ -265,8 +267,11 @@ export default function SessionDetailScreen() {
   const { profile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
   const distUnit = profile?.distance_unit ?? 'km';
+  const user = useAuthStore((s) => s.user);
+  const { session: activeSession, startWorkoutFromSession } = useWorkoutStore();
   const [session, setSession] = useState<SessionWithSetsAndExercises | null>(null);
   const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState(false);
 
   const [showEdit, setShowEdit] = useState(false);
   const [editDate, setEditDate] = useState(new Date());
@@ -346,6 +351,32 @@ export default function SessionDetailScreen() {
       active = false;
     };
   }, [session?.routine_day_id]);
+
+  const handleStartWorkout = () => {
+    if (!session || !user) return;
+    const doStart = async () => {
+      try {
+        setStarting(true);
+        await startWorkoutFromSession(user.id, session);
+      } catch (error: unknown) {
+        Alert.alert('Error', (error as Error).message || 'Could not start workout.');
+      } finally {
+        setStarting(false);
+      }
+    };
+    if (activeSession) {
+      Alert.alert(
+        'Workout In Progress',
+        'Starting this workout will cancel your current session. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Start Anyway', style: 'destructive', onPress: () => void doStart() },
+        ],
+      );
+    } else {
+      void doStart();
+    }
+  };
 
   const openEditModal = () => {
     if (!session) return;
@@ -840,7 +871,36 @@ export default function SessionDetailScreen() {
     }));
   })();
 
+  const canGoBack = router.canGoBack();
+
   return (
+    <>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={handleStartWorkout}
+              disabled={starting}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              style={styles.startBtn}
+            >
+              {starting
+                ? <ActivityIndicator size="small" color="#4ECDC4" />
+                : <Text style={styles.startBtnText}>▶ Start</Text>}
+            </TouchableOpacity>
+          ),
+          ...(!canGoBack ? {
+            headerLeft: () => (
+              <TouchableOpacity
+                onPress={() => router.replace('/(tabs)/profile')}
+                hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              >
+                <Text style={styles.headerBackBtn}>‹ Profile</Text>
+              </TouchableOpacity>
+            ),
+          } : {}),
+        }}
+      />
     <View style={styles.flex}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
         {showCompletionBanner && (
@@ -1155,6 +1215,7 @@ export default function SessionDetailScreen() {
         </View>
       )}
     </View>
+    </>
   );
 }
 
@@ -1466,5 +1527,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  startBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startBtnText: {
+    color: '#4ECDC4',
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+  },
+  headerBackBtn: {
+    color: colors.text,
+    fontSize: 17,
+    fontFamily: fonts.regular,
+    paddingLeft: 8,
   },
 });

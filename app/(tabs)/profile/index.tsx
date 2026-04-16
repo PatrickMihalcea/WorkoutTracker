@@ -450,6 +450,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
+    marginLeft: 'auto',
   },
   sessionTimeLine: {
     fontSize: 12,

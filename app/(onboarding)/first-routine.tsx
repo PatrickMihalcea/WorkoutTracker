@@ -45,7 +45,7 @@ export default function FirstRoutineScreen() {
   const handleContinue = async () => {
     setLoading(true);
     try {
-      await onboardingService.generateFirstRoutine({
+      const result = await onboardingService.generateFirstRoutine({
         mode,
         week_count: weekCount,
         answers: {
@@ -60,7 +60,7 @@ export default function FirstRoutineScreen() {
 
       await updateProfile({ onboarding_complete: true });
 
-      router.replace('/(tabs)/today');
+      router.replace(`/(tabs)/routines/${result.routine_id}`);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message || 'Could not create your first routine.');
     } finally {

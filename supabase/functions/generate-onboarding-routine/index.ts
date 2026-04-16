@@ -334,7 +334,7 @@ async function generateAndPersistRoutine(args: {
   const allowedIds = new Set(filteredExercises.map((item) => item.id));
   const weekOneValidationErrors = validateRoutineDraft(draft, allowedIds, answers.days_per_week, generationWeekCount);
   if (weekOneValidationErrors.length > 0) {
-    throw new Error(`Generated week 1 draft invalid: ${weekOneValidationErrors[0]}`);
+    throw new Error(`Generated week 1 draft invalid: ${weekOneValidationErrors.join('; ')}`);
   }
 
   const result = await persistDraft({

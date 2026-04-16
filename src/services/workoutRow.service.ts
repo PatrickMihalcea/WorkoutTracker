@@ -188,4 +188,14 @@ export const workoutRowService = {
       .eq('routine_day_exercise_id', entryId);
     if (error) throw error;
   },
+
+  async insertRows(rows: Omit<WorkoutRow, 'id'>[]): Promise<WorkoutRow[]> {
+    if (rows.length === 0) return [];
+    const { data, error } = await supabase
+      .from('workout_rows')
+      .insert(rows)
+      .select();
+    if (error) throw error;
+    return data;
+  },
 };

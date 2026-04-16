@@ -27,3 +27,9 @@ Week defaults:
 - `OPENAI_MODEL` (default: `gpt-4.1-mini`)
 
 If `OPENAI_API_KEY` is missing or the AI request fails, the function automatically falls back to template generation.
+
+
+
+## Deploy
+
+supabase functions deploy generate-onboarding-routine
