@@ -29,7 +29,6 @@ interface SetRowProps {
   enableWarmupSwipe?: boolean;
   showInlineDelete?: boolean;
   onInlineDelete?: () => void;
-  isAlt?: boolean;
 }
 
 export function SetRow({
@@ -54,7 +53,6 @@ export function SetRow({
   enableWarmupSwipe = true,
   showInlineDelete = false,
   onInlineDelete,
-  isAlt = false,
 }: SetRowProps) {
   type RowFieldKey = 'weight' | 'reps' | 'duration' | 'distance';
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
@@ -190,11 +188,10 @@ export function SetRow({
   const durationSeconds = row.duration ? parseFloat(row.duration) || 0 : 0;
   const suggestedDurationNum = suggestedDuration ? parseFloat(suggestedDuration) || 0 : 0;
 
-  const baseRowBg = isAlt ? '#1e1e1e' : colors.surface;
-  const doneBg = completionColor && completionColor !== 'transparent' ? completionColor : baseRowBg;
+  const hasCompletionColor = !!completionColor && completionColor !== 'transparent';
   const animatedRowBg = completedAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [baseRowBg, doneBg],
+    outputRange: ['transparent', hasCompletionColor ? completionColor! : 'transparent'],
   });
 
   return (
@@ -241,11 +238,14 @@ export function SetRow({
                 return (
                   <TouchableOpacity
                     key={field.key}
-                    style={[styles.input, styles.fieldInput]}
+                    style={[styles.input, styles.fieldInput, localCompleted && hasCompletionColor && styles.inputDone]}
                     onPress={() => setShowDurationPicker(true)}
                     activeOpacity={0.7}
                   >
-                    <Text style={displayVal ? styles.durationText : styles.durationPlaceholder}>
+                    <Text style={[
+                      displayVal ? styles.durationText : styles.durationPlaceholder,
+                      localCompleted && hasCompletionColor && { color: '#000000' },
+                    ]}>
                       {displayVal || placeholderVal}
                     </Text>
                   </TouchableOpacity>
@@ -256,7 +256,7 @@ export function SetRow({
               return (
                 <TextInput
                   key={field.key}
-                  style={[styles.input, styles.fieldInput]}
+                  style={[styles.input, styles.fieldInput, localCompleted && hasCompletionColor && styles.inputDone]}
                   value={rowVal}
                   onChangeText={(v) => handleFieldChange(key, v)}
                   onBlur={() => handleFieldBlur(key)}
@@ -274,17 +274,26 @@ export function SetRow({
                   value={rirNum}
                   size={32}
                   onPress={() => setShowRirPicker(true)}
+                  style={localCompleted && hasCompletionColor ? styles.rirDone : undefined}
                 />
               </View>
             )}
 
             {showCompletionToggle && (
               <TouchableOpacity
-                style={[styles.saveButton, localCompleted && styles.saveButtonDone]}
+                style={[
+                  styles.saveButton,
+                  localCompleted && styles.saveButtonDone,
+                  localCompleted && hasCompletionColor && { backgroundColor: completionColor, borderColor: 'rgba(0,0,0,0.25)' },
+                ]}
                 onPress={handleToggle}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.saveButtonText, localCompleted && styles.saveButtonTextDone]}>
+                <Text style={[
+                  styles.saveButtonText,
+                  localCompleted && styles.saveButtonTextDone,
+                  localCompleted && hasCompletionColor && { color: '#000000' },
+                ]}>
                   {localCompleted ? '✓' : '+'}
                 </Text>
               </TouchableOpacity>
@@ -364,7 +373,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: 'rgba(255,255,255,0.07)',
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 4,
@@ -413,6 +422,14 @@ const styles = StyleSheet.create({
   },
   saveButtonTextDone: {
     color: colors.textSecondary,
+  },
+  inputDone: {
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    color: '#000000',
+  },
+  rirDone: {
+    borderWidth: 1.5,
+    borderColor: '#000000',
   },
   inlineDeleteButton: {
     width: 28,

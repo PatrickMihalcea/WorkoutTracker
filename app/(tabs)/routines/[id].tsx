@@ -31,8 +31,17 @@ import {
   RoutineDayWithExercises,
   RoutineDayExercise,
   Exercise,
+  WeightUnit,
+  DistanceUnit,
 } from '../../../src/models';
 import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
+import {
+  TemplateSetRow,
+  buildSetsPayload,
+  setsToTemplateRows,
+  validateRepRange,
+  SetsTableEditor,
+} from '../../../src/components/routine/SetsTableEditor';
 import { RoutineStatsChart } from '../../../src/components/routine/RoutineStatsChart';
 import { MuscleHeatmap } from '../../../src/components/history/MuscleHeatmap';
 import { useChartInteraction } from '../../../src/components/charts';
@@ -53,20 +62,81 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+function ExerciseSetsEditor({
+  entry,
+  wUnit,
+  dUnit,
+  onSave,
+}: {
+  entry: RoutineDayExercise;
+  wUnit: WeightUnit;
+  dUnit: DistanceUnit;
+  onSave: () => void;
+}) {
+  const initial = setsToTemplateRows(entry.sets ?? [], entry.target_reps, wUnit);
+  const [useRepRange, setUseRepRange] = useState(initial.hasRepRange);
+  const [rows, setRows] = useState<TemplateSetRow[]>(initial.rows);
+  const mountedRef = useRef(false);
+
+  const persist = useCallback(async (currentRows: TemplateSetRow[], repRange: boolean) => {
+    if (repRange && !validateRepRange(currentRows)) return;
+    const payload = buildSetsPayload(currentRows, wUnit, repRange);
+    try {
+      await routineService.updateExerciseSets(entry.id, payload);
+      await routineService.updateDayExercise(entry.id, {
+        routine_day_id: entry.routine_day_id,
+        exercise_id: entry.exercise_id,
+        sort_order: entry.sort_order,
+        target_sets: payload.length,
+        target_reps: payload[0]?.target_reps_min ?? 10,
+      });
+      onSave();
+    } catch {
+      // silent — transient save failures are acceptable
+    }
+  }, [entry, wUnit, onSave]);
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    persist(rows, useRepRange);
+  }, [rows, useRepRange]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <View style={styles.setsEditorContainer}>
+      <SetsTableEditor
+        rows={rows}
+        setRows={setRows}
+        repRange={useRepRange}
+        setRepRange={setUseRepRange}
+        wUnit={wUnit}
+        dUnit={dUnit}
+        exerciseType={entry.exercise?.exercise_type}
+      />
+    </View>
+  );
+}
+
 function SwipeableExerciseRow({
   ex,
-  onEdit,
+  isExpanded,
+  onToggle,
   onDetails,
   onDelete,
   onLongPress,
   menuItems,
+  children,
 }: {
   ex: RoutineDayExercise;
-  onEdit: () => void;
+  isExpanded: boolean;
+  onToggle: () => void;
   onDetails?: () => void;
   onDelete: () => void;
   onLongPress?: () => void;
   menuItems?: OverflowMenuItem[];
+  children?: React.ReactNode;
 }) {
   const setsCount = ex.sets?.length ?? ex.target_sets;
   const setsLabel =
@@ -80,27 +150,34 @@ function SwipeableExerciseRow({
   };
 
   return (
-    <SwipeToDeleteRow onDelete={onDelete} expandedHeight={80}>
+    <SwipeToDeleteRow onDelete={onDelete} expandedHeight={500}>
       <TouchableOpacity
         style={styles.exerciseRow}
-        onPress={onEdit}
+        onPress={onToggle}
         onLongPress={onLongPress}
         delayLongPress={400}
         activeOpacity={0.7}
       >
         <View style={styles.exerciseInfo}>
-          {onDetails ? (
-            <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7} style={styles.exerciseNameTapTarget}>
-              <Text style={[styles.exerciseName, styles.exerciseNameLink]}>{ex.exercise?.name ?? 'Exercise'}</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
-          )}
+          <View style={styles.nameRow}>
+            {onDetails ? (
+              <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7} style={styles.exerciseNameTapTarget}>
+                <Text style={[styles.exerciseName, styles.exerciseNameLink]}>{ex.exercise?.name ?? 'Exercise'}
+                  <Text style={styles.expandArrow}>{isExpanded ? ' ⏷' : ' ⏵'}</Text>
+                </Text>
+                
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+            )}
+            
+          </View>
           <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
         </View>
         <Text style={styles.exerciseTarget}>{setsLabel}</Text>
         {menuItems && <View style={styles.menuWrap}><OverflowMenu items={menuItems} /></View>}
       </TouchableOpacity>
+      {isExpanded && children}
     </SwipeToDeleteRow>
   );
 }
@@ -134,7 +211,6 @@ export default function RoutineDetailScreen() {
 
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [addExerciseDayId, setAddExerciseDayId] = useState<string | null>(null);
-  const [editingEntry, setEditingEntry] = useState<RoutineDayExercise | null>(null);
   const [toastMessage, setToastMessage] = useState('');
 
   const perfExpanded = profile?.show_routine_performance ?? true;
@@ -143,6 +219,15 @@ export default function RoutineDetailScreen() {
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [autoOpenPicker, setAutoOpenPicker] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpand = useCallback((entryId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.has(entryId) ? next.delete(entryId) : next.add(entryId);
+      return next;
+    });
+  }, []);
   const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
 
   useFocusEffect(useCallback(() => {
@@ -290,7 +375,6 @@ export default function RoutineDetailScreen() {
 
   const openAddExercise = (dayId: string) => {
     setAddExerciseDayId(dayId);
-    setEditingEntry(null);
     setShowAddExercise(true);
   };
 
@@ -307,35 +391,20 @@ export default function RoutineDetailScreen() {
       is_warmup: s.is_warmup ?? false,
     }));
     try {
-      if (editingEntry) {
-        if (editingEntry.exercise_id !== exercise.id) {
-          await routineService.changeExercise(editingEntry.id, exercise.id);
-        }
-        await routineService.updateExerciseSets(editingEntry.id, normalizedSets);
-        await routineService.updateDayExercise(editingEntry.id, {
-          routine_day_id: editingEntry.routine_day_id,
+      const dayExercises = currentRoutine?.days.find(
+        (d) => d.id === addExerciseDayId,
+      )?.exercises ?? [];
+      await routineService.addExerciseToDay(
+        {
+          routine_day_id: addExerciseDayId,
           exercise_id: exercise.id,
-          sort_order: editingEntry.sort_order,
+          sort_order: dayExercises.length,
           target_sets: normalizedSets.length,
           target_reps: normalizedSets[0]?.target_reps_min ?? 10,
-        });
-      } else {
-        const dayExercises = currentRoutine?.days.find(
-          (d) => d.id === addExerciseDayId,
-        )?.exercises ?? [];
-        await routineService.addExerciseToDay(
-          {
-            routine_day_id: addExerciseDayId,
-            exercise_id: exercise.id,
-            sort_order: dayExercises.length,
-            target_sets: normalizedSets.length,
-            target_reps: normalizedSets[0]?.target_reps_min ?? 10,
-          },
-          normalizedSets,
-        );
-      }
+        },
+        normalizedSets,
+      );
       setShowAddExercise(false);
-      setEditingEntry(null);
       if (id) fetchRoutineDetail(id);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
@@ -384,12 +453,6 @@ export default function RoutineDetailScreen() {
     } catch {
       Alert.alert('Error', 'Could not reorder exercises.');
     }
-  };
-
-  const handleOpenExerciseEdit = (entry: RoutineDayExercise, dayId: string) => {
-    setEditingEntry(entry);
-    setAddExerciseDayId(dayId);
-    setShowAddExercise(true);
   };
 
   const handleStartDay = useCallback((day: RoutineDayWithExercises) => {
@@ -767,6 +830,10 @@ export default function RoutineDetailScreen() {
       onPress: () => router.push(`/(tabs)/routines/day-details/${day.id}`),
     },
     {
+      label: 'Edit Day',
+      onPress: () => router.push(`/(tabs)/routines/day/${day.id}`),
+    },
+    {
       label: 'Start Day',
       onPress: () => handleStartDay(day),
     },
@@ -793,7 +860,16 @@ export default function RoutineDetailScreen() {
         <View style={styles.dayHeader}>
           <TouchableOpacity
             style={{ flex: 1 }}
-            onPress={() => router.push(`/(tabs)/routines/day/${day.id}`)}
+            onPress={() => {
+              const ids = day.exercises.map((e) => e.id);
+              const allExpanded = ids.length > 0 && ids.every((eid) => expandedIds.has(eid));
+              setExpandedIds((prev) => {
+                const next = new Set(prev);
+                if (allExpanded) ids.forEach((eid) => next.delete(eid));
+                else ids.forEach((eid) => next.add(eid));
+                return next;
+              });
+            }}
             activeOpacity={0.7}
           >
             <Text style={styles.dayOfWeek}>
@@ -821,26 +897,32 @@ export default function RoutineDetailScreen() {
               {item.type === 'single' ? (
                 <SwipeableExerciseRow
                   ex={item.entry}
-                  onEdit={() => handleOpenExerciseEdit(item.entry, day.id)}
+                  isExpanded={expandedIds.has(item.entry.id)}
+                  onToggle={() => toggleExpand(item.entry.id)}
                   onDetails={() => navigateToExerciseDetail(item.entry.exercise_id)}
                   onDelete={() => handleExRemove(item.entry.id, day)}
                   onLongPress={drag}
                   menuItems={buildExerciseMenuItems(day, item.entry, day.exercises.indexOf(item.entry))}
-                />
+                >
+                  <ExerciseSetsEditor entry={item.entry} wUnit={wUnit} dUnit={dUnit} onSave={() => { if (id) fetchRoutineDetail(id); }} />
+                </SwipeableExerciseRow>
               ) : (
                 <View>
                   {item.entries.map((entry, idx) => {
                     const pos = idx === 0 ? 'first' as const : idx === item.entries.length - 1 ? 'last' as const : 'middle' as const;
                     return (
-                      <SupersetBracket key={entry.id} position={pos}>
+                      <SupersetBracket key={entry.id} position={pos} contentRadius={6} style={{ paddingLeft: 8 }}>
                         <SwipeableExerciseRow
                           ex={entry}
-                          onEdit={() => handleOpenExerciseEdit(entry, day.id)}
+                          isExpanded={expandedIds.has(entry.id)}
+                          onToggle={() => toggleExpand(entry.id)}
                           onDetails={() => navigateToExerciseDetail(entry.exercise_id)}
                           onDelete={() => handleExRemove(entry.id, day)}
                           onLongPress={drag}
                           menuItems={buildExerciseMenuItems(day, entry, day.exercises.indexOf(entry))}
-                        />
+                        >
+                          <ExerciseSetsEditor entry={entry} wUnit={wUnit} dUnit={dUnit} onSave={() => { if (id) fetchRoutineDetail(id); }} />
+                        </SwipeableExerciseRow>
                       </SupersetBracket>
                     );
                   })}
@@ -902,6 +984,11 @@ export default function RoutineDetailScreen() {
             const isActiveWeek = item.value === currentRoutine.current_week;
             if (!isActiveWeek) return undefined;
             return isSelected ? styles.weekChipActiveTextSelected : styles.weekChipActiveText;
+          }}
+          getChipGradientColors={(item, isSelected) => {
+            const isActiveWeek = item.value === currentRoutine.current_week;
+            if (!isActiveWeek || !isSelected) return undefined;
+            return ['#173030', '#0d1e1e'];
           }}
         />
         {addingWeek && (
@@ -969,8 +1056,10 @@ export default function RoutineDetailScreen() {
             updateProfile({ show_routine_performance: !perfExpanded });
           }}
         >
-          <Text style={styles.subHeader}>Performance</Text>
-          <Text style={styles.chevron}>{perfExpanded ? '▲' : '▼'}</Text>
+          <Text style={styles.subHeader}>Performance
+            <Text style={styles.chevron}>{perfExpanded ? ' ⏷' : ' ⏵'}</Text>
+          </Text>
+          
         </TouchableOpacity>
         {perfExpanded && (
           <>
@@ -1127,13 +1216,11 @@ export default function RoutineDetailScreen() {
         visible={showAddExercise}
         onClose={() => {
           setShowAddExercise(false);
-          setEditingEntry(null);
           setAutoOpenPicker(false);
         }}
         onConfirm={handleAddExerciseConfirm}
         weightUnit={wUnit}
         distanceUnit={dUnit}
-        editingEntry={editingEntry}
         onDeleteExercise={handleDeleteExercise}
         onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
         autoOpenPicker={autoOpenPicker}
@@ -1161,7 +1248,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
-    paddingBottom: 40,
+    paddingBottom: 100,
   },
   titleRow: {
     flexDirection: 'row',
@@ -1328,10 +1415,25 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: 'transparent',
   },
   exerciseInfo: {
     flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  expandArrow: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  setsEditorContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   exerciseName: {
     fontSize: 15,

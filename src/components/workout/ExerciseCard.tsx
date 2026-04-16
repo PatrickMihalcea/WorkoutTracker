@@ -95,7 +95,7 @@ export function ExerciseCard({
     return [...warmups, ...working];
   }, [rows]);
 
-  const colorAnim = useRef(new Animated.Value(allDone ? 1 : 0)).current;
+  const completionAnim = useRef(new Animated.Value(allDone ? 1 : 0)).current;
   const prevAllDone = useRef(allDone);
   const didLongPressNameRef = useRef(false);
 
@@ -108,26 +108,27 @@ export function ExerciseCard({
     if (allDone && canAnimate) {
       LayoutAnimation.configureNext(collapseLayout);
       onToggleCollapse?.();
-      Animated.timing(colorAnim, {
+      Animated.timing(completionAnim, {
         toValue: 1,
         duration: ANIM_DURATION,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start();
     } else if (!allDone && canAnimate) {
-      Animated.timing(colorAnim, {
+      Animated.timing(completionAnim, {
         toValue: 0,
         duration: ANIM_DURATION,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start();
     }
-  }, [allDone]);
+  }, [allDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const animatedBg = canAnimate
-    ? colorAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [colors.surface, setCompletion],
-      })
-    : undefined;
+  /** Overlay that fades in over the card gradient when all sets are done. */
+  const completionOverlay = canAnimate ? (
+    <Animated.View
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFillObject, { backgroundColor: setCompletion, opacity: completionAnim }]}
+    />
+  ) : null;
 
   const doneTextColor = (allDone && canAnimate) ? '#000000' : undefined;
 
@@ -192,12 +193,10 @@ export function ExerciseCard({
   const marginOverride = noBottomMargin ? { marginBottom: 0 } : undefined;
 
   if (reorderCollapsed) {
-    const reorderCardStyle = (allDone && canAnimate)
-      ? [styles.cardCollapsed, { backgroundColor: setCompletion }, marginOverride]
-      : [styles.cardCollapsed, marginOverride];
     return (
       <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
-        <Card style={StyleSheet.flatten(reorderCardStyle)}>
+        <Card style={[styles.cardCollapsed, marginOverride]}>
+          {completionOverlay}
           <View style={styles.headerCollapsed}>
             <View style={{ flex: 1 }}>
               {renderExerciseName(doneTextColor)}
@@ -213,14 +212,10 @@ export function ExerciseCard({
   }
 
   if (isCollapsed) {
-    const collapsedBg = animatedBg ?? (allDone && canAnimate ? setCompletion : undefined);
-    const collapsedStyle = collapsedBg
-      ? [styles.cardCollapsed, { backgroundColor: collapsedBg }, marginOverride] as any
-      : [styles.cardCollapsed, marginOverride];
-
     return (
       <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
-        <Card style={collapsedStyle}>
+        <Card style={[styles.cardCollapsed, marginOverride]}>
+          {completionOverlay}
           <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
             <View style={styles.headerCollapsed}>
               <View style={{ flex: 1 }}>
@@ -238,17 +233,13 @@ export function ExerciseCard({
     );
   }
 
-  const expandedBg = animatedBg ?? undefined;
-  const expandedStyle = expandedBg
-    ? [styles.card, { backgroundColor: expandedBg }, marginOverride] as any
-    : [styles.card, marginOverride];
-
   let workingSetIndex = 0;
 
   const cardContent = (
-    <Card style={expandedStyle}>
+    <Card style={[styles.card, marginOverride]}>
+      {completionOverlay}
       <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
-        <View style={[styles.header, (allDone && canAnimate) && { backgroundColor: 'transparent' }]}>
+        <View style={styles.header}>
           <View style={{ flex: 1 }}>
             {renderExerciseName(doneTextColor)}
             <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
@@ -282,7 +273,7 @@ export function ExerciseCard({
           <View style={styles.actionCol} />
         </View>
 
-        {sortedRows.map((row, rowIdx) => {
+        {sortedRows.map((row) => {
           const displayNum = row.is_warmup ? 'W' : ++workingSetIndex;
 
           const origIndex = rows.indexOf(row);
@@ -330,7 +321,6 @@ export function ExerciseCard({
               key={row.id}
               row={row}
               displaySetNumber={displayNum}
-              isAlt={rowIdx % 2 === 1}
               previousSet={previousSets[origIndex]}
               weightUnit={weightUnit}
               distanceUnit={distanceUnit}
@@ -393,7 +383,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
   },
   headerCollapsed: {
     flexDirection: 'row',

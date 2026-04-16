@@ -86,7 +86,7 @@ export default function RoutineListScreen() {
       onPress={() => router.push(`/(tabs)/routines/${item.id}`)}
       onLongPress={() => handleDelete(item)}
     >
-      <Card style={StyleSheet.flatten([styles.routineCard, item.is_active ? styles.activeCard : undefined])}>
+      <Card style={StyleSheet.flatten([styles.routineCard, item.is_active ? styles.activeCard : undefined])} gradientColors= {item.is_active ? ['#122828', '#0a1a1a'] : undefined}>
         <View style={styles.routineHeader}>
           <View style={styles.routineInfo}>
             <Text style={styles.routineName}>{item.name}</Text>
@@ -178,6 +178,7 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: spacing.sm,
+    paddingBottom: 80,
   },
   routineCard: {
     marginBottom: 12,
@@ -185,7 +186,6 @@ const styles = StyleSheet.create({
   },
   activeCard: {
     borderColor: '#244343',
-    backgroundColor: '#171D1D',
   },
   routineHeader: {
     flexDirection: 'row',

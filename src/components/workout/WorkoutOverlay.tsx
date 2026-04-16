@@ -427,11 +427,11 @@ export function WorkoutOverlay() {
             onRemove={() => handleRemoveExercise(item.entry.id)}
           />
         ) : (
-          <View>
+          <View style={{ marginBottom: 6 }}>
             {item.entries.map((entry, idx) => {
               const pos = idx === 0 ? 'first' as const : idx === item.entries.length - 1 ? 'last' as const : 'middle' as const;
               return (
-                <SupersetBracket key={entry.id} position={pos}>
+                <SupersetBracket key={entry.id} position={pos} contentRadius={16}>
                   <ExerciseCard
                     entry={entry}
                     rows={rows[entry.id] ?? []}
@@ -439,7 +439,7 @@ export function WorkoutOverlay() {
                     weightUnit={weightUnit}
                     distanceUnit={distanceUnit}
                     reorderCollapsed
-                    noBottomMargin={pos !== 'last'}
+                    noBottomMargin
                     onUpdateRow={() => {}}
                     onToggleRow={() => {}}
                     onDeleteRow={() => {}}
@@ -547,7 +547,7 @@ export function WorkoutOverlay() {
                 >
                   {exercises.map((item, index) => {
                     const position = getSupersetPosition(exercises, index, supersetGroups);
-                    const needsNoMargin = position === 'first' || position === 'middle';
+                    const needsNoMargin = position !== null;
                     const myGroup = supersetGroups[item.id] ?? null;
                     const prevGroup = index > 0 ? (supersetGroups[exercises[index - 1].id] ?? null) : null;
                     const nextGroup = index < exercises.length - 1 ? (supersetGroups[exercises[index + 1].id] ?? null) : null;
@@ -583,7 +583,7 @@ export function WorkoutOverlay() {
                         noBottomMargin={needsNoMargin}
                       />
                     );
-                    return <SupersetBracket key={item.id} position={position}>{card}</SupersetBracket>;
+                    return <SupersetBracket key={item.id} position={position} contentRadius={16} style={position === 'last' ? { marginBottom: 6 } : undefined}>{card}</SupersetBracket>;
                   })}
                   {normalFooter()}
                 </ScrollView>

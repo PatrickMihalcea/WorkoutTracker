@@ -7,7 +7,8 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
-import { colors, fonts } from '../../constants';
+import { LinearGradient } from 'expo-linear-gradient';
+import { colors, fonts, gradients } from '../../constants';
 
 interface ButtonProps {
   title: string;
@@ -49,6 +50,14 @@ export function Button({
       disabled={disabled || loading}
       activeOpacity={0.7}
     >
+      {variant === 'primary' && (
+        <LinearGradient
+          colors={gradients.primaryButton}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      )}
       {loading ? (
         <ActivityIndicator
           color={variant === 'ghost' || variant === 'dashed' ? colors.text : colors.background}
@@ -67,6 +76,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+    overflow: 'hidden',
   },
   disabled: {
     opacity: 0.5,

@@ -195,7 +195,7 @@ export default function HomeScreen() {
         }
       >
       <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/(tabs)/routines')}>
-        <Card style={styles.heroCard}>
+        <Card style={styles.heroCard} gradientColors={['#122828', '#0a1a1a']}>
           <View style={styles.heroTopRow}>
             <Text style={styles.greeting}>{DAY_LABELS[currentDay as DayOfWeek]}</Text>
             <View style={styles.todayBadge}>
@@ -306,7 +306,7 @@ export default function HomeScreen() {
                   const isExpanded = expandedIds.has(ex.id);
                   const ssPosition = getSupersetPosition(displayWorkout.exercises, exIdx, groups);
                   return (
-                    <SupersetBracket key={ex.id} position={ssPosition}>
+                    <SupersetBracket key={ex.id} position={ssPosition} contentRadius={6} style={{ paddingLeft: 8 }}>
                       <View>
                         <TouchableOpacity
                           style={styles.exerciseRow}
@@ -525,7 +525,6 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     marginBottom: 14,
-    backgroundColor: '#171D1D',
     borderColor: '#244343',
     paddingHorizontal: spacing.md,
   },
@@ -569,8 +568,6 @@ const styles = StyleSheet.create({
   },
   workoutCard: {
     marginBottom: 18,
-    backgroundColor: '#171717',
-    borderColor: '#2E2E2E',
     paddingHorizontal: spacing.md,
   },
   dayLabel: {
@@ -610,6 +607,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.regular,
     color: colors.text,
+    flex: 1,
   },
   exerciseTarget: {
     fontSize: 14,
@@ -678,7 +676,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 34,
     paddingHorizontal: spacing.md,
-    backgroundColor: '#171717',
   },
   restDayInProgressWrap: {
     marginTop: 10,

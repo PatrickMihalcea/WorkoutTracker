@@ -90,12 +90,14 @@ function SwipeableExerciseRow({
           <View style={styles.nameRow}>
             {onDetails ? (
               <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7} style={styles.exerciseNameTapTarget}>
-                <Text style={[styles.exerciseName, styles.exerciseNameLink]}>{ex.exercise?.name ?? 'Exercise'}</Text>
+                <Text style={[styles.exerciseName, styles.exerciseNameLink]}>{ex.exercise?.name ?? 'Exercise'}
+                  <Text style={styles.expandArrow}>{isExpanded ? ' ⏷' : ' ⏵'}</Text>
+                </Text>
               </TouchableOpacity>
             ) : (
               <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
             )}
-            <Text style={styles.expandArrow}>{isExpanded ? '▾' : '▸'}</Text>
+            
           </View>
           <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
         </View>
@@ -515,7 +517,7 @@ export default function DayEditorScreen() {
                   {item.entries.map((entry, idx) => {
                     const pos = idx === 0 ? 'first' as const : idx === item.entries.length - 1 ? 'last' as const : 'middle' as const;
                     return (
-                      <SupersetBracket key={entry.id} position={pos}>
+                      <SupersetBracket key={entry.id} position={pos} contentRadius={6}>
                         <SwipeableExerciseRow
                           ex={entry}
                           isExpanded={expandedIds.has(entry.id)}

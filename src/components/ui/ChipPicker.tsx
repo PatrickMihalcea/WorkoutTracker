@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ViewStyle, TextStyle, StyleProp, Modal, Pressable } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { DayOfWeek, DAY_LABELS } from '../../models';
-import { colors, fonts } from '../../constants';
+import { colors, fonts, gradients } from '../../constants';
 
 interface ChipPickerProps<T extends string | number> {
   items: { key: string; label: string; value: T; tooltip?: string }[];
@@ -17,6 +18,8 @@ interface ChipPickerProps<T extends string | number> {
   chipTextSelectedStyle?: StyleProp<TextStyle>;
   getChipStyle?: (item: { key: string; label: string; value: T }, isSelected: boolean) => StyleProp<ViewStyle> | undefined;
   getChipTextStyle?: (item: { key: string; label: string; value: T }, isSelected: boolean) => StyleProp<TextStyle> | undefined;
+  /** Return custom gradient stop colors for a chip's selected state, or undefined to use the default. */
+  getChipGradientColors?: (item: { key: string; label: string; value: T }, isSelected: boolean) => readonly [string, string, ...string[]] | undefined;
   horizontal?: boolean;
   maxHeight?: number;
 }
@@ -34,6 +37,7 @@ export function ChipPicker<T extends string | number>({
   chipTextSelectedStyle,
   getChipStyle,
   getChipTextStyle,
+  getChipGradientColors,
   horizontal = true,
   maxHeight,
 }: ChipPickerProps<T>) {
@@ -64,6 +68,14 @@ export function ChipPicker<T extends string | number>({
               }
             }}
           >
+            {isSelected && (
+              <LinearGradient
+                colors={getChipGradientColors?.(item, isSelected) ?? gradients.chipSelected}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            )}
             <Text
               style={[
                 styles.chipText,
@@ -233,6 +245,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: colors.surfaceLight,
+    overflow: 'hidden',
   },
   chipWithTooltip: {
     flexDirection: 'row',
@@ -256,7 +269,7 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: colors.textSecondary,
+    borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -264,7 +277,7 @@ const styles = StyleSheet.create({
     borderColor: colors.background,
   },
   tooltipBtnText: {
-    color: colors.textSecondary,
+    color: colors.accent,
     fontSize: 10,
     fontFamily: fonts.semiBold,
     lineHeight: 13,

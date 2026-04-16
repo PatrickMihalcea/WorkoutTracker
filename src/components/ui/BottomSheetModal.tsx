@@ -14,7 +14,8 @@ import {
   StyleProp,
   ViewStyle,
 } from 'react-native';
-import { colors, fonts } from '../../constants';
+import { LinearGradient } from 'expo-linear-gradient';
+import { colors, fonts, gradients } from '../../constants';
 import { KeyboardDismiss } from './KeyboardDismiss';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -96,6 +97,12 @@ export function BottomSheetModal({
             </TouchableOpacity>
           )}
           <View style={[styles.sheet, { paddingHorizontal: contentPaddingHorizontal }, fullHeight && styles.sheetFull, sheetStyle]}>
+            <LinearGradient
+              colors={gradients.surfaceElevated}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
             {title ? <Text style={styles.title}>{title}</Text> : null}
             <Body style={scrollable ? styles.scrollBody : styles.viewBody} {...bodyProps}>
               {children}
@@ -125,13 +132,17 @@ const styles = StyleSheet.create({
     marginTop: 48,
   },
   sheet: {
-    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: colors.border,
     paddingTop: 24,
     paddingHorizontal: 24,
     paddingBottom: 24,
     maxHeight: '100%',
+    overflow: 'hidden',
   },
   scrollBody: {
     flexShrink: 1,

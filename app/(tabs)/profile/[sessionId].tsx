@@ -284,7 +284,6 @@ export default function SessionDetailScreen() {
   const [tempSetCounter, setTempSetCounter] = useState(0);
   const [swapGroupKey, setSwapGroupKey] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
-  const [updatingGroups, setUpdatingGroups] = useState(false);
   const [sessionRecords, setSessionRecords] = useState<SessionRecordAchieved[]>([]);
   const [showCompletionBanner, setShowCompletionBanner] = useState(justCompleted === '1');
   const [routineDayTemplate, setRoutineDayTemplate] = useState<RoutineDayWithExercises | null>(null);
@@ -384,8 +383,8 @@ export default function SessionDetailScreen() {
     setEditDate(start);
     setEditTime(start);
     setEditDuration(String(computeDurationMinutes(session.started_at, session.completed_at)));
-    setShowDatePicker(Platform.OS === 'ios');
-    setShowTimePicker(Platform.OS === 'ios');
+    setShowDatePicker(false);
+    setShowTimePicker(false);
     setShowEdit(true);
   };
 
@@ -424,7 +423,6 @@ export default function SessionDetailScreen() {
         completed_at: completedAt.toISOString(),
       });
       setShowEdit(false);
-      setLoading(true);
       await loadSession();
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
@@ -569,7 +567,6 @@ export default function SessionDetailScreen() {
       const deletions = deletedIds.map((id) => sessionService.deleteSet(id));
       await Promise.all([...upserts, ...deletions]);
       setExerciseEditor(null);
-      setLoading(true);
       await loadSession();
     } catch {
       Alert.alert('Error', 'Failed to update exercise sets.');
@@ -589,14 +586,10 @@ export default function SessionDetailScreen() {
 
   const withGroupUpdate = async (action: () => Promise<void>) => {
     try {
-      setUpdatingGroups(true);
       await action();
-      setLoading(true);
-      await loadSession();
+      void loadSession();
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message || 'Failed to update exercise.');
-    } finally {
-      setUpdatingGroups(false);
     }
   };
 
@@ -768,19 +761,52 @@ export default function SessionDetailScreen() {
     return items;
   };
 
+  const canGoBack = router.canGoBack();
+
+  const stackScreenOptions = {
+    headerRight: () => (
+      <TouchableOpacity
+        onPress={handleStartWorkout}
+        disabled={loading || starting}
+        hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+        style={styles.startBtn}
+      >
+        {starting
+          ? <ActivityIndicator size="small" color="#4ECDC4" />
+          : <Text style={styles.startBtnText}>▶ Start</Text>}
+      </TouchableOpacity>
+    ),
+    ...(!canGoBack ? {
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => router.replace('/(tabs)/profile')}
+          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+        >
+          <Text style={styles.headerBackBtn}>‹ Profile</Text>
+        </TouchableOpacity>
+      ),
+    } : {}),
+  };
+
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.text} />
-      </View>
+      <>
+        <Stack.Screen options={stackScreenOptions} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.text} />
+        </View>
+      </>
     );
   }
 
   if (!session) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>Workout not found</Text>
-      </View>
+      <>
+        <Stack.Screen options={{ ...stackScreenOptions, headerRight: undefined }} />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.errorText}>Workout not found</Text>
+        </View>
+      </>
     );
   }
 
@@ -871,36 +897,9 @@ export default function SessionDetailScreen() {
     }));
   })();
 
-  const canGoBack = router.canGoBack();
-
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={handleStartWorkout}
-              disabled={starting}
-              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-              style={styles.startBtn}
-            >
-              {starting
-                ? <ActivityIndicator size="small" color="#4ECDC4" />
-                : <Text style={styles.startBtnText}>▶ Start</Text>}
-            </TouchableOpacity>
-          ),
-          ...(!canGoBack ? {
-            headerLeft: () => (
-              <TouchableOpacity
-                onPress={() => router.replace('/(tabs)/profile')}
-                hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-              >
-                <Text style={styles.headerBackBtn}>‹ Profile</Text>
-              </TouchableOpacity>
-            ),
-          } : {}),
-        }}
-      />
+      <Stack.Screen options={stackScreenOptions} />
     <View style={styles.flex}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
         {showCompletionBanner && (
@@ -971,7 +970,7 @@ export default function SessionDetailScreen() {
         </View>
 
         {sessionRecords.length > 0 && (
-          <Card style={styles.recordsCard}>
+          <Card style={styles.recordsCard} gradientColors={['#122828', '#0a1a1a']}>
             <Text style={styles.recordsTitle}>
               {sessionRecords.length} {sessionRecords.length === 1 ? 'Record' : 'Records'} Achieved
             </Text>
@@ -992,11 +991,10 @@ export default function SessionDetailScreen() {
 
         {groups.map((group, idx) => {
           const position = getSupersetPosition(supersetEntries, idx, supersetMap);
-          const noBottomMargin = position === 'first' || position === 'middle';
           const menuItems = buildExerciseMenuItems(group, idx, groups);
           return (
-            <SupersetBracket key={group.key} position={position}>
-              <Card style={[styles.exerciseCard, noBottomMargin && styles.exerciseCardNoMargin]}>
+            <SupersetBracket key={group.key} position={position} contentRadius={16} style={position === 'last' ? { marginBottom: 6 } : undefined}>
+              <Card style={[styles.exerciseCard, position !== null && styles.exerciseCardNoMargin]}>
                 <View style={styles.exerciseHeader}>
                   <View style={styles.exerciseHeaderText}>
                     <TouchableOpacity
@@ -1028,8 +1026,8 @@ export default function SessionDetailScreen() {
                         {cfg.showRir && <Text style={[styles.tableCol, styles.colRir]}>RIR</Text>}
                       </View>
 
-                      {group.sets.map((set, setIdx) => (
-                        <View key={set.id} style={[styles.tableRow, setIdx % 2 === 1 && styles.tableRowAlt]}>
+                      {group.sets.map((set) => (
+                        <View key={set.id} style={styles.tableRow}>
                           <Text style={[styles.tableCell, styles.colSet]}>{set.set_number}</Text>
                           {showWeight && <Text style={[styles.tableCell, styles.colFlex]}>{formatWeight(set.weight, weightUnit)}</Text>}
                           {showReps && <Text style={[styles.tableCell, styles.colFlex]}>{set.reps_performed}</Text>}
@@ -1051,47 +1049,45 @@ export default function SessionDetailScreen() {
         })}
       </ScrollView>
 
-      <BottomSheetModal visible={showEdit} title="Edit Session" scrollable onClose={() => setShowEdit(false)}>
-            <Text style={styles.fieldLabel}>Date</Text>
-            {Platform.OS === 'android' && (
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={styles.pickerButtonText}>
-                  {editDate.toLocaleDateString()}
-                </Text>
-              </TouchableOpacity>
-            )}
-            {showDatePicker && (
-              <DateTimePicker
-                value={editDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleDateChange}
-                themeVariant="dark"
-              />
+      <BottomSheetModal visible={showEdit} title="Edit Session" onClose={() => setShowEdit(false)}>
+            <View style={styles.editRow}>
+              <Text style={styles.editRowLabel}>Date</Text>
+              {Platform.OS === 'ios' ? (
+                <DateTimePicker
+                  value={editDate}
+                  mode="date"
+                  display="compact"
+                  onChange={handleDateChange}
+                  themeVariant="dark"
+                />
+              ) : (
+                <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+                  <Text style={styles.pickerButtonText}>{editDate.toLocaleDateString()}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {Platform.OS === 'android' && showDatePicker && (
+              <DateTimePicker value={editDate} mode="date" display="default" onChange={handleDateChange} themeVariant="dark" />
             )}
 
-            <Text style={styles.fieldLabel}>Start Time</Text>
-            {Platform.OS === 'android' && (
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowTimePicker(true)}
-              >
-                <Text style={styles.pickerButtonText}>
-                  {editTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-              </TouchableOpacity>
-            )}
-            {showTimePicker && (
-              <DateTimePicker
-                value={editTime}
-                mode="time"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleTimeChange}
-                themeVariant="dark"
-              />
+            <View style={styles.editRow}>
+              <Text style={styles.editRowLabel}>Start Time</Text>
+              {Platform.OS === 'ios' ? (
+                <DateTimePicker
+                  value={editTime}
+                  mode="time"
+                  display="compact"
+                  onChange={handleTimeChange}
+                  themeVariant="dark"
+                />
+              ) : (
+                <TouchableOpacity onPress={() => setShowTimePicker(true)}>
+                  <Text style={styles.pickerButtonText}>{editTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {Platform.OS === 'android' && showTimePicker && (
+              <DateTimePicker value={editTime} mode="time" display="default" onChange={handleTimeChange} themeVariant="dark" />
             )}
 
             <Input
@@ -1209,11 +1205,6 @@ export default function SessionDetailScreen() {
           : null}
         onExerciseDetails={(exerciseId) => router.push(`/exercise/${exerciseId}`)}
       />
-      {updatingGroups && (
-        <View style={styles.busyOverlay}>
-          <ActivityIndicator size="large" color={colors.text} />
-        </View>
-      )}
     </View>
     </>
   );
@@ -1230,7 +1221,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
-    paddingBottom: 40,
+    paddingBottom: 100,
   },
   loadingContainer: {
     flex: 1,
@@ -1489,6 +1480,17 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     marginBottom: 8,
   },
+  editRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  editRowLabel: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+  },
   pickerButton: {
     backgroundColor: colors.surfaceLight,
     borderWidth: 1,
@@ -1521,12 +1523,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 12,
-  },
-  busyOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   startBtn: {
     paddingHorizontal: 10,
