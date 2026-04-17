@@ -30,6 +30,7 @@ interface SetRowProps {
   enableWarmupSwipe?: boolean;
   showInlineDelete?: boolean;
   onInlineDelete?: () => void;
+  rowBackgroundColor?: string;
 }
 
 export function SetRow({
@@ -54,6 +55,7 @@ export function SetRow({
   enableWarmupSwipe = true,
   showInlineDelete = false,
   onInlineDelete,
+  rowBackgroundColor,
 }: SetRowProps) {
   const { colors } = useTheme();
   type RowFieldKey = 'weight' | 'reps' | 'duration' | 'distance';
@@ -191,9 +193,10 @@ export function SetRow({
   const suggestedDurationNum = suggestedDuration ? parseFloat(suggestedDuration) || 0 : 0;
 
   const hasCompletionColor = !!completionColor && completionColor !== 'transparent';
+  const baseRowBackground = rowBackgroundColor ?? 'transparent';
   const animatedRowBg = completedAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['transparent', hasCompletionColor ? completionColor! : 'transparent'],
+    outputRange: [baseRowBackground, hasCompletionColor ? completionColor! : baseRowBackground],
   });
 
   const styles = useMemo(() => StyleSheet.create({

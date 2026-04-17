@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Alert,
   Animated,
+  Easing,
   AppState,
   useWindowDimensions,
 } from 'react-native';
@@ -23,6 +24,7 @@ import { useWorkoutStore } from '../../stores/workout.store';
 import { useProfileStore } from '../../stores/profile.store';
 import { useWorkoutOverlay } from './WorkoutOverlayContext';
 import { ExerciseCard } from './ExerciseCard';
+import { SetRow } from './SetRow';
 import { RestTimerBar } from './RestTimerBar';
 import { RestTimerModal } from './RestTimerModal';
 import { WorkoutPill } from './WorkoutPill';
@@ -32,7 +34,7 @@ import { AddExerciseModal, SetsPayloadItem } from '../routine/AddExerciseModal';
 import { fonts } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatElapsed } from '../../utils/date';
-import { Exercise, RoutineDayExercise } from '../../models';
+import { Exercise, RoutineDayExercise, WorkoutRow } from '../../models';
 import {
   supersetPrev,
   supersetNext,
@@ -48,7 +50,42 @@ import {
 const TAB_BAR_HEIGHT = 60;
 const SLIDE_IN_MS = 500;
 const SLIDE_OUT_MS = 300;
-type TooltipWarningVariant = 'empty-finish' | 'first-start';
+type TooltipWarningVariant = 'empty-finish' | 'first-entry-walkthrough';
+type WorkoutTooltipKey = 'setToggleDemo' | 'setSwipeActions' | 'supersetMenu' | 'reorderLongPress';
+
+const WORKOUT_WALKTHROUGH_ORDER: readonly WorkoutTooltipKey[] = [
+  'setToggleDemo',
+  'setSwipeActions',
+  'supersetMenu',
+  'reorderLongPress',
+];
+
+const WORKOUT_TOOLTIP_COPY: Record<WorkoutTooltipKey, { title: string; message: string; demoTitle: string; demoHint: string }> = {
+  setToggleDemo: {
+    title: 'Mark Sets Done',
+    message: 'Tap the set toggle to mark each set done so your workout is recorded accurately.',
+    demoTitle: 'Set 1',
+    demoHint: 'Tap + to mark it done',
+  },
+  setSwipeActions: {
+    title: 'Swipe Set Actions',
+    message: 'Swipe set rows left or right to mark Warmup or Delete quickly. Swipe an exercise right to delete the whole block.',
+    demoTitle: 'Set 2',
+    demoHint: 'Swipe right for W, swipe left for X',
+  },
+  supersetMenu: {
+    title: 'Build Supersets and Duplicate',
+    message: 'Open the exercise menu (⋮) to pair exercises with Superset Prev/Next or Duplicate.',
+    demoTitle: 'Exercise Menu',
+    demoHint: 'Use Superset Prev/Next or Duplicate',
+  },
+  reorderLongPress: {
+    title: 'Reorder Exercises',
+    message: 'Long press an exercise card header to enter reordering mode.',
+    demoTitle: 'Exercise Order',
+    demoHint: 'Long press and drag to reorder',
+  },
+};
 
 export function WorkoutOverlay() {
   const { colors } = useTheme();
@@ -105,6 +142,7 @@ export function WorkoutOverlay() {
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [autoOpenPicker, setAutoOpenPicker] = useState(false);
   const [tooltipWarningVariant, setTooltipWarningVariant] = useState<TooltipWarningVariant | null>(null);
+  const [walkthroughStepIndex, setWalkthroughStepIndex] = useState(0);
   const [isCompleting, setIsCompleting] = useState(false);
   const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
   const warningDemoToggle = useRef(new Animated.Value(0)).current;
@@ -113,6 +151,13 @@ export function WorkoutOverlay() {
   const warningDemoTapScale = useRef(new Animated.Value(0.8)).current;
   const warningDemoRippleScale = useRef(new Animated.Value(0.45)).current;
   const warningDemoRippleOpacity = useRef(new Animated.Value(0)).current;
+  const warningSwipeOffset = useRef(new Animated.Value(0)).current;
+  const warningSupersetMenuScale = useRef(new Animated.Value(1)).current;
+  const warningSupersetPopupOpacity = useRef(new Animated.Value(0)).current;
+  const warningReorderOffset = useRef(new Animated.Value(0)).current;
+  const warningReorderScale = useRef(new Animated.Value(1)).current;
+  const warningReorderDotOpacity = useRef(new Animated.Value(0)).current;
+  const warningReorderDotScale = useRef(new Animated.Value(0.8)).current;
   const warningDemoLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const firstTooltipShownSessionIdRef = useRef<string | null>(null);
 
@@ -199,10 +244,20 @@ export function WorkoutOverlay() {
   }, [rows]);
 
   const showTooltipWarning = tooltipWarningVariant !== null;
-  const hasSeenSetToggleTooltip = !!profile?.tooltips_seen?.workout?.setToggleDemo;
+  const hasSeenOverlayWalkthrough = !!profile?.tooltips_seen?.workout?.overlayWalkthroughCompleted;
+  const walkthroughTooltipKeys = WORKOUT_WALKTHROUGH_ORDER;
+  const walkthroughStepTotal = walkthroughTooltipKeys.length;
+  const isWalkthroughTooltipOpen = tooltipWarningVariant === 'first-entry-walkthrough';
+  const currentWalkthroughKey = isWalkthroughTooltipOpen
+    ? walkthroughTooltipKeys[Math.min(walkthroughStepIndex, walkthroughStepTotal - 1)]
+    : null;
+  const activeDemoKey: WorkoutTooltipKey | null =
+    tooltipWarningVariant === 'empty-finish'
+      ? 'setToggleDemo'
+      : currentWalkthroughKey;
 
   useEffect(() => {
-    const stopDemo = () => {
+    const resetDemoValues = () => {
       warningDemoLoopRef.current?.stop();
       warningDemoLoopRef.current = null;
       warningDemoToggle.setValue(0);
@@ -211,77 +266,169 @@ export function WorkoutOverlay() {
       warningDemoTapScale.setValue(0.8);
       warningDemoRippleScale.setValue(0.45);
       warningDemoRippleOpacity.setValue(0);
+      warningSwipeOffset.setValue(0);
+      warningSupersetMenuScale.setValue(1);
+      warningSupersetPopupOpacity.setValue(0);
+      warningReorderOffset.setValue(0);
+      warningReorderScale.setValue(1);
+      warningReorderDotOpacity.setValue(0);
+      warningReorderDotScale.setValue(0.8);
     };
 
-    if (!showTooltipWarning) {
-      stopDemo();
+    if (!showTooltipWarning || !activeDemoKey) {
+      resetDemoValues();
       return;
     }
 
-    stopDemo();
-    const cycle = Animated.sequence([
-      Animated.delay(300),
-      Animated.parallel([
-        Animated.timing(warningDemoTapOpacity, { toValue: 1, duration: 120, useNativeDriver: false }),
-        Animated.timing(warningDemoTapScale, { toValue: 1, duration: 120, useNativeDriver: false }),
-      ]),
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(warningDemoToggleScale, { toValue: 0.9, duration: 90, useNativeDriver: false }),
-          Animated.spring(warningDemoToggleScale, { toValue: 1, friction: 5, tension: 170, useNativeDriver: false }),
+    resetDemoValues();
+    let cycle: Animated.CompositeAnimation;
+
+    if (activeDemoKey === 'setToggleDemo') {
+      cycle = Animated.sequence([
+        Animated.delay(300),
+        Animated.parallel([
+          Animated.timing(warningDemoTapOpacity, { toValue: 1, duration: 120, useNativeDriver: false }),
+          Animated.timing(warningDemoTapScale, { toValue: 1, duration: 120, useNativeDriver: false }),
         ]),
-        Animated.timing(warningDemoToggle, { toValue: 1, duration: 190, useNativeDriver: false }),
-        Animated.sequence([
-          Animated.timing(warningDemoRippleOpacity, { toValue: 0.45, duration: 45, useNativeDriver: false }),
-          Animated.parallel([
-            Animated.timing(warningDemoRippleScale, { toValue: 1.35, duration: 260, useNativeDriver: false }),
-            Animated.timing(warningDemoRippleOpacity, { toValue: 0, duration: 260, useNativeDriver: false }),
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(warningDemoToggleScale, { toValue: 0.9, duration: 90, useNativeDriver: false }),
+            Animated.spring(warningDemoToggleScale, { toValue: 1, friction: 5, tension: 170, useNativeDriver: false }),
+          ]),
+          Animated.timing(warningDemoToggle, { toValue: 1, duration: 190, useNativeDriver: false }),
+          Animated.sequence([
+            Animated.timing(warningDemoRippleOpacity, { toValue: 0.45, duration: 45, useNativeDriver: false }),
+            Animated.parallel([
+              Animated.timing(warningDemoRippleScale, { toValue: 1.35, duration: 260, useNativeDriver: false }),
+              Animated.timing(warningDemoRippleOpacity, { toValue: 0, duration: 260, useNativeDriver: false }),
+            ]),
+          ]),
+          Animated.sequence([
+            Animated.timing(warningDemoTapScale, { toValue: 0.82, duration: 90, useNativeDriver: false }),
+            Animated.timing(warningDemoTapScale, { toValue: 1, duration: 100, useNativeDriver: false }),
           ]),
         ]),
-        Animated.sequence([
-          Animated.timing(warningDemoTapScale, { toValue: 0.82, duration: 90, useNativeDriver: false }),
-          Animated.timing(warningDemoTapScale, { toValue: 1, duration: 100, useNativeDriver: false }),
+        Animated.delay(740),
+        Animated.parallel([
+          Animated.timing(warningDemoToggle, { toValue: 0, duration: 180, useNativeDriver: false }),
+          Animated.timing(warningDemoTapOpacity, { toValue: 0, duration: 140, useNativeDriver: false }),
+          Animated.timing(warningDemoTapScale, { toValue: 0.8, duration: 140, useNativeDriver: false }),
         ]),
-      ]),
-      Animated.delay(740),
-      Animated.parallel([
-        Animated.timing(warningDemoToggle, { toValue: 0, duration: 180, useNativeDriver: false }),
-        Animated.timing(warningDemoTapOpacity, { toValue: 0, duration: 140, useNativeDriver: false }),
-        Animated.timing(warningDemoTapScale, { toValue: 0.8, duration: 140, useNativeDriver: false }),
-      ]),
-      Animated.delay(240),
-    ]);
+        Animated.delay(240),
+      ]);
+    } else if (activeDemoKey === 'setSwipeActions') {
+      cycle = Animated.sequence([
+        Animated.delay(250),
+        Animated.timing(warningSwipeOffset, {
+          toValue: -30,
+          duration: 380,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.delay(220),
+        Animated.timing(warningSwipeOffset, {
+          toValue: 30,
+          duration: 500,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.delay(220),
+        Animated.timing(warningSwipeOffset, {
+          toValue: 0,
+          duration: 340,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.delay(280),
+      ]);
+    } else if (activeDemoKey === 'supersetMenu') {
+      cycle = Animated.sequence([
+        Animated.delay(240),
+        Animated.sequence([
+          Animated.timing(warningSupersetMenuScale, { toValue: 0.85, duration: 100, useNativeDriver: false }),
+          Animated.spring(warningSupersetMenuScale, { toValue: 1, friction: 5, tension: 170, useNativeDriver: false }),
+        ]),
+        Animated.sequence([
+          Animated.timing(warningSupersetPopupOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+          Animated.delay(700),
+          Animated.timing(warningSupersetPopupOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+        ]),
+        Animated.delay(240),
+      ]);
+    } else {
+      cycle = Animated.sequence([
+        Animated.delay(240),
+        Animated.parallel([
+          Animated.timing(warningReorderDotOpacity, { toValue: 1, duration: 120, useNativeDriver: false }),
+          Animated.timing(warningReorderDotScale, { toValue: 1, duration: 120, useNativeDriver: false }),
+        ]),
+        Animated.delay(420),
+        Animated.parallel([
+          Animated.timing(warningReorderScale, { toValue: 1.04, duration: 180, useNativeDriver: false }),
+          Animated.timing(warningReorderOffset, { toValue: -10, duration: 180, useNativeDriver: false }),
+        ]),
+        Animated.delay(360),
+        Animated.parallel([
+          Animated.timing(warningReorderScale, { toValue: 1, duration: 220, useNativeDriver: false }),
+          Animated.timing(warningReorderOffset, { toValue: 0, duration: 220, useNativeDriver: false }),
+          Animated.timing(warningReorderDotOpacity, { toValue: 0, duration: 220, useNativeDriver: false }),
+          Animated.timing(warningReorderDotScale, { toValue: 0.8, duration: 220, useNativeDriver: false }),
+        ]),
+        Animated.delay(240),
+      ]);
+    }
 
     warningDemoLoopRef.current = Animated.loop(cycle);
     warningDemoLoopRef.current.start();
 
-    return stopDemo;
-  }, [showTooltipWarning]);
+    return resetDemoValues;
+  }, [
+    activeDemoKey,
+    showTooltipWarning,
+    warningDemoRippleOpacity,
+    warningDemoRippleScale,
+    warningDemoTapOpacity,
+    warningDemoTapScale,
+    warningDemoToggle,
+    warningDemoToggleScale,
+    warningReorderDotOpacity,
+    warningReorderDotScale,
+    warningReorderOffset,
+    warningReorderScale,
+    warningSupersetMenuScale,
+    warningSupersetPopupOpacity,
+    warningSwipeOffset,
+  ]);
 
   useEffect(() => {
     if (!expanded || !session?.id) return;
-    if (hasSeenSetToggleTooltip) return;
+    if (totalSets === 0) return;
+    if (hasSeenOverlayWalkthrough) return;
+    if (tooltipWarningVariant !== null) return;
     if (firstTooltipShownSessionIdRef.current === session.id) return;
     firstTooltipShownSessionIdRef.current = session.id;
-    setTooltipWarningVariant('first-start');
-  }, [expanded, hasSeenSetToggleTooltip, session?.id]);
+    setWalkthroughStepIndex(0);
+    setTooltipWarningVariant('first-entry-walkthrough');
+  }, [expanded, hasSeenOverlayWalkthrough, session?.id, tooltipWarningVariant, totalSets]);
 
-  const markSetToggleTooltipSeen = useCallback(async () => {
-    if (!profile || hasSeenSetToggleTooltip) return;
+  const markWalkthroughSeen = useCallback(async () => {
+    if (!profile || hasSeenOverlayWalkthrough) return;
+    const currentWorkout = profile.tooltips_seen?.workout ?? {};
+    const nextWorkout = { ...currentWorkout };
+    const changed = !nextWorkout.overlayWalkthroughCompleted;
+    nextWorkout.overlayWalkthroughCompleted = true;
+    if (!changed) return;
     try {
       await updateProfile({
         tooltips_seen: {
           ...(profile.tooltips_seen ?? {}),
-          workout: {
-            ...(profile.tooltips_seen?.workout ?? {}),
-            setToggleDemo: true,
-          },
+          workout: nextWorkout,
         },
       });
     } catch {
       // Best-effort preference update only.
     }
-  }, [hasSeenSetToggleTooltip, profile, updateProfile]);
+  }, [hasSeenOverlayWalkthrough, profile, updateProfile]);
 
   const { muscleHeatmapData, muscleHeatmapMax } = useMemo(() => {
     const totals = new Map<string, { completed: number; total: number }>();
@@ -333,6 +480,7 @@ export function WorkoutOverlay() {
 
   const handleComplete = useCallback(() => {
     if (isCompleting) return;
+    if (isWalkthroughTooltipOpen) return;
     if (completedSets === 0) {
       setTooltipWarningVariant('empty-finish');
       return;
@@ -345,17 +493,29 @@ export function WorkoutOverlay() {
         onPress: () => { void finalizeWorkout(); },
       },
     ]);
-  }, [completedSets, finalizeWorkout, isCompleting]);
+  }, [completedSets, finalizeWorkout, isCompleting, isWalkthroughTooltipOpen]);
 
   const handleSkipAndFinish = useCallback(() => {
     setTooltipWarningVariant(null);
     void finalizeWorkout();
   }, [finalizeWorkout]);
 
-  const handleFirstTooltipGotIt = useCallback(() => {
+  const handleWalkthroughPrimaryAction = useCallback(() => {
+    if (!isWalkthroughTooltipOpen) return;
+    const isLastPage = walkthroughStepIndex >= walkthroughStepTotal - 1;
+    if (!isLastPage) {
+      setWalkthroughStepIndex((prev) => prev + 1);
+      return;
+    }
     setTooltipWarningVariant(null);
-    void markSetToggleTooltipSeen();
-  }, [markSetToggleTooltipSeen]);
+    void markWalkthroughSeen();
+  }, [isWalkthroughTooltipOpen, markWalkthroughSeen, walkthroughStepIndex, walkthroughStepTotal]);
+
+  const handleCloseWalkthrough = useCallback(() => {
+    if (!isWalkthroughTooltipOpen) return;
+    setTooltipWarningVariant(null);
+    void markWalkthroughSeen();
+  }, [isWalkthroughTooltipOpen, markWalkthroughSeen]);
 
   const handleStartRestTimer = useCallback(() => {
     const latestDefault = useProfileStore.getState().profile?.rest_timer_seconds ?? 90;
@@ -705,6 +865,22 @@ export function WorkoutOverlay() {
       fontFamily: fonts.regular,
       lineHeight: 20,
     },
+    finishWarningPager: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: -2,
+    },
+    finishWarningPageTitle: {
+      color: colors.text,
+      fontSize: 16,
+      fontFamily: fonts.bold,
+    },
+    finishWarningPageCount: {
+      color: colors.textMuted,
+      fontSize: 12,
+      fontFamily: fonts.semiBold,
+    },
     finishWarningDemoCard: {
       borderRadius: 16,
       borderWidth: 1,
@@ -715,8 +891,17 @@ export function WorkoutOverlay() {
       alignItems: 'center',
       justifyContent: 'space-between',
     },
+    finishWarningDemoCardStacked: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      justifyContent: 'flex-start',
+      gap: 12,
+    },
     finishWarningDemoLeft: {
       gap: 5,
+    },
+    finishWarningDemoLeftStacked: {
+      width: '100%',
     },
     finishWarningDemoSetTitle: {
       color: colors.text,
@@ -779,6 +964,84 @@ export function WorkoutOverlay() {
       borderColor: colors.accent,
       zIndex: 1,
     },
+    finishWarningSwipeDemoFrame: {
+      width: '100%',
+      height: 60,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
+      justifyContent: 'center',
+    },
+    finishWarningSwipeRevealRow: {
+      ...StyleSheet.absoluteFillObject,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'stretch',
+    },
+    finishWarningSwipeAction: {
+      width: 70,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    finishWarningSwipeActionWarmup: {
+      backgroundColor: '#FFD93D',
+    },
+    finishWarningSwipeActionDelete: {
+      backgroundColor: '#cc3333',
+    },
+    finishWarningSwipeActionText: {
+      fontSize: 18,
+      fontFamily: fonts.bold,
+      color: '#000000',
+    },
+    finishWarningSwipeActionTextDelete: {
+      color: '#FFFFFF',
+    },
+    finishWarningSwipeSetRowWrap: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    finishWarningSupersetDemo: {
+      width: '100%',
+      overflow: 'visible',
+    },
+    finishWarningReorderPill: {
+      width: '100%',
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: 9,
+      paddingHorizontal: 10,
+      backgroundColor: colors.surface,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    finishWarningReorderPillText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontFamily: fonts.semiBold,
+    },
+    finishWarningReorderHandle: {
+      color: colors.textMuted,
+      fontSize: 14,
+      fontFamily: fonts.bold,
+    },
+    finishWarningReorderDot: {
+      position: 'absolute',
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: 'rgba(0,0,0,0.12)',
+      top: -5,
+      right: 12,
+      zIndex: 3,
+    },
     finishWarningActions: {
       flexDirection: 'row',
       gap: 10,
@@ -817,6 +1080,73 @@ export function WorkoutOverlay() {
     inputRange: [0, 0.5, 1],
     outputRange: [0, 0.35, 1],
   });
+  const swipeDemoRow = useMemo<WorkoutRow>(() => ({
+    id: 'walkthrough-swipe-row',
+    session_id: 'walkthrough',
+    exercise_id: 'walkthrough',
+    routine_day_exercise_id: 'walkthrough',
+    set_number: 1,
+    weight: '',
+    reps: '8',
+    rir: '2',
+    duration: '',
+    distance: '',
+    is_completed: false,
+    is_warmup: false,
+    target_weight: 0,
+    target_reps_min: 8,
+    target_reps_max: 12,
+    target_duration: 0,
+    target_distance: 0,
+    exercise_order: 0,
+    superset_group: null,
+  }), []);
+  const supersetDemoEntry = useMemo<RoutineDayExercise>(() => ({
+    id: 'walkthrough-superset-entry',
+    routine_day_id: 'walkthrough',
+    exercise_id: 'walkthrough-superset-exercise',
+    sort_order: 0,
+    target_sets: 2,
+    target_reps: 10,
+    superset_group: null,
+    exercise: {
+      id: 'walkthrough-superset-exercise',
+      user_id: null,
+      name: 'Incline Dumbbell Press',
+      muscle_group: 'chest',
+      equipment: 'dumbbell',
+      exercise_type: 'weight_reps',
+      secondary_muscles: [],
+      asset_url: null,
+      created_at: '2024-01-01T00:00:00.000Z',
+    } as Exercise,
+    sets: [],
+  }), []);
+  const supersetDemoRows = useMemo<WorkoutRow[]>(() => ([{
+    id: 'walkthrough-superset-row-1',
+    session_id: 'walkthrough',
+    exercise_id: 'walkthrough-superset-exercise',
+    routine_day_exercise_id: 'walkthrough-superset-entry',
+    set_number: 1,
+    weight: '60',
+    reps: '10',
+    rir: '2',
+    duration: '',
+    distance: '',
+    is_completed: false,
+    is_warmup: false,
+    target_weight: 60,
+    target_reps_min: 8,
+    target_reps_max: 10,
+    target_duration: 0,
+    target_distance: 0,
+    exercise_order: 0,
+    superset_group: null,
+  }]), []);
+  const walkthroughStepNumber = Math.min(walkthroughStepIndex + 1, Math.max(walkthroughStepTotal, 1));
+  const walkthroughCopy = currentWalkthroughKey ? WORKOUT_TOOLTIP_COPY[currentWalkthroughKey] : null;
+  const walkthroughPrimaryLabel = walkthroughStepNumber >= walkthroughStepTotal ? 'Got It' : 'Next';
+  const useStackedDemoLayout = tooltipWarningVariant === 'first-entry-walkthrough' && currentWalkthroughKey !== 'setToggleDemo';
 
   const normalFooter = useCallback(() => (
     <View>
@@ -899,62 +1229,167 @@ export function WorkoutOverlay() {
 
             <BottomSheetModal
               visible={showTooltipWarning}
-              onClose={tooltipWarningVariant === 'empty-finish' ? () => setTooltipWarningVariant(null) : undefined}
-              showCloseButton={tooltipWarningVariant === 'empty-finish'}
-              title={tooltipWarningVariant === 'first-start' ? 'Quick Tip' : 'No Sets Marked Done'}
+              onClose={
+                tooltipWarningVariant === 'first-entry-walkthrough'
+                  ? handleCloseWalkthrough
+                  : tooltipWarningVariant === 'empty-finish'
+                  ? () => setTooltipWarningVariant(null)
+                  : undefined
+              }
+              showCloseButton={tooltipWarningVariant !== null}
+              title={tooltipWarningVariant === 'first-entry-walkthrough' ? 'Workout Tips' : 'No Sets Marked Done'}
             >
               <View style={styles.finishWarningBody}>
+                {tooltipWarningVariant === 'first-entry-walkthrough' && walkthroughCopy && (
+                  <View style={styles.finishWarningPager}>
+                    <Text style={styles.finishWarningPageTitle}>{walkthroughCopy.title}</Text>
+                    <Text style={styles.finishWarningPageCount}>{walkthroughStepNumber}/{walkthroughStepTotal}</Text>
+                  </View>
+                )}
                 <Text style={styles.finishWarningText}>
-                  {tooltipWarningVariant === 'first-start'
-                    ? 'Tap the set toggle to mark each set done so your workout is recorded accurately.'
+                  {tooltipWarningVariant === 'first-entry-walkthrough'
+                    ? (walkthroughCopy?.message ?? '')
                     : 'Unchecked sets won\'t be recorded. Tap the set toggle to log progress, or skip logging and finish anyway.'}
                 </Text>
 
-                <View style={styles.finishWarningDemoCard}>
-                  <View style={styles.finishWarningDemoLeft}>
-                    <Text style={styles.finishWarningDemoSetTitle}>Set 1</Text>
-                    <Text style={styles.finishWarningDemoSetSub}>Tap + to mark it done</Text>
+                <View
+                  style={[styles.finishWarningDemoCard, useStackedDemoLayout && styles.finishWarningDemoCardStacked]}
+                  pointerEvents="none"
+                >
+                  <View style={[styles.finishWarningDemoLeft, useStackedDemoLayout && styles.finishWarningDemoLeftStacked]}>
+                    <Text style={styles.finishWarningDemoSetTitle}>
+                      {tooltipWarningVariant === 'first-entry-walkthrough' ? (walkthroughCopy?.demoTitle ?? 'Set 1') : 'Set 1'}
+                    </Text>
+                    <Text style={styles.finishWarningDemoSetSub}>
+                      {tooltipWarningVariant === 'first-entry-walkthrough' ? (walkthroughCopy?.demoHint ?? 'Tap + to mark it done') : 'Tap + to mark it done'}
+                    </Text>
                   </View>
-                  <View style={styles.finishWarningDemoToggleWrap}>
+                  {(tooltipWarningVariant !== 'first-entry-walkthrough' || currentWalkthroughKey === 'setToggleDemo') && (
+                    <View style={styles.finishWarningDemoToggleWrap}>
+                      <Animated.View
+                        style={[
+                          styles.finishWarningDemoRipple,
+                          {
+                            opacity: warningDemoRippleOpacity,
+                            transform: [{ scale: warningDemoRippleScale }],
+                          },
+                        ]}
+                      />
+                      <Animated.View
+                        style={[
+                          styles.finishWarningDemoTapDot,
+                          {
+                            opacity: warningDemoTapOpacity,
+                            transform: [{ scale: warningDemoTapScale }],
+                          },
+                        ]}
+                      />
+                      <Animated.View
+                        style={[
+                          styles.finishWarningDemoToggle,
+                          {
+                            backgroundColor: warningToggleBackground,
+                            transform: [{ scale: warningDemoToggleScale }],
+                          },
+                        ]}
+                      >
+                        <Animated.Text style={[styles.finishWarningDemoPlus, { opacity: warningPlusOpacity }]}>+</Animated.Text>
+                        <Animated.Text style={[styles.finishWarningDemoCheck, { opacity: warningCheckOpacity }]}>✓</Animated.Text>
+                      </Animated.View>
+                    </View>
+                  )}
+                  {tooltipWarningVariant === 'first-entry-walkthrough' && currentWalkthroughKey === 'setSwipeActions' && (
+                    <View style={styles.finishWarningSwipeDemoFrame}>
+                      <View style={styles.finishWarningSwipeRevealRow}>
+                        <View style={[styles.finishWarningSwipeAction, styles.finishWarningSwipeActionWarmup]}>
+                          <Text style={styles.finishWarningSwipeActionText}>W</Text>
+                        </View>
+                        <View style={[styles.finishWarningSwipeAction, styles.finishWarningSwipeActionDelete]}>
+                          <Text style={[styles.finishWarningSwipeActionText, styles.finishWarningSwipeActionTextDelete]}>X</Text>
+                        </View>
+                      </View>
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.finishWarningSwipeSetRowWrap,
+                          { transform: [{ translateX: warningSwipeOffset }] },
+                        ]}
+                      >
+                        <SetRow
+                          row={swipeDemoRow}
+                          displaySetNumber={1}
+                          weightUnit={weightUnit}
+                          distanceUnit={distanceUnit}
+                          exerciseType="bodyweight_reps"
+                          rowBackgroundColor={colors.surface}
+                          onUpdateRowLocal={() => {}}
+                          onUpdateRow={() => {}}
+                          onToggle={() => {}}
+                          onSwipeDelete={() => {}}
+                          onToggleWarmup={() => {}}
+                        />
+                      </Animated.View>
+                    </View>
+                  )}
+                  {tooltipWarningVariant === 'first-entry-walkthrough' && currentWalkthroughKey === 'supersetMenu' && (
+                    <View style={styles.finishWarningSupersetDemo}>
+                      <ExerciseCard
+                        entry={supersetDemoEntry}
+                        rows={supersetDemoRows}
+                        previousSets={[]}
+                        weightUnit={weightUnit}
+                        distanceUnit={distanceUnit}
+                        onUpdateRow={() => {}}
+                        onToggleRow={() => {}}
+                        onDeleteRow={() => {}}
+                        onAddRow={() => {}}
+                        onAddWarmup={() => {}}
+                        onToggleWarmup={() => {}}
+                        canSupersetPrev
+                        canSupersetNext
+                        onSupersetPrev={() => {}}
+                        onSupersetNext={() => {}}
+                        onDuplicate={() => {}}
+                        noBottomMargin
+                        demoOverflowVisible
+                        demoOverflowTriggerStyle={{ transform: [{ scale: warningSupersetMenuScale }] }}
+                        demoOverflowMenuStyle={{ opacity: warningSupersetPopupOpacity }}
+                      />
+                    </View>
+                  )}
+                  {tooltipWarningVariant === 'first-entry-walkthrough' && currentWalkthroughKey === 'reorderLongPress' && (
                     <Animated.View
                       style={[
-                        styles.finishWarningDemoRipple,
+                        styles.finishWarningReorderPill,
                         {
-                          opacity: warningDemoRippleOpacity,
-                          transform: [{ scale: warningDemoRippleScale }],
-                        },
-                      ]}
-                    />
-                    <Animated.View
-                      style={[
-                        styles.finishWarningDemoTapDot,
-                        {
-                          opacity: warningDemoTapOpacity,
-                          transform: [{ scale: warningDemoTapScale }],
-                        },
-                      ]}
-                    />
-                    <Animated.View
-                      style={[
-                        styles.finishWarningDemoToggle,
-                        {
-                          backgroundColor: warningToggleBackground,
-                          transform: [{ scale: warningDemoToggleScale }],
+                          transform: [
+                            { translateY: warningReorderOffset },
+                            { scale: warningReorderScale },
+                          ],
                         },
                       ]}
                     >
-                      <Animated.Text style={[styles.finishWarningDemoPlus, { opacity: warningPlusOpacity }]}>+</Animated.Text>
-                      <Animated.Text style={[styles.finishWarningDemoCheck, { opacity: warningCheckOpacity }]}>✓</Animated.Text>
+                      <Animated.View
+                        style={[
+                          styles.finishWarningReorderDot,
+                          {
+                            opacity: warningReorderDotOpacity,
+                            transform: [{ scale: warningReorderDotScale }],
+                          },
+                        ]}
+                      />
+                      <Text style={styles.finishWarningReorderPillText}>Long Press + Drag</Text>
+                      <Text style={styles.finishWarningReorderHandle}>≡</Text>
                     </Animated.View>
-                  </View>
+                  )}
                 </View>
 
-                {tooltipWarningVariant === 'first-start' ? (
+                {tooltipWarningVariant === 'first-entry-walkthrough' ? (
                   <View style={styles.finishWarningActions}>
                     <Button
-                      title="Got it"
+                      title={walkthroughPrimaryLabel}
                       variant="accent"
-                      onPress={handleFirstTooltipGotIt}
+                      onPress={handleWalkthroughPrimaryAction}
                       style={{ flex: 1 }}
                     />
                   </View>

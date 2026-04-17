@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation, Animated } from 'react-native';
 import type { LayoutAnimationConfig } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit, DistanceUnit } from '../../models';
 import { fonts } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -50,6 +51,9 @@ interface ExerciseCardProps {
   onDuplicate?: () => void;
   onDetails?: () => void;
   noBottomMargin?: boolean;
+  demoOverflowVisible?: boolean;
+  demoOverflowMenuStyle?: StyleProp<ViewStyle>;
+  demoOverflowTriggerStyle?: StyleProp<ViewStyle>;
 }
 
 export function ExerciseCard({
@@ -80,6 +84,9 @@ export function ExerciseCard({
   onDuplicate,
   onDetails,
   noBottomMargin,
+  demoOverflowVisible,
+  demoOverflowMenuStyle,
+  demoOverflowTriggerStyle,
 }: ExerciseCardProps) {
   const { colors } = useTheme();
   const { setCompletion } = useThemeColors();
@@ -181,7 +188,7 @@ export function ExerciseCard({
     return items;
   }, [supersetGroup, canSupersetPrev, canSupersetNext, onSupersetPrev, onSupersetNext, onSeparate, onSwap, onDuplicate, onRemove]);
 
-  const showMenu = !reorderCollapsed && (onSwap || onDuplicate || onRemove);
+  const showMenu = !reorderCollapsed && (onSwap || onDuplicate || onRemove || demoOverflowVisible);
 
   const marginOverride = noBottomMargin ? { marginBottom: 0 } : undefined;
 
@@ -193,6 +200,11 @@ export function ExerciseCard({
     cardCollapsed: {
       marginBottom: 6,
       paddingVertical: 10,
+    },
+    headerPressLayer: {
+      position: 'relative',
+      zIndex: 2000,
+      elevation: 2000,
     },
     header: {
       flexDirection: 'row',
@@ -208,6 +220,8 @@ export function ExerciseCard({
       justifyContent: 'space-between',
       alignItems: 'center',
       backgroundColor: 'transparent',
+      zIndex: 2100,
+      elevation: 2100,
     },
     exerciseName: {
       fontSize: 17,
@@ -299,7 +313,12 @@ export function ExerciseCard({
       <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
         <Card style={[styles.cardCollapsed, marginOverride]}>
           {completionOverlay}
-          <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={handleToggle}
+            onLongPress={onLongPress}
+            activeOpacity={0.7}
+            style={styles.headerPressLayer}
+          >
             <View style={styles.headerCollapsed}>
               <View style={{ flex: 1 }}>
                 {renderExerciseName(doneTextColor)}
@@ -308,7 +327,14 @@ export function ExerciseCard({
               <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
                 {completedCount}/{rows.length}
               </Text>
-              {showMenu && <OverflowMenu items={menuItems} />}
+              {showMenu && (
+                <OverflowMenu
+                  items={menuItems}
+                  demoVisible={demoOverflowVisible}
+                  demoMenuStyle={demoOverflowMenuStyle}
+                  demoTriggerStyle={demoOverflowTriggerStyle}
+                />
+              )}
             </View>
           </TouchableOpacity>
         </Card>
@@ -321,7 +347,12 @@ export function ExerciseCard({
   const cardContent = (
     <Card style={[styles.card, marginOverride]}>
       {completionOverlay}
-      <TouchableOpacity onPress={handleToggle} onLongPress={onLongPress} activeOpacity={0.7}>
+      <TouchableOpacity
+        onPress={handleToggle}
+        onLongPress={onLongPress}
+        activeOpacity={0.7}
+        style={styles.headerPressLayer}
+      >
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
             {renderExerciseName(doneTextColor)}
@@ -330,7 +361,14 @@ export function ExerciseCard({
           <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
             {completedCount}/{rows.length}
           </Text>
-          {showMenu && <OverflowMenu items={menuItems} />}
+          {showMenu && (
+            <OverflowMenu
+              items={menuItems}
+              demoVisible={demoOverflowVisible}
+              demoMenuStyle={demoOverflowMenuStyle}
+              demoTriggerStyle={demoOverflowTriggerStyle}
+            />
+          )}
         </View>
       </TouchableOpacity>
 

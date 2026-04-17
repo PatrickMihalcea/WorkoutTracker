@@ -13,7 +13,7 @@ export interface ColorPreferences {
 
 export interface TooltipSeenPreferences {
   workout?: {
-    setToggleDemo?: boolean;
+    overlayWalkthroughCompleted?: boolean;
     [tooltipId: string]: boolean | undefined;
   };
   [category: string]: Record<string, boolean | undefined> | undefined;
