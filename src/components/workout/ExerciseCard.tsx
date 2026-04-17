@@ -154,28 +154,19 @@ export function ExerciseCard({
     onLongPress?.();
   };
 
-  const handleNamePressOut = () => {
-    // Delay reset to keep the long-press flag valid through same-cycle onPress dispatch.
-    setTimeout(() => {
-      didLongPressNameRef.current = false;
-    }, 0);
-  };
-
   const renderExerciseName = (done?: string) => {
     if (!onDetails) {
       return <Text style={[styles.exerciseName, done && { color: done }]}>{exerciseName}</Text>;
     }
     return (
-      <TouchableOpacity
+      <Text
         onPress={handleDetailsPress}
         onLongPress={handleNameLongPress}
-        onPressOut={handleNamePressOut}
-        delayLongPress={400}
-        activeOpacity={0.7}
-        style={styles.exerciseNameTapTarget}
+        suppressHighlighting
+        style={[styles.exerciseName, styles.exerciseNameLink, done && { color: done }]}
       >
-        <Text style={[styles.exerciseName, styles.exerciseNameLink, done && { color: done }]}>{exerciseName}</Text>
-      </TouchableOpacity>
+        {exerciseName}
+      </Text>
     );
   };
 

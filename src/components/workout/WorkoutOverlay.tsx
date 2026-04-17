@@ -48,6 +48,7 @@ import {
 const TAB_BAR_HEIGHT = 60;
 const SLIDE_IN_MS = 500;
 const SLIDE_OUT_MS = 300;
+type TooltipWarningVariant = 'empty-finish' | 'first-start';
 
 export function WorkoutOverlay() {
   const { colors } = useTheme();
@@ -103,7 +104,17 @@ export function WorkoutOverlay() {
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [autoOpenPicker, setAutoOpenPicker] = useState(false);
+  const [tooltipWarningVariant, setTooltipWarningVariant] = useState<TooltipWarningVariant | null>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
   const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
+  const warningDemoToggle = useRef(new Animated.Value(0)).current;
+  const warningDemoToggleScale = useRef(new Animated.Value(1)).current;
+  const warningDemoTapOpacity = useRef(new Animated.Value(0)).current;
+  const warningDemoTapScale = useRef(new Animated.Value(0.8)).current;
+  const warningDemoRippleScale = useRef(new Animated.Value(0.45)).current;
+  const warningDemoRippleOpacity = useRef(new Animated.Value(0)).current;
+  const warningDemoLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const firstTooltipShownSessionIdRef = useRef<string | null>(null);
 
   useFocusEffect(useCallback(() => {
     const which = pendingPickerReopenRef.current;
@@ -187,6 +198,91 @@ export function WorkoutOverlay() {
     return { completedSets: completed, totalSets: total };
   }, [rows]);
 
+  const showTooltipWarning = tooltipWarningVariant !== null;
+  const hasSeenSetToggleTooltip = !!profile?.tooltips_seen?.workout?.setToggleDemo;
+
+  useEffect(() => {
+    const stopDemo = () => {
+      warningDemoLoopRef.current?.stop();
+      warningDemoLoopRef.current = null;
+      warningDemoToggle.setValue(0);
+      warningDemoToggleScale.setValue(1);
+      warningDemoTapOpacity.setValue(0);
+      warningDemoTapScale.setValue(0.8);
+      warningDemoRippleScale.setValue(0.45);
+      warningDemoRippleOpacity.setValue(0);
+    };
+
+    if (!showTooltipWarning) {
+      stopDemo();
+      return;
+    }
+
+    stopDemo();
+    const cycle = Animated.sequence([
+      Animated.delay(300),
+      Animated.parallel([
+        Animated.timing(warningDemoTapOpacity, { toValue: 1, duration: 120, useNativeDriver: false }),
+        Animated.timing(warningDemoTapScale, { toValue: 1, duration: 120, useNativeDriver: false }),
+      ]),
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(warningDemoToggleScale, { toValue: 0.9, duration: 90, useNativeDriver: false }),
+          Animated.spring(warningDemoToggleScale, { toValue: 1, friction: 5, tension: 170, useNativeDriver: false }),
+        ]),
+        Animated.timing(warningDemoToggle, { toValue: 1, duration: 190, useNativeDriver: false }),
+        Animated.sequence([
+          Animated.timing(warningDemoRippleOpacity, { toValue: 0.45, duration: 45, useNativeDriver: false }),
+          Animated.parallel([
+            Animated.timing(warningDemoRippleScale, { toValue: 1.35, duration: 260, useNativeDriver: false }),
+            Animated.timing(warningDemoRippleOpacity, { toValue: 0, duration: 260, useNativeDriver: false }),
+          ]),
+        ]),
+        Animated.sequence([
+          Animated.timing(warningDemoTapScale, { toValue: 0.82, duration: 90, useNativeDriver: false }),
+          Animated.timing(warningDemoTapScale, { toValue: 1, duration: 100, useNativeDriver: false }),
+        ]),
+      ]),
+      Animated.delay(740),
+      Animated.parallel([
+        Animated.timing(warningDemoToggle, { toValue: 0, duration: 180, useNativeDriver: false }),
+        Animated.timing(warningDemoTapOpacity, { toValue: 0, duration: 140, useNativeDriver: false }),
+        Animated.timing(warningDemoTapScale, { toValue: 0.8, duration: 140, useNativeDriver: false }),
+      ]),
+      Animated.delay(240),
+    ]);
+
+    warningDemoLoopRef.current = Animated.loop(cycle);
+    warningDemoLoopRef.current.start();
+
+    return stopDemo;
+  }, [showTooltipWarning]);
+
+  useEffect(() => {
+    if (!expanded || !session?.id) return;
+    if (hasSeenSetToggleTooltip) return;
+    if (firstTooltipShownSessionIdRef.current === session.id) return;
+    firstTooltipShownSessionIdRef.current = session.id;
+    setTooltipWarningVariant('first-start');
+  }, [expanded, hasSeenSetToggleTooltip, session?.id]);
+
+  const markSetToggleTooltipSeen = useCallback(async () => {
+    if (!profile || hasSeenSetToggleTooltip) return;
+    try {
+      await updateProfile({
+        tooltips_seen: {
+          ...(profile.tooltips_seen ?? {}),
+          workout: {
+            ...(profile.tooltips_seen?.workout ?? {}),
+            setToggleDemo: true,
+          },
+        },
+      });
+    } catch {
+      // Best-effort preference update only.
+    }
+  }, [hasSeenSetToggleTooltip, profile, updateProfile]);
+
   const { muscleHeatmapData, muscleHeatmapMax } = useMemo(() => {
     const totals = new Map<string, { completed: number; total: number }>();
     const addContribution = (label: string, completed: number, total: number, weight: number = 1) => {
@@ -220,24 +316,46 @@ export function WorkoutOverlay() {
     return { muscleHeatmapData: data, muscleHeatmapMax: endStateMax };
   }, [exercises, rows]);
 
+  const finalizeWorkout = useCallback(async () => {
+    if (isCompleting) return;
+    setIsCompleting(true);
+    try {
+      const completedSessionId = await completeWorkout(weightUnit);
+      if (completedSessionId) {
+        router.push(`/(tabs)/profile/${completedSessionId}?justCompleted=1`);
+      }
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message || 'Failed to complete workout.');
+    } finally {
+      setIsCompleting(false);
+    }
+  }, [completeWorkout, isCompleting, router, weightUnit]);
+
   const handleComplete = useCallback(() => {
+    if (isCompleting) return;
+    if (completedSets === 0) {
+      setTooltipWarningVariant('empty-finish');
+      return;
+    }
+
     Alert.alert('Complete Workout', 'Finish and save this workout?', [
       { text: 'Keep Going', style: 'cancel' },
       {
         text: 'Complete',
-        onPress: async () => {
-          try {
-            const completedSessionId = await completeWorkout(weightUnit);
-            if (completedSessionId) {
-              router.push(`/(tabs)/profile/${completedSessionId}?justCompleted=1`);
-            }
-          } catch (error: unknown) {
-            Alert.alert('Error', (error as Error).message || 'Failed to complete workout.');
-          }
-        },
+        onPress: () => { void finalizeWorkout(); },
       },
     ]);
-  }, [completeWorkout, weightUnit, router]);
+  }, [completedSets, finalizeWorkout, isCompleting]);
+
+  const handleSkipAndFinish = useCallback(() => {
+    setTooltipWarningVariant(null);
+    void finalizeWorkout();
+  }, [finalizeWorkout]);
+
+  const handleFirstTooltipGotIt = useCallback(() => {
+    setTooltipWarningVariant(null);
+    void markSetToggleTooltipSeen();
+  }, [markSetToggleTooltipSeen]);
 
   const handleStartRestTimer = useCallback(() => {
     const latestDefault = useProfileStore.getState().profile?.rest_timer_seconds ?? 90;
@@ -507,10 +625,13 @@ export function WorkoutOverlay() {
       color: colors.text,
     },
     finishBtn: {
-      backgroundColor: colors.text,
+      backgroundColor: colors.accent,
       paddingVertical: 8,
       paddingHorizontal: 20,
       borderRadius: 20,
+    },
+    finishBtnDisabled: {
+      opacity: 0.55,
     },
     finishText: {
       color: colors.background,
@@ -574,7 +695,128 @@ export function WorkoutOverlay() {
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
+    finishWarningBody: {
+      gap: 16,
+      paddingBottom: 8,
+    },
+    finishWarningText: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      fontFamily: fonts.regular,
+      lineHeight: 20,
+    },
+    finishWarningDemoCard: {
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceLight,
+      padding: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    finishWarningDemoLeft: {
+      gap: 5,
+    },
+    finishWarningDemoSetTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+    },
+    finishWarningDemoSetSub: {
+      color: colors.textMuted,
+      fontSize: 12,
+      fontFamily: fonts.regular,
+    },
+    finishWarningDemoToggleWrap: {
+      width: 36,
+      height: 36,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    finishWarningDemoToggle: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(0,0,0,0.2)',
+      overflow: 'hidden',
+    },
+    finishWarningDemoPlus: {
+      position: 'absolute',
+      fontSize: 16,
+      fontFamily: fonts.bold,
+      color: colors.background,
+      lineHeight: 16,
+    },
+    finishWarningDemoCheck: {
+      position: 'absolute',
+      fontSize: 15,
+      fontFamily: fonts.bold,
+      color: '#000000',
+      lineHeight: 15,
+    },
+    finishWarningDemoTapDot: {
+      position: 'absolute',
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: 'rgba(0,0,0,0.12)',
+      top: -2,
+      right: -2,
+      zIndex: 3,
+    },
+    finishWarningDemoRipple: {
+      position: 'absolute',
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      borderWidth: 2,
+      borderColor: colors.accent,
+      zIndex: 1,
+    },
+    finishWarningActions: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    finishWarningEndBtn: {
+      flex: 1,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: 14,
+      backgroundColor: 'transparent',
+    },
+    finishWarningEndBtnDisabled: {
+      opacity: 0.55,
+    },
+    finishWarningEndText: {
+      color: '#FF6B6B',
+      fontSize: 16,
+      fontFamily: fonts.semiBold,
+      textAlign: 'center',
+    },
   }), [colors]);
+
+  const warningToggleBackground = warningDemoToggle.interpolate({
+    inputRange: [0, 1],
+    outputRange: [colors.text, colors.accent],
+  });
+  const warningPlusOpacity = warningDemoToggle.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [1, 0.3, 0],
+  });
+  const warningCheckOpacity = warningDemoToggle.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0.35, 1],
+  });
 
   const normalFooter = useCallback(() => (
     <View>
@@ -615,8 +857,13 @@ export function WorkoutOverlay() {
                 <Text style={styles.chevronDown}>&#x25BC;</Text>
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Workout</Text>
-              <TouchableOpacity style={styles.finishBtn} onPress={handleComplete} activeOpacity={0.7}>
-                <Text style={styles.finishText}>Finish</Text>
+              <TouchableOpacity
+                style={[styles.finishBtn, isCompleting && styles.finishBtnDisabled]}
+                onPress={handleComplete}
+                activeOpacity={0.7}
+                disabled={isCompleting}
+              >
+                <Text style={styles.finishText}>{isCompleting ? 'Finishing...' : 'Finish'}</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.infoBar}>
@@ -648,6 +895,92 @@ export function WorkoutOverlay() {
                 bare
                 maxValue={muscleHeatmapMax}
               />
+            </BottomSheetModal>
+
+            <BottomSheetModal
+              visible={showTooltipWarning}
+              onClose={tooltipWarningVariant === 'empty-finish' ? () => setTooltipWarningVariant(null) : undefined}
+              showCloseButton={tooltipWarningVariant === 'empty-finish'}
+              title={tooltipWarningVariant === 'first-start' ? 'Quick Tip' : 'No Sets Marked Done'}
+            >
+              <View style={styles.finishWarningBody}>
+                <Text style={styles.finishWarningText}>
+                  {tooltipWarningVariant === 'first-start'
+                    ? 'Tap the set toggle to mark each set done so your workout is recorded accurately.'
+                    : 'Unchecked sets won\'t be recorded. Tap the set toggle to log progress, or skip logging and finish anyway.'}
+                </Text>
+
+                <View style={styles.finishWarningDemoCard}>
+                  <View style={styles.finishWarningDemoLeft}>
+                    <Text style={styles.finishWarningDemoSetTitle}>Set 1</Text>
+                    <Text style={styles.finishWarningDemoSetSub}>Tap + to mark it done</Text>
+                  </View>
+                  <View style={styles.finishWarningDemoToggleWrap}>
+                    <Animated.View
+                      style={[
+                        styles.finishWarningDemoRipple,
+                        {
+                          opacity: warningDemoRippleOpacity,
+                          transform: [{ scale: warningDemoRippleScale }],
+                        },
+                      ]}
+                    />
+                    <Animated.View
+                      style={[
+                        styles.finishWarningDemoTapDot,
+                        {
+                          opacity: warningDemoTapOpacity,
+                          transform: [{ scale: warningDemoTapScale }],
+                        },
+                      ]}
+                    />
+                    <Animated.View
+                      style={[
+                        styles.finishWarningDemoToggle,
+                        {
+                          backgroundColor: warningToggleBackground,
+                          transform: [{ scale: warningDemoToggleScale }],
+                        },
+                      ]}
+                    >
+                      <Animated.Text style={[styles.finishWarningDemoPlus, { opacity: warningPlusOpacity }]}>+</Animated.Text>
+                      <Animated.Text style={[styles.finishWarningDemoCheck, { opacity: warningCheckOpacity }]}>✓</Animated.Text>
+                    </Animated.View>
+                  </View>
+                </View>
+
+                {tooltipWarningVariant === 'first-start' ? (
+                  <View style={styles.finishWarningActions}>
+                    <Button
+                      title="Got it"
+                      variant="accent"
+                      onPress={handleFirstTooltipGotIt}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.finishWarningActions}>
+                    <TouchableOpacity
+                      style={[styles.finishWarningEndBtn, isCompleting && styles.finishWarningEndBtnDisabled]}
+                      onPress={() => {
+                        setTooltipWarningVariant(null);
+                        handleCancel();
+                      }}
+                      disabled={isCompleting}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.finishWarningEndText}>End Workout</Text>
+                    </TouchableOpacity>
+                    <Button
+                      title="Skip and Finish"
+                      variant="accent"
+                      onPress={handleSkipAndFinish}
+                      loading={isCompleting}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                )}
+              </View>
             </BottomSheetModal>
 
             <View style={{ flex: 1 }}>

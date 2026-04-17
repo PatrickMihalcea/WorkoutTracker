@@ -11,6 +11,14 @@ export interface ColorPreferences {
   accent?: string;
 }
 
+export interface TooltipSeenPreferences {
+  workout?: {
+    setToggleDemo?: boolean;
+    [tooltipId: string]: boolean | undefined;
+  };
+  [category: string]: Record<string, boolean | undefined> | undefined;
+}
+
 export interface UserProfile {
   id: string;
   display_name: string;
@@ -24,6 +32,7 @@ export interface UserProfile {
   height_unit: HeightUnit;
   distance_unit: DistanceUnit;
   color_preferences: ColorPreferences;
+  tooltips_seen: TooltipSeenPreferences;
   rest_timer_seconds: number;
   notify_rest_timer_enabled: boolean;
   notify_workout_day_enabled: boolean;

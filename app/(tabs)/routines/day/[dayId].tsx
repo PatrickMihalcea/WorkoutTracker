@@ -93,15 +93,18 @@ function SwipeableExerciseRow({
         <View style={styles.exerciseInfo}>
           <View style={styles.nameRow}>
             {onDetails ? (
-              <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7} style={styles.exerciseNameTapTarget}>
-                <Text style={[styles.exerciseName, styles.exerciseNameLink]}>{ex.exercise?.name ?? 'Exercise'}
-                  <Text style={styles.expandArrow}>{isExpanded ? ' ⏷' : ' ⏵'}</Text>
+              <>
+                <Text onPress={handleDetailsPress} style={[styles.exerciseName, styles.exerciseNameLink]}>
+                  {ex.exercise?.name ?? 'Exercise'}
                 </Text>
-              </TouchableOpacity>
+                <Text style={styles.expandArrow}>{isExpanded ? '⏷' : '⏵'}</Text>
+              </>
             ) : (
-              <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+              <>
+                <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+                <Text style={styles.expandArrow}>{isExpanded ? '⏷' : '⏵'}</Text>
+              </>
             )}
-            
           </View>
           <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
         </View>

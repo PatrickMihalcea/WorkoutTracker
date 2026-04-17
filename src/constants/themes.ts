@@ -132,7 +132,7 @@ export const THEMES: Theme[] = [
     },
     gradients: {
       background: ['#000000', '#000000'],
-      surface: ['#141714', '#101210'],
+      surface: ['#141414', '#0F0F0F'],
       surfaceElevated: ['#1B201B', '#141714'],
       accent: ['#336B3A', '#336B3A'],
       primaryButton: ['#FFFFFF', '#EDF9EF'],
@@ -156,7 +156,7 @@ export const THEMES: Theme[] = [
     },
     gradients: {
       background: ['#000000', '#000000'],
-      surface: ['#15131A', '#100F14'],
+      surface: ['#141414', '#0F0F0F'],
       surfaceElevated: ['#1D1A24', '#15131A'],
       accent: ['#5A3B8C', '#5A3B8C'],
       primaryButton: ['#FFFFFF', '#F2EAFF'],

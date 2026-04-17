@@ -34,7 +34,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.md,
     paddingHorizontal: spacing.md,
     borderColor: colors.border,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: colors.surface,
   },
   displayName: {
     fontSize: 24,
@@ -220,7 +220,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, gradients } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { profile } = useProfileStore();
 
@@ -382,7 +382,7 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={(
           <>
-            <Card style={styles.heroCard}>
+            <Card style={styles.heroCard} gradientColors={gradients.surface}>
               <Text style={styles.displayName} numberOfLines={1} ellipsizeMode="tail">
                 @{profile?.display_name ?? 'user'}
               </Text>

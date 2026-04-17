@@ -1055,13 +1055,13 @@ export default function SessionDetailScreen() {
               <Card style={[styles.exerciseCard, position !== null && styles.exerciseCardNoMargin]}>
                 <View style={styles.exerciseHeader}>
                   <View style={styles.exerciseHeaderText}>
-                    <TouchableOpacity
+                    <Text
                       onPress={() => router.push(`/exercise/${group.exerciseId}`)}
-                      activeOpacity={0.7}
-                      style={styles.exerciseNameTapTarget}
+                      suppressHighlighting
+                      style={[styles.exerciseName, styles.exerciseNameLink]}
                     >
-                      <Text style={[styles.exerciseName, styles.exerciseNameLink]}>{group.exerciseName}</Text>
-                    </TouchableOpacity>
+                      {group.exerciseName}
+                    </Text>
                     <Text style={styles.muscleGroup}>{formatMuscleGroupLabel(group.muscleGroup)}</Text>
                   </View>
                   <OverflowMenu items={menuItems} />

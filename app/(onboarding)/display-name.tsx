@@ -78,6 +78,7 @@ export default function DisplayNameScreen() {
             height_unit: 'cm',
             distance_unit: 'km',
             color_preferences: {},
+            tooltips_seen: {},
             rest_timer_seconds: 90,
             notify_rest_timer_enabled: true,
             notify_workout_day_enabled: true,
