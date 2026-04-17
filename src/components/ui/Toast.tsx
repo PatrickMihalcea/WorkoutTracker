@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
-import { colors, fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fonts } from '../../constants';
 
 interface ToastProps {
   message: string;
@@ -10,6 +11,7 @@ interface ToastProps {
 }
 
 export function Toast({ message, visible, onDismiss, duration = 2000 }: ToastProps) {
+  const { colors } = useTheme();
   const opacity = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -31,6 +33,32 @@ export function Toast({ message, visible, onDismiss, duration = 2000 }: ToastPro
     };
   }, [visible]);
 
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      position: 'absolute',
+      top: 8,
+      left: 20,
+      right: 20,
+      zIndex: 100,
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 6,
+      elevation: 6,
+    },
+    text: {
+      fontSize: 13,
+      fontFamily: fonts.semiBold,
+      color: colors.text,
+      textAlign: 'center',
+    },
+  }), [colors]);
+
   if (!visible) return null;
 
   return (
@@ -39,29 +67,3 @@ export function Toast({ message, visible, onDismiss, duration = 2000 }: ToastPro
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    top: 8,
-    left: 20,
-    right: 20,
-    zIndex: 100,
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  text: {
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-    textAlign: 'center',
-  },
-});

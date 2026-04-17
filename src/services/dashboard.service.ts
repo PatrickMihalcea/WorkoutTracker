@@ -980,16 +980,19 @@ function computeVolume(sessions: RawSession[], granularity: Granularity, skeleto
   return skeleton ? stampValues(skeleton, map) : mapToPoints(map, granularity);
 }
 
+const EXCLUDED_MUSCLE_GROUPS = new Set(['unknown', 'full_body', 'cardio']);
+
 function computeMuscleGroupSplit(sessions: RawSession[]) {
   const counts = new Map<string, number>();
   for (const s of sessions) {
     for (const set of s.sets) {
       const group = set.exercise?.muscle_group ?? 'unknown';
-      if (group === 'unknown') continue;
+      if (EXCLUDED_MUSCLE_GROUPS.has(group)) continue;
       counts.set(group, (counts.get(group) ?? 0) + 1);
       const secondary: string[] = (set.exercise as Record<string, unknown>)?.secondary_muscles as string[] ?? [];
       for (const sec of secondary) {
-        counts.set(sec, (counts.get(sec) ?? 0) + 0.5);
+        if (EXCLUDED_MUSCLE_GROUPS.has(sec)) continue;
+        counts.set(sec, (counts.get(sec) ?? 0) + 0.33);
       }
     }
   }

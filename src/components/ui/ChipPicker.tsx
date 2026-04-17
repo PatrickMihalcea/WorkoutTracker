@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ViewStyle, TextStyle, StyleProp, Modal, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DayOfWeek, DAY_LABELS } from '../../models';
-import { colors, fonts, gradients } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fonts } from '../../constants';
 
 interface ChipPickerProps<T extends string | number> {
   items: { key: string; label: string; value: T; tooltip?: string }[];
@@ -41,8 +42,93 @@ export function ChipPicker<T extends string | number>({
   horizontal = true,
   maxHeight,
 }: ChipPickerProps<T>) {
+  const { colors, gradients } = useTheme();
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [tooltipContent, setTooltipContent] = useState('');
+
+  const styles = useMemo(() => StyleSheet.create({
+    scroll: { flexGrow: 0, marginBottom: 16 },
+    row: { flexDirection: 'row', gap: 8 },
+    rowWrap: { flexWrap: 'wrap' },
+    wrapRow: { paddingRight: 8 },
+    chip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: colors.surfaceLight,
+      overflow: 'hidden',
+    },
+    chipWithTooltip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    chipSelected: { backgroundColor: colors.text },
+    chipText: {
+      color: colors.textSecondary,
+      fontSize: 13,
+      fontFamily: fonts.semiBold,
+      textTransform: 'capitalize',
+    },
+    chipTextSelected: { color: colors.background },
+    tooltipBtn: {
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      borderWidth: 1.5,
+      borderColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tooltipBtnSelected: { borderColor: colors.background },
+    tooltipBtnText: {
+      color: colors.accent,
+      fontSize: 10,
+      fontFamily: fonts.semiBold,
+      lineHeight: 13,
+    },
+    tooltipBtnTextSelected: { color: colors.background },
+    tooltipOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 32,
+    },
+    tooltipCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+      gap: 14,
+      maxWidth: 320,
+      width: '100%',
+    },
+    tooltipHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    tooltipHeaderIcon: { color: colors.textSecondary, fontSize: 13 },
+    tooltipHeaderTitle: {
+      color: colors.text,
+      fontSize: 13,
+      fontFamily: fonts.semiBold,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    tooltipDivider: { height: 1, backgroundColor: colors.border, marginHorizontal: -20 },
+    tooltipCardText: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      fontFamily: fonts.regular,
+      lineHeight: 22,
+    },
+    tooltipDismissBtn: {
+      alignSelf: 'stretch',
+      marginTop: 4,
+      paddingVertical: 11,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+    },
+    tooltipDismissBtnText: { color: colors.text, fontSize: 14, fontFamily: fonts.semiBold },
+  }), [colors]);
+
   const useScrollContainer = horizontal || !!maxHeight;
   const content = (
     <View style={[styles.row, !horizontal && styles.rowWrap]}>
@@ -173,6 +259,29 @@ export function MultiChipPicker<T extends string | number>({
   horizontal = true,
   maxHeight,
 }: MultiChipPickerProps<T>) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => StyleSheet.create({
+    scroll: { flexGrow: 0, marginBottom: 16 },
+    row: { flexDirection: 'row', gap: 8 },
+    rowWrap: { flexWrap: 'wrap' },
+    wrapRow: { paddingRight: 8 },
+    chip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: colors.surfaceLight,
+      overflow: 'hidden',
+    },
+    chipSelected: { backgroundColor: colors.text },
+    chipText: {
+      color: colors.textSecondary,
+      fontSize: 13,
+      fontFamily: fonts.semiBold,
+      textTransform: 'capitalize',
+    },
+    chipTextSelected: { color: colors.background },
+  }), [colors]);
+
   return (
     <ScrollView
       horizontal={horizontal}
@@ -224,123 +333,3 @@ export function DayOfWeekPicker({ selected, onChange, style }: DayOfWeekPickerPr
     <ChipPicker items={DAY_ITEMS} selected={selected} onChange={onChange} style={style} />
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: {
-    flexGrow: 0,
-    marginBottom: 16,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  rowWrap: {
-    flexWrap: 'wrap',
-  },
-  wrapRow: {
-    paddingRight: 8,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceLight,
-    overflow: 'hidden',
-  },
-  chipWithTooltip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  chipSelected: {
-    backgroundColor: colors.text,
-  },
-  chipText: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    textTransform: 'capitalize',
-  },
-  chipTextSelected: {
-    color: colors.background,
-  },
-  tooltipBtn: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tooltipBtnSelected: {
-    borderColor: colors.background,
-  },
-  tooltipBtnText: {
-    color: colors.accent,
-    fontSize: 10,
-    fontFamily: fonts.semiBold,
-    lineHeight: 13,
-  },
-  tooltipBtnTextSelected: {
-    color: colors.background,
-  },
-  tooltipOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  tooltipCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 20,
-    gap: 14,
-    maxWidth: 320,
-    width: '100%',
-  },
-  tooltipHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  tooltipHeaderIcon: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },
-  tooltipHeaderTitle: {
-    color: colors.text,
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  tooltipDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginHorizontal: -20,
-  },
-  tooltipCardText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    lineHeight: 22,
-  },
-  tooltipDismissBtn: {
-    alignSelf: 'stretch',
-    marginTop: 4,
-    paddingVertical: 11,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-  },
-  tooltipDismissBtnText: {
-    color: colors.text,
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-  },
-});

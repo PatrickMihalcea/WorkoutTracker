@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, G, LinearGradient, Stop } from 'react-native-svg';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -28,6 +29,7 @@ export function MetricRing({
   muted = false,
   compact = false,
 }: MetricRingProps) {
+  const { colors } = useTheme();
   const size = 92;
   const strokeWidth = 9;
   const radius = (size - strokeWidth) / 2;
@@ -55,6 +57,95 @@ export function MetricRing({
     inputRange: [0, 1],
     outputRange: [circumference, 0],
   });
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#161B23',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: '#2A303A',
+      paddingVertical: 12,
+      paddingHorizontal: 6,
+      shadowColor: '#000',
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+    },
+    containerMuted: {
+      borderColor: '#2A2F38',
+    },
+    containerFull: {
+      borderColor: '#4A617F',
+      shadowOpacity: 0.34,
+      shadowRadius: 12,
+    },
+    centerText: {
+      position: 'absolute',
+      top: 12,
+      bottom: 34,
+      left: 6,
+      right: 6,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    fraction: {
+      textAlign: 'center',
+      maxWidth: 76,
+    },
+    fractionCompact: {
+      maxWidth: 82,
+    },
+    current: {
+      fontSize: 16,
+      fontFamily: fonts.bold,
+      color: colors.text,
+    },
+    currentCompact: {
+      fontSize: 14,
+    },
+    separator: {
+      fontSize: 12,
+      fontFamily: fonts.semiBold,
+      color: '#8E98AA',
+    },
+    separatorCompact: {
+      fontSize: 11,
+    },
+    target: {
+      fontSize: 13,
+      fontFamily: fonts.semiBold,
+      color: '#B7C0CF',
+    },
+    targetCompact: {
+      fontSize: 12,
+    },
+    label: {
+      marginTop: 12,
+      fontSize: 12,
+      fontFamily: fonts.semiBold,
+      color: '#98A5BA',
+    },
+    fullBadge: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 8,
+      backgroundColor: '#2A3B52',
+      borderWidth: 1,
+      borderColor: '#5F86BC',
+    },
+    fullBadgeText: {
+      fontSize: 9,
+      lineHeight: 11,
+      fontFamily: fonts.bold,
+      color: '#B9D7FF',
+    },
+  }), [colors]);
 
   return (
     <View style={[styles.container, muted && styles.containerMuted, isFull && styles.containerFull]}>
@@ -133,92 +224,3 @@ export function MetricRing({
 const stylesVars = {
   track: '#2A303A',
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#161B23',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#2A303A',
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  containerMuted: {
-    borderColor: '#2A2F38',
-  },
-  containerFull: {
-    borderColor: '#4A617F',
-    shadowOpacity: 0.34,
-    shadowRadius: 12,
-  },
-  centerText: {
-    position: 'absolute',
-    top: 12,
-    bottom: 34,
-    left: 6,
-    right: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fraction: {
-    textAlign: 'center',
-    maxWidth: 76,
-  },
-  fractionCompact: {
-    maxWidth: 82,
-  },
-  current: {
-    fontSize: 16,
-    fontFamily: fonts.bold,
-    color: colors.text,
-  },
-  currentCompact: {
-    fontSize: 14,
-  },
-  separator: {
-    fontSize: 12,
-    fontFamily: fonts.semiBold,
-    color: '#8E98AA',
-  },
-  separatorCompact: {
-    fontSize: 11,
-  },
-  target: {
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    color: '#B7C0CF',
-  },
-  targetCompact: {
-    fontSize: 12,
-  },
-  label: {
-    marginTop: 12,
-    fontSize: 12,
-    fontFamily: fonts.semiBold,
-    color: '#98A5BA',
-  },
-  fullBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    backgroundColor: '#2A3B52',
-    borderWidth: 1,
-    borderColor: '#5F86BC',
-  },
-  fullBadgeText: {
-    fontSize: 9,
-    lineHeight: 11,
-    fontFamily: fonts.bold,
-    color: '#B9D7FF',
-  },
-});

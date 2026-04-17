@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,14 @@ import {
   UIManager,
   Platform,
 } from 'react-native';
-import { colors, fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fonts } from '../../constants';
 
 export interface OverflowMenuItem {
   label: string;
   onPress: () => void;
   destructive?: boolean;
+  highlight?: boolean;
   disabled?: boolean;
 }
 
@@ -24,10 +26,36 @@ interface OverflowMenuProps {
 }
 
 export function OverflowMenu({ items }: OverflowMenuProps) {
+  const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const [anchorY, setAnchorY] = useState(0);
   const [anchorX, setAnchorX] = useState(0);
   const triggerRef = useRef<View>(null);
+
+  const styles = useMemo(() => StyleSheet.create({
+    trigger: { paddingHorizontal: 4, paddingVertical: 2, justifyContent: 'center', alignItems: 'center' },
+    dots: { fontSize: 22, color: colors.textSecondary, fontFamily: fonts.bold, lineHeight: 24 },
+    overlay: { flex: 1 },
+    menu: {
+      position: 'absolute',
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      paddingVertical: 4,
+      minWidth: 180,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    menuItem: { paddingVertical: 12, paddingHorizontal: 20 },
+    menuItemText: { fontSize: 15, fontFamily: fonts.regular, color: colors.text },
+    menuItemDestructive: { color: '#FF6B6B' },
+    menuItemDisabled: { color: colors.textMuted },
+    menuItemHighlight: { color: colors.accent },
+  }), [colors]);
 
   const handleOpen = useCallback(() => {
     const node = findNodeHandle(triggerRef.current);
@@ -79,6 +107,7 @@ export function OverflowMenu({ items }: OverflowMenuProps) {
                     styles.menuItemText,
                     item.destructive && styles.menuItemDestructive,
                     item.disabled && styles.menuItemDisabled,
+                    item.highlight && styles.menuItemHighlight,
                   ]}
                 >
                   {item.label}
@@ -91,48 +120,3 @@ export function OverflowMenu({ items }: OverflowMenuProps) {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  trigger: {
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dots: {
-    fontSize: 22,
-    color: colors.textSecondary,
-    fontFamily: fonts.bold,
-    lineHeight: 24,
-  },
-  overlay: {
-    flex: 1,
-  },
-  menu: {
-    position: 'absolute',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingVertical: 4,
-    minWidth: 180,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  menuItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-  },
-  menuItemText: {
-    fontSize: 15,
-    fontFamily: fonts.regular,
-    color: colors.text,
-  },
-  menuItemDestructive: {
-    color: '#FF6B6B',
-  },
-  menuItemDisabled: {
-    color: colors.textMuted,
-  },
-});

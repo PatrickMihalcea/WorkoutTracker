@@ -8,7 +8,8 @@ import {
   LayoutChangeEvent,
 } from 'react-native';
 import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
-import { colors, fonts, spacing } from '../../constants';
+import { fonts, spacing } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 import { computeYAxisInfo, CHART_HEIGHT, SVG_HEIGHT, YAxisInfo } from './chartUtils';
 
 export interface BarDataItem {
@@ -43,6 +44,7 @@ export function RecordsBarChart({
   onToggle,
   yLabelFormatter,
 }: RecordsBarChartProps) {
+  const { colors } = useTheme();
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
 
   const handleLayout = useCallback((e: LayoutChangeEvent) => {
@@ -94,6 +96,77 @@ export function RecordsBarChart({
     }
     return lines;
   }, [yAxis.sections]);
+
+  const cardStyles = useMemo(() => StyleSheet.create({
+    container: {
+      marginBottom: spacing.lg,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.sm,
+    },
+    headerTextBlock: {
+      flex: 1,
+      marginRight: spacing.sm,
+    },
+    title: {
+      fontSize: 16,
+      fontFamily: fonts.bold,
+      color: colors.text,
+      marginBottom: 4,
+    },
+    subtitle: {
+      fontSize: 12,
+      fontFamily: fonts.regular,
+      color: colors.textMuted,
+      marginBottom: spacing.sm,
+    },
+    toggleContainer: {
+      flexDirection: 'row',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    toggleBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      backgroundColor: colors.surfaceLight,
+    },
+    toggleBtnActive: {
+      backgroundColor: colors.text,
+    },
+    toggleText: {
+      fontSize: 11,
+      fontFamily: fonts.semiBold,
+      color: colors.textMuted,
+    },
+    toggleTextActive: {
+      color: colors.background,
+    },
+    chartRow: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      marginLeft: -4,
+    },
+    yAxisColumn: {
+      justifyContent: 'space-between',
+      paddingBottom: 22,
+      paddingTop: 2,
+    },
+    yAxisLabel: {
+      fontSize: 10,
+      fontFamily: fonts.light,
+      color: colors.textMuted,
+      textAlign: 'right',
+      paddingRight: 2,
+    },
+    chartScroll: {
+      flex: 1,
+    },
+  }), [colors]);
 
   if (data.length === 0) return null;
 
@@ -187,74 +260,3 @@ export function RecordsBarChart({
     </View>
   );
 }
-
-const cardStyles = StyleSheet.create({
-  container: {
-    marginBottom: spacing.lg,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  headerTextBlock: {
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  title: {
-    fontSize: 16,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 12,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-    marginBottom: spacing.sm,
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  toggleBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    backgroundColor: colors.surfaceLight,
-  },
-  toggleBtnActive: {
-    backgroundColor: colors.text,
-  },
-  toggleText: {
-    fontSize: 11,
-    fontFamily: fonts.semiBold,
-    color: colors.textMuted,
-  },
-  toggleTextActive: {
-    color: colors.background,
-  },
-  chartRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    marginLeft: -4,
-  },
-  yAxisColumn: {
-    justifyContent: 'space-between',
-    paddingBottom: 22,
-    paddingTop: 2,
-  },
-  yAxisLabel: {
-    fontSize: 10,
-    fontFamily: fonts.light,
-    color: colors.textMuted,
-    textAlign: 'right',
-    paddingRight: 2,
-  },
-  chartScroll: {
-    flex: 1,
-  },
-});

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,8 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 import { WeightUnit, DistanceUnit, ExerciseType } from '../../models';
 import { weightUnitLabel, distanceUnitLabel, parseWeightToKg } from '../../utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
@@ -182,6 +183,7 @@ interface SetsTableEditorProps {
 }
 
 export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, dUnit = 'km', exerciseType }: SetsTableEditorProps) {
+  const { colors } = useTheme();
   const [rirPickerIndex, setRirPickerIndex] = useState<number | null>(null);
   const [durationPickerIndex, setDurationPickerIndex] = useState<number | null>(null);
   const config = getExerciseTypeConfig(exerciseType);
@@ -203,6 +205,165 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
         return v ? parseFloat(v) : null;
       })()
     : null;
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      marginBottom: 16,
+    },
+    rowsScroll: {
+      maxHeight: 360,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingBottom: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      marginBottom: 4,
+    },
+    colHeader: {
+      fontSize: 11,
+      fontFamily: fonts.bold,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+    colSet: { width: 36, alignItems: 'center', justifyContent: 'center' },
+    colWeight: { flex: 1, textAlign: 'center', marginHorizontal: 4 },
+    colFlex: { flex: 1, textAlign: 'center', marginHorizontal: 4 },
+    colRir: { width: 36, alignItems: 'center' },
+    repsHeaderBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginHorizontal: 4,
+      gap: 4,
+    },
+    repsToggleArrow: {
+      fontSize: 10,
+      color: colors.textMuted,
+    },
+    headerSpacer: {
+      width: 28,
+    },
+    tableRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 4,
+    },
+    colCell: {
+      fontSize: 14,
+      fontFamily: fonts.semiBold,
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
+    input: {
+      backgroundColor: colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      fontSize: 14,
+      fontFamily: fonts.regular,
+      color: colors.text,
+      textAlign: 'center',
+      marginHorizontal: 4,
+    },
+    repsCol: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginHorizontal: 4,
+      backgroundColor: colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 6,
+      gap: 2,
+    },
+    repsInner: {
+      flex: 1,
+      fontSize: 14,
+      fontFamily: fonts.regular,
+      color: colors.text,
+      textAlign: 'center' as const,
+      padding: 0,
+      margin: 0,
+      backgroundColor: 'transparent',
+      borderWidth: 0,
+    },
+    repRangeTo: {
+      fontSize: 12,
+      fontFamily: fonts.regular,
+      color: colors.textMuted,
+    },
+    removeSetBtn: {
+      width: 28,
+      height: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    removeSetText: {
+      fontSize: 18,
+      color: colors.textMuted,
+      fontFamily: fonts.bold,
+    },
+    addBtnRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 24,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      marginTop: 4,
+    },
+    addSetBtn: {
+      paddingVertical: 10,
+      alignItems: 'center',
+    },
+    addSetText: {
+      fontSize: 13,
+      fontFamily: fonts.semiBold,
+      color: colors.textSecondary,
+    },
+    addWarmupText: {
+      fontSize: 13,
+      fontFamily: fonts.semiBold,
+      color: '#D4A017',
+    },
+    durationTouchable: {
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 8,
+    },
+    durationText: {
+      fontSize: 14,
+      fontFamily: fonts.regular,
+      color: colors.text,
+      textAlign: 'center',
+    },
+    durationPlaceholder: {
+      fontSize: 14,
+      fontFamily: fonts.regular,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+    warmupCircle: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: '#D4A017',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    warmupText: {
+      fontSize: 11,
+      fontFamily: fonts.bold,
+      color: '#fff',
+    },
+  }), [colors]);
 
   return (
     <View style={styles.container}>
@@ -398,162 +559,3 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: 16,
-  },
-  rowsScroll: {
-    maxHeight: 360,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    marginBottom: 4,
-  },
-  colHeader: {
-    fontSize: 11,
-    fontFamily: fonts.bold,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  colSet: { width: 36, alignItems: 'center', justifyContent: 'center' },
-  colWeight: { flex: 1, textAlign: 'center', marginHorizontal: 4 },
-  colFlex: { flex: 1, textAlign: 'center', marginHorizontal: 4 },
-  colRir: { width: 36, alignItems: 'center' },
-  repsHeaderBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 4,
-    gap: 4,
-  },
-  repsToggleArrow: {
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-  headerSpacer: {
-    width: 28,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  colCell: {
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  input: {
-    backgroundColor: colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    color: colors.text,
-    textAlign: 'center',
-    marginHorizontal: 4,
-  },
-  repsCol: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 4,
-    backgroundColor: colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    gap: 2,
-  },
-  repsInner: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    color: colors.text,
-    textAlign: 'center' as const,
-    padding: 0,
-    margin: 0,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-  },
-  repRangeTo: {
-    fontSize: 12,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-  },
-  removeSetBtn: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  removeSetText: {
-    fontSize: 18,
-    color: colors.danger,
-    fontFamily: fonts.bold,
-  },
-  addBtnRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 24,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    marginTop: 4,
-  },
-  addSetBtn: {
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  addSetText: {
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-  addWarmupText: {
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    color: '#D4A017',
-  },
-  durationTouchable: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  durationText: {
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    color: colors.text,
-    textAlign: 'center',
-  },
-  durationPlaceholder: {
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  warmupCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#D4A017',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  warmupText: {
-    fontSize: 11,
-    fontFamily: fonts.bold,
-    color: '#fff',
-  },
-});

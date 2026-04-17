@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { OnboardingScaffold } from '../../../src/components/onboarding/OnboardingScaffold';
 import { RoutineCreationLoadingOverlay } from '../../../src/components/routine/RoutineCreationLoadingOverlay';
 import { Button, ChipPicker, Input } from '../../../src/components/ui';
-import { colors, fonts, spacing } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
 import {
   OnboardingEquipmentPreference,
   OnboardingExperience,
@@ -18,11 +18,15 @@ import {
 import { onboardingService } from '../../../src/services';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
 
 type CreateMode = 'custom' | OnboardingRoutineGenerationMode;
 
 export default function CreateRoutineScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuthStore();
   const { createRoutine } = useRoutineStore();
 
@@ -266,6 +270,9 @@ export default function CreateRoutineScreen() {
 }
 
 function QuestionBlock({ label, children }: { label: string; children: ReactNode }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={styles.block}>
       <Text style={styles.blockLabel}>{label}</Text>
@@ -274,7 +281,7 @@ function QuestionBlock({ label, children }: { label: string; children: ReactNode
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   modeColumn: {
     gap: spacing.sm,
     marginBottom: spacing.md,
@@ -282,14 +289,14 @@ const styles = StyleSheet.create({
   modeCard: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#34595C',
-    backgroundColor: 'rgba(12, 20, 23, 0.9)',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: spacing.sm + spacing.xs,
     paddingVertical: spacing.sm + spacing.xs,
   },
   modeCardActive: {
-    borderColor: '#4ECDC4',
-    backgroundColor: 'rgba(78, 205, 196, 0.12)',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
   },
   modeTitle: {
     color: colors.text,
@@ -297,7 +304,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   modeTitleActive: {
-    color: '#D9FFFC',
+    color: colors.text,
   },
   modeHint: {
     marginTop: 4,
@@ -306,7 +313,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   modeHintActive: {
-    color: '#9EDAD5',
+    color: colors.textSecondary,
   },
   block: {
     marginBottom: spacing.xs,

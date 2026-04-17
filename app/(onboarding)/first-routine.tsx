@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   Alert,
@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { OnboardingScaffold } from '../../src/components/onboarding/OnboardingScaffold';
 import { RoutineCreationLoadingOverlay } from '../../src/components/routine/RoutineCreationLoadingOverlay';
 import { Button, ChipPicker } from '../../src/components/ui';
-import { colors, fonts, spacing } from '../../src/constants';
+import { fonts, spacing } from '../../src/constants';
 import {
   OnboardingEquipmentPreference,
   OnboardingExperience,
@@ -23,8 +23,12 @@ import {
 } from '../../src/models';
 import { onboardingService } from '../../src/services';
 import { useProfileStore } from '../../src/stores/profile.store';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../src/constants/themes';
 
 export default function FirstRoutineScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const { updateProfile } = useProfileStore();
   const [mode, setMode] = useState<OnboardingRoutineGenerationMode>('template');
@@ -76,7 +80,7 @@ export default function FirstRoutineScreen() {
         onBack={() => router.back()}
         title="Build your first routine"
         subtitle="Choose a quick setup now. You can edit everything later."
-        footer={<Button title="Create My Routine" onPress={handleContinue} loading={loading} />}
+        footer={<Button title="Create My Routine" onPress={handleContinue} loading={loading} variant="cta" size="lg" />}
       >
         <View style={styles.modeRow}>
           <TouchableOpacity
@@ -217,6 +221,9 @@ export default function FirstRoutineScreen() {
 }
 
 function QuestionBlock({ label, children }: { label: string; children: ReactNode }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={styles.block}>
       <Text style={styles.blockLabel}>{label}</Text>
@@ -225,7 +232,7 @@ function QuestionBlock({ label, children }: { label: string; children: ReactNode
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   modeRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -235,14 +242,14 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#34595C',
-    backgroundColor: 'rgba(12, 20, 23, 0.9)',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: spacing.sm + spacing.xs,
     paddingVertical: spacing.sm + spacing.xs,
   },
   modeCardActive: {
-    borderColor: '#4ECDC4',
-    backgroundColor: 'rgba(78, 205, 196, 0.12)',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
   },
   modeTitle: {
     color: colors.text,
@@ -250,7 +257,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   modeTitleActive: {
-    color: '#D9FFFC',
+    color: colors.text,
   },
   modeHint: {
     marginTop: 4,
@@ -259,7 +266,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   modeHintActive: {
-    color: '#9EDAD5',
+    color: colors.textSecondary,
   },
   block: {
     marginBottom: spacing.xs,

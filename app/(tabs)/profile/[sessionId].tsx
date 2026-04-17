@@ -19,10 +19,11 @@ import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { Card, Input, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle } from '../../../src/components/ui';
+import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { SetRow } from '../../../src/components/workout/SetRow';
 import { MetricRing } from '../../../src/components/history/MetricRing';
-import { colors, fonts, spacing } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
 import { SessionWithSetsAndExercises, SetLogWithExercise, WorkoutRow, Exercise, RoutineDayExercise, RoutineDayWithExercises } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 import { formatWeight, formatDistance, formatDistanceValue, parseWeightToKg, weightUnitLabel, distanceUnitLabel, milesToKm } from '../../../src/utils/units';
@@ -36,6 +37,8 @@ import {
   supersetPrev,
   type SupersetGroups,
 } from '../../../src/utils/superset';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
 
 interface ExerciseGroup {
   key: string;
@@ -263,6 +266,8 @@ function computeTemplateTargets(day: RoutineDayWithExercises): {
 
 export default function SessionDetailScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { sessionId, justCompleted } = useLocalSearchParams<{ sessionId: string; justCompleted?: string }>();
   const { profile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
@@ -284,6 +289,7 @@ export default function SessionDetailScreen() {
   const [tempSetCounter, setTempSetCounter] = useState(0);
   const [swapGroupKey, setSwapGroupKey] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
+  const [showAddExercise, setShowAddExercise] = useState(false);
   const [sessionRecords, setSessionRecords] = useState<SessionRecordAchieved[]>([]);
   const [showCompletionBanner, setShowCompletionBanner] = useState(justCompleted === '1');
   const [routineDayTemplate, setRoutineDayTemplate] = useState<RoutineDayWithExercises | null>(null);
@@ -675,6 +681,58 @@ export default function SessionDetailScreen() {
     });
   };
 
+  const handleDeleteWorkout = () => {
+    if (!session) return;
+    Alert.alert(
+      'Delete Workout',
+      'Permanently delete this workout and all its sets?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await sessionService.deleteSession(session.id);
+              if (router.canGoBack()) router.back();
+              else router.replace('/(tabs)/profile');
+            } catch (error: unknown) {
+              Alert.alert('Error', (error as Error).message);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleAddExerciseConfirm = async (exercise: Exercise, setsPayload: SetsPayloadItem[]) => {
+    if (!session || !sessionId) return;
+    const groups = groupSetsByExercise(session.sets);
+    const exerciseOrder = groups.length;
+    try {
+      for (let i = 0; i < setsPayload.length; i++) {
+        await sessionService.addSet({
+          session_id: session.id,
+          exercise_id: exercise.id,
+          set_number: i + 1,
+          weight: 0,
+          reps_performed: 0,
+          rir: null,
+          is_warmup: false,
+          exercise_order: exerciseOrder,
+          superset_group: null,
+          duration: 0,
+          distance: 0,
+        });
+      }
+      setShowAddExercise(false);
+      const updated = await sessionService.getByIdWithExercises(sessionId);
+      setSession(updated);
+    } catch (error: unknown) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  };
+
   const handleDeleteGroup = (group: ExerciseGroup) => {
     if (!session) return;
     Alert.alert(
@@ -1047,6 +1105,10 @@ export default function SessionDetailScreen() {
             </SupersetBracket>
           );
         })}
+        <Button title="+ Add Exercise" variant="dashed" onPress={() => setShowAddExercise(true)} style={{ marginTop: 8, marginBottom: 8 }} />
+        <TouchableOpacity onPress={handleDeleteWorkout} activeOpacity={0.7} style={{ alignItems: 'center', paddingVertical: 12, marginBottom: 16 }}>
+          <Text style={{ fontSize: 15, fontFamily: fonts.semiBold, color: '#FF6B6B' }}>Delete Workout</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <BottomSheetModal visible={showEdit} title="Edit Session" onClose={() => setShowEdit(false)}>
@@ -1205,12 +1267,22 @@ export default function SessionDetailScreen() {
           : null}
         onExerciseDetails={(exerciseId) => router.push(`/exercise/${exerciseId}`)}
       />
+
+      <AddExerciseModal
+        visible={showAddExercise}
+        onClose={() => setShowAddExercise(false)}
+        onConfirm={handleAddExerciseConfirm}
+        weightUnit={weightUnit}
+        distanceUnit={distUnit}
+        onDeleteExercise={() => {}}
+        onExerciseDetails={(exerciseId) => router.push(`/exercise/${exerciseId}`)}
+      />
     </View>
     </>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   flex: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1221,7 +1293,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
-    paddingBottom: 100,
+    paddingBottom: spacing.xl+50,
   },
   loadingContainer: {
     flex: 1,
@@ -1236,8 +1308,8 @@ const styles = StyleSheet.create({
   },
   completionBanner: {
     marginBottom: 14,
-    backgroundColor: '#1B2420',
-    borderColor: '#2E5C49',
+    backgroundColor: colors.surfaceLight,
+    borderColor: colors.border,
   },
   completionBannerHeader: {
     flexDirection: 'row',
@@ -1269,7 +1341,7 @@ const styles = StyleSheet.create({
   completionSubtitle: {
     fontSize: 13,
     fontFamily: fonts.regular,
-    color: '#A8C1B4',
+    color: colors.textMuted,
   },
   headerRow: {
     flexDirection: 'row',
@@ -1314,8 +1386,8 @@ const styles = StyleSheet.create({
   },
   recordsCard: {
     marginBottom: 18,
-    backgroundColor: '#1B2125',
-    borderColor: '#35414A',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
   },
   recordsTitle: {
     fontSize: 18,
@@ -1382,7 +1454,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   exerciseNameLink: {
-    color: '#98c6fb',
+    color: colors.accent,
   },
   exerciseNameTapTarget: {
     alignSelf: 'flex-start',
@@ -1418,7 +1490,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   tableRowAlt: {
-    backgroundColor: '#1e1e1e',
+    backgroundColor: colors.surfaceLight,
   },
   tableCell: {
     fontSize: 14,

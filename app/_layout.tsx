@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useMemo } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
@@ -10,14 +10,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../src/stores/auth.store';
 import { useProfileStore } from '../src/stores/profile.store';
 import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
-import { colors, gradients } from '../src/constants';
+import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { notificationService } from '../src/services';
 
 const HAS_OPENED_KEY = 'has_opened_before';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
+function RootLayoutInner() {
+  const { colors, gradients } = useTheme();
   const { session, initialized, initialize } = useAuthStore();
   const { profile, loading: profileLoading } = useProfileStore();
   const segments = useSegments();
@@ -102,6 +103,28 @@ export default function RootLayout() {
     profile?.notify_workout_rest_days_enabled,
   ]);
 
+  const styles = useMemo(() => StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    loading: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: colors.background,
+    },
+  }), [colors]);
+
+  const exerciseHeaderOptions = useMemo(() => ({
+    headerShown: true,
+    headerStyle: { backgroundColor: colors.background },
+    headerTintColor: colors.text,
+    headerTitle: 'Exercise Details',
+    headerTitleStyle: { fontFamily: 'Monospaceland-Bold' },
+    headerBackTitle: 'Back',
+  }), [colors]);
+
   if (!ready) {
     return (
       <View style={styles.loading}>
@@ -127,14 +150,7 @@ export default function RootLayout() {
         <Stack.Screen name="(onboarding)" />
         <Stack.Screen
           name="exercise/[exerciseId]"
-          options={{
-            headerShown: true,
-            headerStyle: { backgroundColor: colors.background },
-            headerTintColor: colors.text,
-            headerTitle: 'Exercise Details',
-            headerTitleStyle: { fontFamily: 'Monospaceland-Bold' },
-            headerBackTitle: 'Back',
-          }}
+          options={exerciseHeaderOptions}
         />
       </Stack>
       <KeyboardDismiss />
@@ -142,15 +158,10 @@ export default function RootLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  loading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-});
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <RootLayoutInner />
+    </ThemeProvider>
+  );
+}

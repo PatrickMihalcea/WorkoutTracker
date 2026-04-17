@@ -29,7 +29,8 @@ import { WorkoutPill } from './WorkoutPill';
 import { Button, BottomSheetModal, ExercisePickerModal, SupersetBracket } from '../ui';
 import { MuscleHeatmap } from '../history/MuscleHeatmap';
 import { AddExerciseModal, SetsPayloadItem } from '../routine/AddExerciseModal';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 import { formatElapsed } from '../../utils/date';
 import { Exercise, RoutineDayExercise } from '../../models';
 import {
@@ -45,8 +46,11 @@ import {
 } from '../../utils/superset';
 
 const TAB_BAR_HEIGHT = 60;
+const SLIDE_IN_MS = 500;
+const SLIDE_OUT_MS = 300;
 
 export function WorkoutOverlay() {
+  const { colors } = useTheme();
   const router = useRouter();
   const { user } = useAuthStore();
   const { profile, updateProfile } = useProfileStore();
@@ -92,6 +96,7 @@ export function WorkoutOverlay() {
 
   const [elapsed, setElapsed] = useState('0m 00s');
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [showTimerSettings, setShowTimerSettings] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -107,8 +112,7 @@ export function WorkoutOverlay() {
       if (which === 'swap') {
         setShowSwapPicker(true);
       } else if (which === 'add') {
-        setAutoOpenPicker(true);
-        setShowAddExercise(true);
+        setShowDirectAddPicker(true);
       }
     }
   }, []));
@@ -117,6 +121,7 @@ export function WorkoutOverlay() {
     pendingPickerReopenRef.current = source;
     setShowSwapPicker(false);
     setShowAddExercise(false);
+    setShowDirectAddPicker(false);
     setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
   }, [router]);
 
@@ -125,13 +130,13 @@ export function WorkoutOverlay() {
       setShowFullScreen(true);
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 300,
+        duration: SLIDE_IN_MS,
         useNativeDriver: true,
       }).start();
     } else {
       Animated.timing(slideAnim, {
         toValue: screenHeight,
-        duration: 250,
+        duration: SLIDE_OUT_MS,
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (finished) setShowFullScreen(false);
@@ -311,7 +316,14 @@ export function WorkoutOverlay() {
   const handleCancel = () => {
     Alert.alert('Cancel Workout', 'Discard this workout session?', [
       { text: 'Keep Going', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: () => cancelWorkout() },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: () => {
+          minimize();
+          setTimeout(() => cancelWorkout(), SLIDE_OUT_MS);
+        },
+      },
     ]);
   };
 
@@ -457,12 +469,119 @@ export function WorkoutOverlay() {
   ), [rows, previousSets, weightUnit, distanceUnit]);
 
 
+  const styles = useMemo(() => StyleSheet.create({
+    fullScreen: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: colors.background,
+      zIndex: 100,
+    },
+    pillContainer: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+      zIndex: 99,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+      backgroundColor: colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    backBtn: {
+      paddingVertical: 6,
+      paddingRight: 12,
+    },
+    chevronDown: {
+      color: colors.text,
+      fontSize: 17,
+    },
+    headerTitle: {
+      flex: 1,
+      textAlign: 'center',
+      fontSize: 17,
+      fontFamily: fonts.bold,
+      color: colors.text,
+    },
+    finishBtn: {
+      backgroundColor: colors.text,
+      paddingVertical: 8,
+      paddingHorizontal: 20,
+      borderRadius: 20,
+    },
+    finishText: {
+      color: colors.background,
+      fontSize: 15,
+      fontFamily: fonts.bold,
+    },
+    infoBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    elapsedTimer: {
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+      color: colors.textSecondary,
+    },
+    timerIconBtn: {
+      paddingHorizontal: 8,
+    },
+    timerIcon: {
+      width: 18,
+      height: 18,
+      tintColor: colors.text,
+    },
+    setsCounter: {
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+      color: colors.textSecondary,
+    },
+    muscleIconBtn: {
+      paddingHorizontal: 8,
+    },
+    muscleIcon: {
+      width: 18,
+      height: 18,
+      tintColor: colors.text,
+    },
+    scrollContent: {
+      paddingHorizontal: 8,
+      paddingVertical: 16,
+      paddingBottom: 32,
+    },
+    cancelBtn: {
+      alignItems: 'center',
+      paddingVertical: 12,
+      marginBottom: 16,
+    },
+    cancelText: {
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+      color: '#FF6B6B',
+    },
+    reorderFooter: {
+      flexDirection: 'row',
+      padding: 16,
+      gap: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+  }), [colors]);
+
   const normalFooter = useCallback(() => (
     <View>
       <Button
         title="+ Add Exercise"
         variant="dashed"
-        onPress={() => setShowAddExercise(true)}
+        onPress={() => setShowDirectAddPicker(true)}
         style={{ marginBottom: 12 }}
       />
       <TouchableOpacity
@@ -520,6 +639,7 @@ export function WorkoutOverlay() {
             <BottomSheetModal
               visible={showHeatmap}
               onClose={() => setShowHeatmap(false)}
+              showCloseButton={false}
             >
               <MuscleHeatmap
                 data={muscleHeatmapData}
@@ -625,6 +745,22 @@ export function WorkoutOverlay() {
             />
 
             <ExercisePickerModal
+              visible={showDirectAddPicker}
+              onClose={() => setShowDirectAddPicker(false)}
+              onSelect={(exercise) => {
+                setShowDirectAddPicker(false);
+                handleAddExerciseConfirm(exercise, [{
+                  set_number: 1,
+                  target_weight: 0,
+                  target_reps_min: 8,
+                  target_reps_max: 12,
+                  target_rir: null,
+                }]);
+              }}
+              onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
+            />
+
+            <ExercisePickerModal
               visible={showSwapPicker}
               onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); }}
               onSelect={handleSwapSelect}
@@ -638,110 +774,3 @@ export function WorkoutOverlay() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  fullScreen: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.background,
-    zIndex: 100,
-  },
-  pillContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 99,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    backgroundColor: colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backBtn: {
-    paddingVertical: 6,
-    paddingRight: 12,
-  },
-  chevronDown: {
-    color: colors.text,
-    fontSize: 17,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 17,
-    fontFamily: fonts.bold,
-    color: colors.text,
-  },
-  finishBtn: {
-    backgroundColor: colors.text,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-  },
-  finishText: {
-    color: colors.background,
-    fontSize: 15,
-    fontFamily: fonts.bold,
-  },
-  infoBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  elapsedTimer: {
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-  timerIconBtn: {
-    paddingHorizontal: 8,
-  },
-  timerIcon: {
-    width: 18,
-    height: 18,
-    tintColor: colors.text,
-  },
-  setsCounter: {
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-  muscleIconBtn: {
-    paddingHorizontal: 8,
-  },
-  muscleIcon: {
-    width: 18,
-    height: 18,
-    tintColor: colors.text,
-  },
-  scrollContent: {
-    paddingHorizontal: 8,
-    paddingVertical: 16,
-    paddingBottom: 32,
-  },
-  cancelBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    marginBottom: 16,
-  },
-  cancelText: {
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-    color: '#FF6B6B',
-  },
-  reorderFooter: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-});

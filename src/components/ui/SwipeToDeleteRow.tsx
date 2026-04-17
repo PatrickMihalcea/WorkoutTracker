@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Text, StyleSheet, Animated } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { colors, fonts } from '../../constants';
+import { fonts } from '../../constants';
 
 interface SwipeToDeleteRowProps {
   onDelete: () => void;
@@ -91,6 +91,7 @@ export function SwipeToDeleteRow({
   );
 }
 
+// These colors are semantic/fixed and not theme-dependent
 const styles = StyleSheet.create({
   deleteAction: {
     width: 70,
@@ -98,20 +99,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  deleteText: {
-    color: '#fff',
-    fontSize: 18,
-    fontFamily: fonts.bold,
-  },
+  deleteText: { color: '#fff', fontSize: 18, fontFamily: fonts.bold },
   warmupAction: {
     width: 70,
     backgroundColor: '#FFD93D',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  warmupText: {
-    color: '#000',
-    fontSize: 18,
-    fontFamily: fonts.bold,
-  },
+  warmupText: { color: '#000', fontSize: 18, fontFamily: fonts.bold },
 });

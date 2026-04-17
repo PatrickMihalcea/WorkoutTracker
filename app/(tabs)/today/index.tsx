@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
@@ -8,16 +8,298 @@ import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
 import { Button, Card, EmptyState, BottomSheetModal, RirCircle, SupersetBracket, ChipPicker } from '../../../src/components/ui';
 import { getSupersetPosition, type SupersetGroups } from '../../../src/utils/superset';
-import { colors, fonts, spacing } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
 import { weightUnitLabel, distanceUnitLabel, formatWeight, formatDistance } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
 import { formatDurationValue } from '../../../src/utils/duration';
 import { DAY_LABELS, DayOfWeek, Routine, RoutineWithDays, RoutineDayWithExercises } from '../../../src/models';
 import { routineService } from '../../../src/services';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
+
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  emptyContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  content: {
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl+50,
+  },
+  heroCard: {
+    marginBottom: 14,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  greeting: {
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  routineName: {
+    fontSize: 30,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginTop: 2,
+  },
+  heroSubtext: {
+    fontSize: 13,
+    marginTop: 6,
+    color: colors.textSecondary,
+    fontFamily: fonts.regular,
+  },
+  workoutCard: {
+    marginBottom: 18,
+    paddingHorizontal: spacing.md,
+  },
+  dayLabel: {
+    fontSize: 19,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  exerciseCount: {
+    fontSize: 14,
+    fontFamily: fonts.light,
+    color: colors.textSecondary,
+    marginBottom: 16,
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  exerciseNameWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 8,
+  },
+  exerciseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+    marginRight: 10,
+  },
+  exerciseName: {
+    fontSize: 15,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    flex: 1,
+  },
+  exerciseTarget: {
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+  },
+  setDetails: {
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  setDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 6,
+    marginBottom: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  setDetailCol: {
+    fontSize: 10,
+    fontFamily: fonts.bold,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  setDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  setDetailCell: {
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  setCol: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const },
+  warmupCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#D4A017',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  warmupText: {
+    fontSize: 10,
+    fontFamily: fonts.bold,
+    color: '#fff',
+  },
+  inProgress: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  duration: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  restDayCard: {
+    alignItems: 'center',
+    paddingVertical: 34,
+    paddingHorizontal: spacing.md,
+  },
+  restDayInProgressWrap: {
+    marginTop: 10,
+  },
+  restDayTitle: {
+    fontSize: 22,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  restDayMessage: {
+    fontSize: 15,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  workoutSelector: {
+    marginBottom: 12,
+    flexGrow: 0,
+  },
+  workoutChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginRight: 8,
+    backgroundColor: colors.surface,
+  },
+  workoutChipSelected: {
+    backgroundColor: colors.text,
+    borderColor: colors.text,
+  },
+  workoutChipText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  workoutChipTextSelected: {
+    color: colors.background,
+  },
+  secondaryActionsRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  primaryActionBtn: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  chooseOtherBtn: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  startEmptyBtn: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.text,
+  },
+  clearChoiceBtn: {
+    marginBottom: 12,
+  },
+  clearChoiceText: {
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+  },
+  chooseSubtitle: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  chooseRow: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  chooseRowText: {
+    fontSize: 16,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+  },
+  chooseRowSub: {
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  chooseEmpty: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 24,
+  },
+  chooseBackBtn: {
+    marginTop: 12,
+  },
+  chooseBackText: {
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+  },
+});
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { colors, gradients } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuthStore();
   const { activeRoutine, activeRoutineInitialized, fetchActiveRoutine } = useRoutineStore();
   const { session: activeSession, startWorkout, resumeWorkout } = useWorkoutStore();
@@ -102,7 +384,7 @@ export default function HomeScreen() {
       <Button
         title="Continue Workout"
         size="lg"
-        variant="secondary"
+        variant="accent"
         style={styles.primaryActionBtn}
         onPress={handleContinueWorkout}
       />
@@ -194,13 +476,10 @@ export default function HomeScreen() {
           />
         }
       >
-      <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/(tabs)/routines')}>
-        <Card style={styles.heroCard} gradientColors={['#122828', '#0a1a1a']}>
+      <TouchableOpacity activeOpacity={0.8} onPress={() => router.push(`/(tabs)/routines/${activeRoutine.id}`)}>
+        <Card style={styles.heroCard} gradientColors={gradients.accent}>
           <View style={styles.heroTopRow}>
             <Text style={styles.greeting}>{DAY_LABELS[currentDay as DayOfWeek]}</Text>
-            <View style={styles.todayBadge}>
-              <Text style={styles.todayBadgeText}>TODAY</Text>
-            </View>
           </View>
           <Text style={styles.routineName}>{activeRoutine.name}</Text>
           <Text style={styles.heroSubtext}>
@@ -412,7 +691,7 @@ export default function HomeScreen() {
               <>
                 <Button
                   title="Start Workout"
-                  variant="secondary"
+                  variant="accent"
                   onPress={handleStartWorkout}
                   size="lg"
                   style={styles.primaryActionBtn}
@@ -499,290 +778,3 @@ export default function HomeScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  emptyContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
-  content: {
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-  },
-  heroCard: {
-    marginBottom: 14,
-    borderColor: '#244343',
-    paddingHorizontal: spacing.md,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  greeting: {
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    color: '#A7C9C5',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  todayBadge: {
-    borderWidth: 1,
-    borderColor: '#2D6666',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(78, 205, 196, 0.12)',
-  },
-  todayBadgeText: {
-    fontSize: 11,
-    fontFamily: fonts.bold,
-    color: '#8FE2DA',
-  },
-  routineName: {
-    fontSize: 30,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginTop: 2,
-  },
-  heroSubtext: {
-    fontSize: 13,
-    marginTop: 6,
-    color: '#88A2A2',
-    fontFamily: fonts.regular,
-  },
-  workoutCard: {
-    marginBottom: 18,
-    paddingHorizontal: spacing.md,
-  },
-  dayLabel: {
-    fontSize: 19,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  exerciseCount: {
-    fontSize: 14,
-    fontFamily: fonts.light,
-    color: colors.textMuted,
-    marginBottom: 16,
-  },
-  exerciseRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 9,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  exerciseNameWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    paddingRight: 8,
-  },
-  exerciseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#4ECDC4',
-    marginRight: 10,
-  },
-  exerciseName: {
-    fontSize: 15,
-    fontFamily: fonts.regular,
-    color: colors.text,
-    flex: 1,
-  },
-  exerciseTarget: {
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-  setDetails: {
-    paddingBottom: 8,
-    marginBottom: 4,
-  },
-  setDetailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 6,
-    marginBottom: 2,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  setDetailCol: {
-    fontSize: 10,
-    fontFamily: fonts.bold,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  setDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  setDetailCell: {
-    fontSize: 13,
-    fontFamily: fonts.regular,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  setCol: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const },
-  warmupCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#D4A017',
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  warmupText: {
-    fontSize: 10,
-    fontFamily: fonts.bold,
-    color: '#fff',
-  },
-  inProgress: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-    textAlign: 'center',
-    marginTop: 16,
-    marginBottom: 4,
-  },
-  duration: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  restDayCard: {
-    alignItems: 'center',
-    paddingVertical: 34,
-    paddingHorizontal: spacing.md,
-  },
-  restDayInProgressWrap: {
-    marginTop: 10,
-  },
-  restDayTitle: {
-    fontSize: 22,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 8,
-  },
-  restDayMessage: {
-    fontSize: 15,
-    fontFamily: fonts.regular,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  workoutSelector: {
-    marginBottom: 12,
-    flexGrow: 0,
-  },
-  workoutChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: 8,
-    backgroundColor: '#161616',
-  },
-  workoutChipSelected: {
-    backgroundColor: colors.text,
-    borderColor: colors.text,
-  },
-  workoutChipText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  workoutChipTextSelected: {
-    color: colors.background,
-  },
-  secondaryActionsRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  primaryActionBtn: {
-    backgroundColor: '#172323',
-    borderWidth: 1,
-    borderColor: '#2D6666',
-  },
-  chooseOtherBtn: {
-    flex: 1,
-    backgroundColor: '#2A2A2A',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  startEmptyBtn: {
-    flex: 1,
-    backgroundColor: '#2A2A2A',
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-  },
-  clearChoiceBtn: {
-    marginBottom: 12,
-  },
-  clearChoiceText: {
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-  chooseSubtitle: {
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    color: colors.textSecondary,
-    marginBottom: 12,
-  },
-  chooseRow: {
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  chooseRowText: {
-    fontSize: 16,
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-  },
-  chooseRowSub: {
-    fontSize: 13,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  chooseEmpty: {
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: 24,
-  },
-  chooseBackBtn: {
-    marginTop: 12,
-  },
-  chooseBackText: {
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-});

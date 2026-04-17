@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
 
 import { OnboardingScaffold } from '../../src/components/onboarding/OnboardingScaffold';
 import { Button } from '../../src/components/ui';
-import { colors, fonts, spacing } from '../../src/constants';
+import { fonts, spacing } from '../../src/constants';
 import { feetInchesToCm } from '../../src/utils/units';
 import { useProfileStore } from '../../src/stores/profile.store';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../src/constants/themes';
 
 function generateRange(min: number, max: number, step = 1): number[] {
   const result: number[] = [];
@@ -22,6 +24,8 @@ const HEIGHT_FEET_RANGE = generateRange(3, 8);
 const HEIGHT_INCHES_RANGE = generateRange(0, 11);
 
 export default function MeasurementsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const { profile, updateProfile } = useProfileStore();
 
@@ -52,7 +56,7 @@ export default function MeasurementsScreen() {
       onBack={() => router.back()}
       title="Finish your setup"
       subtitle="Final numbers. Accurate body metrics unlock cleaner trends and smarter progress tracking."
-      footer={<Button title="Continue" onPress={handleContinue} />}
+      footer={<Button title="Continue" onPress={handleContinue} variant="cta" size="lg" />}
     >
       <View style={[styles.sectionCard, styles.sectionCardWeight]}>
         <View style={styles.sectionHeaderRow}>
@@ -128,22 +132,20 @@ export default function MeasurementsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   sectionCard: {
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#3A5052',
-    backgroundColor: 'rgba(16, 24, 28, 0.88)',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
   sectionCardWeight: {
-    borderColor: '#4ECDC4',
-    backgroundColor: 'rgba(18, 54, 52, 0.38)',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
   },
-  sectionCardHeight: {
-    borderColor: '#355A5E',
-  },
+  sectionCardHeight: {},
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -158,16 +160,16 @@ const styles = StyleSheet.create({
   sectionUnitBadge: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#568C8F',
+    borderColor: colors.border,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    color: '#C2ECE8',
+    color: colors.textSecondary,
     fontSize: 11,
     letterSpacing: 0.4,
     fontFamily: fonts.semiBold,
   },
   sectionHint: {
-    color: '#A3B8B9',
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
     fontFamily: fonts.regular,
@@ -176,8 +178,8 @@ const styles = StyleSheet.create({
   pickerContainer: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#395557',
-    backgroundColor: 'rgba(8, 12, 14, 0.95)',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceLight,
     overflow: 'hidden',
   },
   picker: {
@@ -196,8 +198,8 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#395557',
-    backgroundColor: 'rgba(8, 12, 14, 0.95)',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceLight,
     overflow: 'hidden',
   },
 });

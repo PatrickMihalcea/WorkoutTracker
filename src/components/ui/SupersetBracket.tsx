@@ -21,8 +21,8 @@ export function SupersetBracket({ position, children, contentRadius = 0, style }
     <View style={[{
       borderLeftWidth: BAR_WIDTH,
       borderLeftColor: BAR_COLOR,
-      borderTopLeftRadius: position === 'first' ? contentRadius : 0,
-      borderBottomLeftRadius: position === 'last' ? contentRadius : 0,
+      borderTopLeftRadius: position === 'first' ? Math.max(0, contentRadius + 3) : 0,
+      borderBottomLeftRadius: position === 'last' ? Math.max(0, contentRadius + 3) : 0,
     }, style]}>
       {children}
     </View>

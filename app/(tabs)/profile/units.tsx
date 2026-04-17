@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { colors, fonts } from '../../../src/constants';
+import { fonts } from '../../../src/constants';
 import { WeightUnit, HeightUnit, DistanceUnit } from '../../../src/models/profile';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
 
 interface UnitSwitchProps {
   label: string;
@@ -10,9 +12,10 @@ interface UnitSwitchProps {
   optionB: string;
   value: string;
   onToggle: (val: string) => void;
+  styles: ReturnType<typeof createStyles>;
 }
 
-function UnitSwitch({ label, optionA, optionB, value, onToggle }: UnitSwitchProps) {
+function UnitSwitch({ label, optionA, optionB, value, onToggle, styles }: UnitSwitchProps) {
   return (
     <View style={styles.switchRow}>
       <Text style={styles.switchLabel}>{label}</Text>
@@ -39,6 +42,8 @@ function UnitSwitch({ label, optionA, optionB, value, onToggle }: UnitSwitchProp
 }
 
 export default function UnitsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { profile, updateProfile } = useProfileStore();
   const [weightUnit, setWeightUnit] = useState<WeightUnit>(profile?.weight_unit ?? 'kg');
   const [heightUnit, setHeightUnit] = useState<HeightUnit>(profile?.height_unit ?? 'cm');
@@ -97,6 +102,7 @@ export default function UnitsScreen() {
           optionB="lbs"
           value={weightUnit}
           onToggle={(v) => { void handleWeightToggle(v as WeightUnit); }}
+          styles={styles}
         />
         <UnitSwitch
           label="Height"
@@ -104,6 +110,7 @@ export default function UnitsScreen() {
           optionB="in"
           value={heightUnit}
           onToggle={(v) => { void handleHeightToggle(v as HeightUnit); }}
+          styles={styles}
         />
         <UnitSwitch
           label="Distance"
@@ -111,13 +118,14 @@ export default function UnitsScreen() {
           optionB="miles"
           value={distanceUnit}
           onToggle={(v) => { void handleDistanceToggle(v as DistanceUnit); }}
+          styles={styles}
         />
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

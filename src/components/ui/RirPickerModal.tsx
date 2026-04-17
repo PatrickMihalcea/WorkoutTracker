@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { BottomSheetModal } from './BottomSheetModal';
 import { RirCircle } from './RirCircle';
-import { colors, fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fonts } from '../../constants';
 
 const ROW1: (number | null)[] = [null, 0, 0.5, 1];
 const ROW2: number[] = [1.5, 2, 3];
@@ -16,6 +17,19 @@ interface RirPickerModalProps {
 }
 
 export function RirPickerModal({ visible, onClose, onSelect, currentValue }: RirPickerModalProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => StyleSheet.create({
+    title: {
+      fontSize: 16,
+      fontFamily: fonts.bold,
+      color: colors.text,
+      marginBottom: 12,
+    },
+    row: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 10 },
+    option: { alignItems: 'center' },
+    selected: { borderWidth: 2, borderColor: colors.text },
+  }), [colors]);
+
   const handleSelect = (value: number | null) => {
     onSelect(value);
     onClose();
@@ -45,25 +59,3 @@ export function RirPickerModal({ visible, onClose, onSelect, currentValue }: Rir
     </BottomSheetModal>
   );
 }
-
-const styles = StyleSheet.create({
-  title: {
-    fontSize: 16,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    marginBottom: 12,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-    marginBottom: 10,
-  },
-  option: {
-    alignItems: 'center',
-  },
-  selected: {
-    borderWidth: 2,
-    borderColor: colors.text,
-  },
-});

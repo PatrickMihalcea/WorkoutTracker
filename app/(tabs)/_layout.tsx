@@ -3,12 +3,13 @@ import { withLayoutContext, useSegments } from 'expo-router';
 import { createMaterialTopTabNavigator, type MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fonts } from '../../src/constants';
+import { fonts } from '../../src/constants';
 import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
 import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
 import { WorkoutOverlay, WorkoutOverlayProvider, useWorkoutOverlay } from '../../src/components/workout';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useWorkoutStore } from '../../src/stores/workout.store';
+import { useTheme } from '../../src/contexts/ThemeContext';
 
 const { Navigator } = createMaterialTopTabNavigator();
 const SwipeableTabs = withLayoutContext(Navigator);
@@ -28,9 +29,19 @@ const TAB_LABELS: Record<string, string> = {
 
 function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
   return (
-    <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+    <View
+      style={[
+        styles.tabBar,
+        {
+          backgroundColor: colors.background,
+          borderTopColor: colors.border,
+          paddingBottom: Math.max(insets.bottom, 8),
+        },
+      ]}
+    >
       {state.routes.map((route, index) => {
         const focused = state.index === index;
         const color = focused ? colors.text : colors.textMuted;
@@ -78,6 +89,7 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
 }
 
 function TabLayoutInner() {
+  const { colors } = useTheme();
   const segments = useSegments();
   const { chartMode } = useHistoryView();
   const { chartActive } = useChartInteraction();
@@ -101,7 +113,10 @@ function TabLayoutInner() {
   }, [user?.id]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: colors.background }]}
+      edges={['top']}
+    >
       <SwipeableTabs
         tabBar={(props) => <BottomTabBar {...props} />}
         tabBarPosition="bottom"
@@ -150,13 +165,10 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: colors.background,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
     paddingTop: 8,
   },
   tab: {

@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { BottomSheetModal, Button } from '../ui';
-import { colors, fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fonts } from '../../constants';
 
 function buildOptions(): { value: number; label: string }[] {
   const items: { value: number; label: string }[] = [{ value: 0, label: 'Off' }];
@@ -35,14 +36,17 @@ export function RestTimerModal({
   onClose,
   autoSave = false,
 }: RestTimerModalProps) {
+  const { colors } = useTheme();
   const [selected, setSelected] = useState(currentValue);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (visible) {
-      setSelected(currentValue);
-    }
+    if (visible) setSelected(currentValue);
   }, [visible, currentValue]);
+
+  const styles = useMemo(() => StyleSheet.create({
+    pickerItem: { color: colors.text, fontSize: 20, fontFamily: fonts.regular },
+  }), [colors]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -64,32 +68,17 @@ export function RestTimerModal({
       .catch((error: unknown) => {
         Alert.alert('Error', (error as Error).message || 'Failed to update rest timer.');
       })
-      .finally(() => {
-        setSaving(false);
-      });
+      .finally(() => { setSaving(false); });
   };
 
   return (
     <BottomSheetModal visible={visible} title="Rest Timer" onClose={onClose}>
-      <Picker
-        selectedValue={selected}
-        onValueChange={handleValueChange}
-        itemStyle={styles.pickerItem}
-      >
+      <Picker selectedValue={selected} onValueChange={handleValueChange} itemStyle={styles.pickerItem}>
         {OPTIONS.map((opt) => (
           <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
         ))}
       </Picker>
-
       {!autoSave && <Button title="Save" onPress={handleSave} loading={saving} />}
     </BottomSheetModal>
   );
 }
-
-const styles = StyleSheet.create({
-  pickerItem: {
-    color: colors.text,
-    fontSize: 20,
-    fontFamily: fonts.regular,
-  },
-});

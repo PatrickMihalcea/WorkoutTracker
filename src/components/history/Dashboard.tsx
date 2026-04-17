@@ -12,14 +12,23 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
-import { PieChart } from 'react-native-gifted-charts';
+import Svg, {
+  Polygon as SvgPolygon,
+  Circle as SvgDot,
+  Line as SvgLine,
+  Text as SvgText,
+  G as SvgG,
+  Rect as SvgRect,
+} from 'react-native-svg';
 import { DashboardData, ExerciseProgression, TimeSeriesPoint } from '../../services';
 import { Card, ExercisePickerModal } from '../ui';
 import { BODY_MEASUREMENT_METRICS, Exercise, MeasurementMetricKey } from '../../models';
 import { useProfileStore } from '../../stores/profile.store';
 import { getMeasurementGoalFromProfile, measurementGoalToDisplay } from '../../utils/measurementGoals';
 import { weightUnitLabel } from '../../utils/units';
-import { colors, fonts, spacing } from '../../constants';
+import { fonts, spacing } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../constants/themes';
 
 import {
   SimpleLineChart,
@@ -43,9 +52,24 @@ import {
 
 export type { GranularityMode, ChartMode } from '../charts';
 
-function cloneData<T extends Record<string, unknown>>(arr: T[]): T[] {
-  return arr.map((item) => ({ ...item }));
-}
+const RADAR_GROUPS: { label: string; keys: string[] }[] = [
+  { label: 'Back',      keys: ['back', 'upper_back', 'lower_back', 'traps', 'trapezius'] },
+  { label: 'Chest',     keys: ['chest'] },
+  { label: 'Core',      keys: ['abs', 'obliques'] },
+  { label: 'Shoulders', keys: ['shoulders', 'deltoids'] },
+  { label: 'Arms',      keys: ['biceps', 'triceps', 'forearms', 'forearm'] },
+  { label: 'Legs',      keys: ['quads', 'quadriceps', 'hamstrings', 'hamstring', 'glutes', 'gluteal', 'calves', 'tibialis', 'adductors'] },
+];
+
+// Flat-top hexagon: Back=upper-left, Chest=upper-right, Core=right, Shoulders=lower-right, Arms=lower-left, Legs=left
+const RADAR_AXES: { label: string; angle: number }[] = [
+  { label: 'Back',      angle: 240 },
+  { label: 'Chest',     angle: 300 },
+  { label: 'Core',      angle: 0   },
+  { label: 'Shoulders', angle: 60  },
+  { label: 'Arms',      angle: 120 },
+  { label: 'Legs',      angle: 180 },
+];
 
 interface Dashboard2Props {
   data: DashboardData;
@@ -80,6 +104,12 @@ const MEASUREMENT_OPTIONS = BODY_MEASUREMENT_METRICS.map((m) => ({
   label: m.label,
 }));
 
+function useDashboardStyles() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  return { colors, styles };
+}
+
 /* ── Main Dashboard ── */
 
 export function Dashboard({
@@ -91,6 +121,7 @@ export function Dashboard({
   chartMode = 'abs',
   onChangeChartMode,
 }: Dashboard2Props) {
+  const { colors, styles } = useDashboardStyles();
   const router = useRouter();
   const { profile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
@@ -239,10 +270,7 @@ export function Dashboard({
             {...chartConfig}
           />
         )}
-        <MuscleGroupSection
-          data={data.muscleGroupSplit}
-          exerciseBreakdown={data.muscleGroupExercises}
-        />
+        <MuscleRadarSection data={data.muscleGroupSplit} />
         <MuscleHeatmap data={data.muscleGroupSplit} />
         <PersonalRecordsSection data={data.personalRecords} />
 
@@ -279,6 +307,7 @@ export function Dashboard({
 /* ── Section Title ── */
 
 function SectionTitle({ title, rightElement }: { title: string; rightElement?: React.ReactNode }) {
+  const { styles } = useDashboardStyles();
   return (
     <View style={styles.sectionTitleRow}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -287,28 +316,74 @@ function SectionTitle({ title, rightElement }: { title: string; rightElement?: R
   );
 }
 
+/* ── Info Tooltip ── */
+
+function InfoTooltip({ text }: { text: string }) {
+  const [visible, setVisible] = useState(false);
+  const { colors } = useTheme();
+  return (
+    <>
+      <TouchableOpacity
+        onPress={() => setVisible(true)}
+        activeOpacity={0.7}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Text style={{ color: colors.textMuted, fontSize: 14, lineHeight: 18 }}>ⓘ</Text>
+      </TouchableOpacity>
+      <Modal visible={visible} transparent animationType="fade">
+        <TouchableOpacity
+          style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }}
+          onPress={() => setVisible(false)}
+          activeOpacity={1}
+        >
+          <View style={{
+            backgroundColor: colors.surface,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 16,
+            maxWidth: 280,
+            marginHorizontal: 24,
+          }}>
+            <Text style={{ color: colors.text, fontSize: 13, fontFamily: fonts.regular, lineHeight: 20 }}>
+              {text}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
+  );
+}
+
 /* ── Hero Stats ── */
 
 function HeroStatsRow({ stats }: { stats: DashboardData['summaryStats'] }) {
+  const { colors, styles } = useDashboardStyles();
   return (
     <View style={styles.heroGrid}>
-      <View style={styles.heroTile}>
-        <Text style={styles.heroValue}>{stats.totalWorkouts}</Text>
-        <Text style={styles.heroLabel}>Workouts</Text>
+      <View style={styles.heroRow}>
+        <View style={[styles.heroTile, { borderLeftColor: '#FFEAA7' }]}>
+          <Text style={styles.heroTileLabel}>WORKOUTS</Text>
+          <Text style={styles.heroTileBig}>{stats.totalWorkouts}</Text>
+        </View>
+        <View style={[styles.heroTile, { borderLeftColor: colors.accent }]}>
+          <Text style={styles.heroTileLabel}>STREAK</Text>
+          <Text style={[styles.heroTileBig, { color: colors.accent }]}>
+            {stats.currentStreak}<Text style={styles.heroTileUnit}> {stats.currentStreak === 1 ? 'week' : 'weeks'}</Text>
+          </Text>
+        </View>
       </View>
-      <View style={styles.heroTile}>
-        <Text style={[styles.heroValue, { color: '#4ECDC4' }]}>
-          {stats.currentStreak}
-        </Text>
-        <Text style={styles.heroLabel}>Week Streak</Text>
-      </View>
-      <View style={styles.heroTile}>
-        <Text style={styles.heroValue}>{formatVolume(stats.totalVolume)}</Text>
-        <Text style={styles.heroLabel}>Total Volume</Text>
-      </View>
-      <View style={styles.heroTile}>
-        <Text style={styles.heroValue}>{stats.avgDuration}m</Text>
-        <Text style={styles.heroLabel}>Avg Duration</Text>
+      <View style={styles.heroRow}>
+        <View style={[styles.heroTile, { borderLeftColor: '#FF6B6B' }]}>
+          <Text style={styles.heroTileLabel}>TOTAL VOLUME</Text>
+          <Text style={styles.heroTileValue}>{formatVolume(stats.totalVolume)}</Text>
+        </View>
+        <View style={[styles.heroTile, { borderLeftColor: '#45B7D1' }]}>
+          <Text style={styles.heroTileLabel}>AVG DURATION</Text>
+          <Text style={styles.heroTileValue}>
+            {stats.avgDuration}<Text style={styles.heroTileUnit}> min</Text>
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -325,6 +400,7 @@ function ContributionGrid({
   selectedRange: number;
   onOpenActivity: () => void;
 }) {
+  const { styles } = useDashboardStyles();
   const daySet = useMemo(() => buildFilledDaySet(workoutDays), [workoutDays]);
 
   const months = useMemo(() => {
@@ -365,6 +441,7 @@ function MeasurementMetricDropdown({
   selected: MeasurementMetricKey;
   onChange: (next: MeasurementMetricKey) => void;
 }) {
+  const { styles } = useDashboardStyles();
   const [open, setOpen] = useState(false);
   const selectedLabel = MEASUREMENT_OPTIONS.find((m) => m.key === selected)?.label ?? 'Metric';
 
@@ -441,6 +518,7 @@ const MeasurementsSection = React.memo(function MeasurementsSection({
   heightUnit: 'cm' | 'in';
   goalValue: number | null;
 }) {
+  const { colors, styles } = useDashboardStyles();
   const metricDef = BODY_MEASUREMENT_METRICS.find((m) => m.key === metric);
   const points = measurementSeries[metric] ?? [];
   const wLabel = weightUnit === 'lbs' ? 'lbs' : 'kg';
@@ -563,6 +641,7 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
   onMetricChange: (m: SpotlightMetric) => void;
   onPickExercise: () => void;
 }) {
+  const { styles } = useDashboardStyles();
   const { profile: spotProfile } = useProfileStore();
   const spotWLabel = spotProfile?.weight_unit === 'lbs' ? 'lbs' : 'kg';
 
@@ -663,118 +742,213 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
   );
 });
 
-/* ── Muscle Group Split ── */
+/* ── Muscle Radar ── */
 
-function MuscleGroupSection({
-  data,
-  exerciseBreakdown,
-}: {
-  data: DashboardData['muscleGroupSplit'];
-  exerciseBreakdown: DashboardData['muscleGroupExercises'];
-}) {
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+type RadarDrillState = { mode: 'radar' } | { mode: 'group'; group: string } | { mode: 'all' };
 
+const RADAR_CHART_HEIGHT = 268;
+
+function MuscleRadarSection({ data }: { data: DashboardData['muscleGroupSplit'] }) {
+  const { styles } = useDashboardStyles();
+  const [drill, setDrill] = useState<RadarDrillState>({ mode: 'radar' });
   if (data.length === 0) return null;
 
-  const drillData = selectedGroup ? exerciseBreakdown[selectedGroup] ?? [] : [];
+  const inDrill = drill.mode !== 'radar';
+  const drillTitle = drill.mode === 'group' ? drill.group : drill.mode === 'all' ? 'All Muscles' : '';
 
-  if (selectedGroup && drillData.length > 0) {
-    const drillPieData = drillData.map((d) => ({
-      value: d.value,
-      color: d.color,
-      text: `${d.value}%`,
-      textColor: '#fff',
-      textSize: 10,
-    }));
-
-    return (
-      <Card style={styles.card}>
+  return (
+    <Card style={[styles.card, { paddingBottom: spacing.xs }]}>
+      {inDrill ? (
+        <View style={styles.drillHeader}>
+          <Text style={styles.drillGroupTitle}>{drillTitle}</Text>
+        </View>
+      ) : (
         <SectionTitle
-          title={selectedGroup}
+          title="Muscle Distribution"
           rightElement={
-            <TouchableOpacity onPress={() => setSelectedGroup(null)} activeOpacity={0.7}>
-              <Text style={styles.drillBackText}>← Back</Text>
-            </TouchableOpacity>
+            <InfoTooltip text="Each set counts 1.0 for the primary muscle and 0.33 for each secondary muscle. Cardio and full-body exercises are excluded. Values show each muscle's share of total weighted sets." />
           }
         />
-        <Text style={styles.chartSubtitle}>% of sets by exercise</Text>
-        <View style={styles.pieContainer}>
-          <PieChart
-            data={cloneData(drillPieData)}
-            donut
-            radius={80}
-            innerRadius={50}
-            innerCircleColor={colors.surface}
-            centerLabelComponent={() => (
-              <TouchableOpacity onPress={() => setSelectedGroup(null)}>
-                <Text style={styles.pieCenter}>
-                  {drillData.length}
-                  {'\n'}
-                  exercises
-                </Text>
-              </TouchableOpacity>
-            )}
+      )}
+      <Text style={styles.chartSubtitle}>
+        {inDrill ? 'Sets within group · relative to max' : 'Sets by muscle group'}
+      </Text>
+
+      <View style={styles.radarChartArea}>
+        {drill.mode === 'radar' && (
+          <MuscleRadarChart data={data} onSelectGroup={(g) => setDrill({ mode: 'group', group: g })} />
+        )}
+        {drill.mode !== 'radar' && (
+          <MuscleGroupDrillDown
+            groupLabel={drill.mode === 'group' ? drill.group : null}
+            data={data}
           />
-        </View>
-        <View style={styles.legendContainer}>
-          {drillData.map((d, i) => (
-            <View key={i} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: d.color }]} />
-              <Text style={styles.legendText}>
-                {d.label} ({d.value}%)
-              </Text>
-            </View>
-          ))}
-        </View>
-      </Card>
+        )}
+      </View>
+
+      <TouchableOpacity
+        onPress={() => inDrill ? setDrill({ mode: 'radar' }) : setDrill({ mode: 'all' })}
+        style={styles.drillFooterBtn}
+        activeOpacity={0.7}
+      >
+        {inDrill ? (
+          <>
+            <Text style={styles.drillBackArrow}>‹</Text>
+            <Text style={styles.drillFooterBtnText}>Back</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.drillFooterBtnText}>Drill Down</Text>
+            <Text style={[styles.drillBackArrow, { fontSize: 16 }]}>›</Text>
+          </>
+        )}
+      </TouchableOpacity>
+    </Card>
+  );
+}
+
+function MuscleGroupDrillDown({ groupLabel, data }: { groupLabel: string | null; data: DashboardData['muscleGroupSplit'] }) {
+  const { colors, styles } = useDashboardStyles();
+
+  const muscles = useMemo(() => {
+    if (groupLabel === null) {
+      return [...data].sort((a, b) => b.value - a.value);
+    }
+    const group = RADAR_GROUPS.find((g) => g.label === groupLabel);
+    if (!group) return [];
+    return data
+      .filter((d) => {
+        const key = d.label.toLowerCase().replace(/ /g, '_');
+        return group.keys.includes(key) || group.keys.includes(d.label.toLowerCase());
+      })
+      .sort((a, b) => b.value - a.value);
+  }, [groupLabel, data]);
+
+  const maxVal = useMemo(() => Math.max(...muscles.map((m) => m.value), 1), [muscles]);
+
+  if (muscles.length === 0) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={styles.chartEmptyText}>No data for this group in the selected range.</Text>
+      </View>
     );
   }
 
-  const pieData = data.map((d) => ({
-    value: d.value,
-    color: d.color,
-    text: `${d.value}%`,
-    textColor: '#fff',
-    textSize: 10,
-    onPress: () => setSelectedGroup(d.label),
-  }));
+  return (
+    <ScrollView
+      style={styles.drillScroll}
+      contentContainerStyle={styles.drillScrollContent}
+      showsVerticalScrollIndicator={false}
+    >
+      {muscles.map((m) => (
+        <View key={m.label} style={styles.drillRow}>
+          <Text style={styles.drillMuscleName}>
+            {m.label.replace(/\b\w/g, (c) => c.toUpperCase())}
+          </Text>
+          <View style={styles.drillBarTrack}>
+            <View style={[styles.drillBarFill, { width: `${(m.value / maxVal) * 100}%`, backgroundColor: colors.accent }]} />
+          </View>
+          <Text style={styles.drillMuscleValue}>{m.value}%</Text>
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function MuscleRadarChart({ data, onSelectGroup }: { data: DashboardData['muscleGroupSplit']; onSelectGroup?: (label: string) => void }) {
+  const { colors } = useTheme();
+  const size = 280;
+  const cx = size / 2;
+  const cy = size / 2;
+  const maxR = 88;
+  const rings = 5;
+
+  const groupTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const d of data) {
+      for (const group of RADAR_GROUPS) {
+        if (group.keys.includes(d.label.toLowerCase()) || group.keys.includes(d.label.toLowerCase().replace(/ /g, '_'))) {
+          totals[group.label] = (totals[group.label] ?? 0) + d.value;
+          break;
+        }
+      }
+    }
+    return totals;
+  }, [data]);
+
+  const maxVal = useMemo(
+    () => Math.max(...RADAR_AXES.map((a) => groupTotals[a.label] ?? 0), 1),
+    [groupTotals],
+  );
+
+  const toXY = (angle: number, r: number) => ({
+    x: cx + r * Math.cos((angle * Math.PI) / 180),
+    y: cy + r * Math.sin((angle * Math.PI) / 180),
+  });
+
+  const makePolygonPoints = (r: number) =>
+    RADAR_AXES.map((a) => { const p = toXY(a.angle, r); return `${p.x},${p.y}`; }).join(' ');
+
+  const dataPolygonPoints = RADAR_AXES.map((a) => {
+    const val = groupTotals[a.label] ?? 0;
+    const r = (val / maxVal) * maxR;
+    const p = toXY(a.angle, r);
+    return `${p.x},${p.y}`;
+  }).join(' ');
 
   return (
-    <Card style={styles.card}>
-      <SectionTitle title="Muscle Group Split" />
-      <Text style={styles.chartSubtitle}>% of total sets by muscle</Text>
-      <View style={styles.pieContainer}>
-        <PieChart
-          data={cloneData(pieData)}
-          donut
-          radius={80}
-          innerRadius={50}
-          innerCircleColor={colors.surface}
-          centerLabelComponent={() => (
-            <Text style={styles.pieCenter}>
-              {data.length}
-              {'\n'}
-              groups
-            </Text>
-          )}
-        />
-      </View>
-      <View style={styles.legendContainer}>
-        {data.slice(0, 8).map((d, i) => (
-          <TouchableOpacity
-            key={i}
-            style={styles.legendItem}
-            onPress={() => setSelectedGroup(d.label)}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.legendDot, { backgroundColor: d.color }]} />
-            <Text style={styles.legendText}>
-              {d.label} ({d.value}%)
-            </Text>
-          </TouchableOpacity>
+    <View style={{ alignItems: 'center' }}>
+      <Svg width={size} height={size}>
+        {Array.from({ length: rings }, (_, i) => (i + 1) / rings * maxR).map((r, i) => (
+          <SvgPolygon
+            key={`ring-${i}`}
+            points={makePolygonPoints(r)}
+            fill="none"
+            stroke={colors.border}
+            strokeWidth={0.8}
+            opacity={0.7}
+          />
         ))}
-      </View>
-    </Card>
+        {RADAR_AXES.map((a, i) => {
+          const end = toXY(a.angle, maxR);
+          return (
+            <SvgLine key={`ax-${i}`} x1={cx} y1={cy} x2={end.x} y2={end.y}
+              stroke={colors.border} strokeWidth={0.8} />
+          );
+        })}
+        <SvgPolygon
+          points={dataPolygonPoints}
+          fill={colors.accent}
+          fillOpacity={0.18}
+          stroke={colors.accent}
+          strokeWidth={2}
+        />
+        {RADAR_AXES.map((a, i) => {
+          const val = groupTotals[a.label] ?? 0;
+          if (val === 0) return null;
+          const p = toXY(a.angle, (val / maxVal) * maxR);
+          return <SvgDot key={`dot-${i}`} cx={p.x} cy={p.y} r={3.5} fill={colors.accent} />;
+        })}
+        {RADAR_AXES.map((a, i) => {
+          const p = toXY(a.angle, maxR + 28);
+          const hasData = (groupTotals[a.label] ?? 0) > 0;
+          return (
+            <SvgG key={`lbl-${i}`} onPress={() => hasData && onSelectGroup?.(a.label)}>
+              <SvgRect x={p.x - 32} y={p.y - 12} width={64} height={28} fill="transparent" />
+              <SvgText
+                x={p.x} y={p.y + 4}
+                textAnchor="middle"
+                fontSize={11}
+                fill={hasData ? colors.text : colors.textMuted}
+                fontFamily={fonts.semiBold}
+              >
+                {hasData ? `${a.label} >` : a.label}
+              </SvgText>
+            </SvgG>
+          );
+        })}
+      </Svg>
+    </View>
   );
 }
 
@@ -785,6 +959,7 @@ function PersonalRecordsSection({
 }: {
   data: DashboardData['personalRecords'];
 }) {
+  const { styles } = useDashboardStyles();
   const { profile: prProfile } = useProfileStore();
   const prWUnit = prProfile?.weight_unit ?? 'kg';
 
@@ -852,7 +1027,7 @@ const DurationTrendSection = React.memo(function DurationTrendSection({
 
 /* ── Styles ── */
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -860,7 +1035,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl * 2,
+    paddingBottom: spacing.xl+50,
   },
   emptyContainer: {
     flex: 1,
@@ -901,7 +1076,7 @@ const styles = StyleSheet.create({
   chartSubtitle: {
     fontSize: 12,
     fontFamily: fonts.regular,
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
   chartEmptyText: {
     fontSize: 12,
@@ -949,32 +1124,52 @@ const styles = StyleSheet.create({
   },
 
   heroGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+    gap: 8,
     marginBottom: spacing.md,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
   heroTile: {
     flex: 1,
-    minWidth: '45%',
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    borderLeftWidth: 3,
     paddingVertical: 14,
-    paddingHorizontal: 12,
-    alignItems: 'center',
+    paddingHorizontal: 14,
   },
-  heroValue: {
-    fontSize: 26,
+  heroTileLabel: {
+    fontSize: 10,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  heroTileBig: {
+    fontSize: 34,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    lineHeight: 36,
+  },
+  heroTileSub: {
+    fontSize: 11,
+    fontFamily: fonts.light,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  heroTileValue: {
+    fontSize: 24,
     fontFamily: fonts.bold,
     color: colors.text,
   },
-  heroLabel: {
-    fontSize: 11,
+  heroTileUnit: {
+    fontSize: 13,
     fontFamily: fonts.regular,
-    color: colors.textMuted,
-    marginTop: 2,
+    color: colors.textSecondary,
   },
 
   streakHeader: {
@@ -1089,47 +1284,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 
-  pieContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-    paddingLeft: spacing.md,
-  },
-  pieCenter: {
-    fontSize: 14,
-    fontFamily: fonts.bold,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  legendContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: spacing.sm,
-    marginBottom: 4,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 6,
-  },
-  legendText: {
-    fontSize: 12,
-    fontFamily: fonts.regular,
-    color: colors.textSecondary,
-  },
-  drillBackText: {
-    fontSize: 13,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-
   prRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1164,5 +1318,78 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+
+  radarChartArea: {
+    height: RADAR_CHART_HEIGHT,
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+  },
+  drillHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  drillBackArrow: {
+    fontSize: 18,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  drillGroupTitle: {
+    fontSize: 16,
+    fontFamily: fonts.bold,
+    color: colors.text,
+  },
+  drillScroll: {
+    flex: 1,
+  },
+  drillScrollContent: {
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  drillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  drillMuscleName: {
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: colors.text,
+    width: 90,
+  },
+  drillBarTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  drillBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  drillMuscleValue: {
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    color: colors.textMuted,
+    width: 34,
+    textAlign: 'right',
+  },
+  drillFooterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: spacing.xs,
+    marginTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  drillFooterBtnText: {
+    fontSize: 13,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
   },
 });

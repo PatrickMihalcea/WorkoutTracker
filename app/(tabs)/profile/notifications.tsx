@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { colors, fonts } from '../../../src/constants';
+import { fonts } from '../../../src/constants';
 import { notificationService } from '../../../src/services';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
 
 function toTimeString(date: Date): string {
   const hh = String(date.getHours()).padStart(2, '0');
@@ -47,9 +49,19 @@ interface ToggleRowProps {
   value: boolean;
   onValueChange: (next: boolean) => void;
   disabled?: boolean;
+  styles: ReturnType<typeof createStyles>;
+  colors: ThemeColors;
 }
 
-function ToggleRow({ label, description, value, onValueChange, disabled = false }: ToggleRowProps) {
+function ToggleRow({
+  label,
+  description,
+  value,
+  onValueChange,
+  disabled = false,
+  styles,
+  colors,
+}: ToggleRowProps) {
   return (
     <View style={[styles.row, disabled && styles.rowDisabled]}>
       <View style={styles.rowTextWrap}>
@@ -60,14 +72,16 @@ function ToggleRow({ label, description, value, onValueChange, disabled = false 
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}
-        trackColor={{ false: '#3A3F47', true: '#2D6666' }}
-        thumbColor={value ? '#8FE2DA' : '#A0A6B0'}
+        trackColor={{ false: colors.border, true: colors.accent }}
+        thumbColor={value ? colors.text : colors.textMuted}
       />
     </View>
   );
 }
 
 export default function NotificationsSettingsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { profile, updateProfile } = useProfileStore();
 
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -136,6 +150,8 @@ export default function NotificationsSettingsScreen() {
           onValueChange={(next) => {
             void persistNotificationUpdates({ notify_rest_timer_enabled: next });
           }}
+          styles={styles}
+          colors={colors}
         />
 
         <ToggleRow
@@ -145,6 +161,8 @@ export default function NotificationsSettingsScreen() {
           onValueChange={(next) => {
             void persistNotificationUpdates({ notify_workout_day_enabled: next });
           }}
+          styles={styles}
+          colors={colors}
         />
 
         <TouchableOpacity
@@ -168,6 +186,8 @@ export default function NotificationsSettingsScreen() {
             void persistNotificationUpdates({ notify_workout_rest_days_enabled: next });
           }}
           disabled={!workoutDayEnabled}
+          styles={styles}
+          colors={colors}
         />
       </View>
 
@@ -186,7 +206,7 @@ export default function NotificationsSettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

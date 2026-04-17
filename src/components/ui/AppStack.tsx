@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Stack } from 'expo-router';
-import { stackScreenOptions } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fonts } from '../../constants';
 
 interface AppStackProps {
   screenOptions?: Record<string, unknown>;
@@ -8,8 +9,17 @@ interface AppStackProps {
 }
 
 export function AppStack({ screenOptions, children }: AppStackProps) {
+  const { colors } = useTheme();
+
+  const baseOptions = useMemo(() => ({
+    headerStyle: { backgroundColor: colors.background },
+    headerTintColor: colors.text,
+    headerTitleStyle: { fontFamily: fonts.bold },
+    headerBackTitleVisible: false,
+  }), [colors]);
+
   return (
-    <Stack screenOptions={{ ...stackScreenOptions, ...screenOptions }}>
+    <Stack screenOptions={{ ...baseOptions, ...screenOptions }}>
       {children}
     </Stack>
   );

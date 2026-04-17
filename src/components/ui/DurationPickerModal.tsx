@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Button } from './Button';
-import { colors, fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fonts } from '../../constants';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const PICKER_H = Platform.OS === 'ios' ? 200 : 56;
@@ -28,6 +29,7 @@ interface DurationPickerModalProps {
 }
 
 export function DurationPickerModal({ visible, onClose, onConfirm, value }: DurationPickerModalProps) {
+  const { colors } = useTheme();
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const sheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const [modalVisible, setModalVisible] = useState(false);
@@ -59,6 +61,41 @@ export function DurationPickerModal({ visible, onClose, onConfirm, value }: Dura
     }
   }, [visible]);
 
+  const styles = useMemo(() => StyleSheet.create({
+    wrapper: { flex: 1, justifyContent: 'flex-end' },
+    overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingTop: 20,
+      paddingHorizontal: 24,
+      paddingBottom: 36,
+    },
+    closeBtn: { position: 'absolute', top: 16, right: 16, zIndex: 10 },
+    closeBtnText: { fontSize: 18, color: colors.textMuted },
+    title: {
+      fontSize: 18,
+      fontFamily: fonts.bold,
+      color: colors.text,
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    labelsRow: { flexDirection: 'row', paddingHorizontal: 12 },
+    label: { flex: 1, fontSize: 12, fontFamily: fonts.bold, color: colors.textMuted, textAlign: 'center' },
+    pickerRow: { flexDirection: 'row', alignItems: 'center', height: PICKER_H, marginBottom: 20 },
+    pickerSlot: { flex: 1, height: PICKER_H },
+    picker: { height: PICKER_H },
+    separator: {
+      fontSize: 24,
+      fontFamily: fonts.bold,
+      color: colors.textMuted,
+      width: 20,
+      textAlign: 'center',
+      marginTop: Platform.OS === 'ios' ? 8 : 0,
+    },
+  }), [colors]);
+
   const handleConfirm = () => {
     onConfirm(hours * 3600 + minutes * 60 + seconds);
     onClose();
@@ -88,45 +125,20 @@ export function DurationPickerModal({ visible, onClose, onConfirm, value }: Dura
 
           <View style={styles.pickerRow}>
             <View style={styles.pickerSlot}>
-              <Picker
-                selectedValue={hours}
-                onValueChange={setHours}
-                style={styles.picker}
-                itemStyle={itemStyle}
-              >
-                {HOURS.map((v) => (
-                  <Picker.Item key={v} label={String(v).padStart(2, '0')} value={v} />
-                ))}
+              <Picker selectedValue={hours} onValueChange={setHours} style={styles.picker} itemStyle={itemStyle}>
+                {HOURS.map((v) => <Picker.Item key={v} label={String(v).padStart(2, '0')} value={v} />)}
               </Picker>
             </View>
-
             <Text style={styles.separator}>:</Text>
-
             <View style={styles.pickerSlot}>
-              <Picker
-                selectedValue={minutes}
-                onValueChange={setMinutes}
-                style={styles.picker}
-                itemStyle={itemStyle}
-              >
-                {MINUTES.map((v) => (
-                  <Picker.Item key={v} label={String(v).padStart(2, '0')} value={v} />
-                ))}
+              <Picker selectedValue={minutes} onValueChange={setMinutes} style={styles.picker} itemStyle={itemStyle}>
+                {MINUTES.map((v) => <Picker.Item key={v} label={String(v).padStart(2, '0')} value={v} />)}
               </Picker>
             </View>
-
             <Text style={styles.separator}>:</Text>
-
             <View style={styles.pickerSlot}>
-              <Picker
-                selectedValue={seconds}
-                onValueChange={setSeconds}
-                style={styles.picker}
-                itemStyle={itemStyle}
-              >
-                {SECONDS.map((v) => (
-                  <Picker.Item key={v} label={String(v).padStart(2, '0')} value={v} />
-                ))}
+              <Picker selectedValue={seconds} onValueChange={setSeconds} style={styles.picker} itemStyle={itemStyle}>
+                {SECONDS.map((v) => <Picker.Item key={v} label={String(v).padStart(2, '0')} value={v} />)}
               </Picker>
             </View>
           </View>
@@ -137,71 +149,3 @@ export function DurationPickerModal({ visible, onClose, onConfirm, value }: Dura
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  wrapper: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
-    paddingHorizontal: 24,
-    paddingBottom: 36,
-  },
-  closeBtn: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    zIndex: 10,
-  },
-  closeBtnText: {
-    fontSize: 18,
-    color: colors.textMuted,
-  },
-  title: {
-    fontSize: 18,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  labelsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-  },
-  label: {
-    flex: 1,
-    fontSize: 12,
-    fontFamily: fonts.bold,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: PICKER_H,
-    marginBottom: 20,
-  },
-  pickerSlot: {
-    flex: 1,
-    height: PICKER_H,
-  },
-  picker: {
-    height: PICKER_H,
-  },
-  separator: {
-    fontSize: 24,
-    fontFamily: fonts.bold,
-    color: colors.textMuted,
-    width: 20,
-    textAlign: 'center',
-    marginTop: Platform.OS === 'ios' ? 8 : 0,
-  },
-});
