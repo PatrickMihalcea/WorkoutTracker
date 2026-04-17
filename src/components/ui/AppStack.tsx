@@ -15,7 +15,7 @@ export function AppStack({ screenOptions, children }: AppStackProps) {
     headerStyle: { backgroundColor: colors.background },
     headerTintColor: colors.text,
     headerTitleStyle: { fontFamily: fonts.bold },
-    headerBackTitleStyle: { fontSize: 12, fontFamily: fonts.regular },
+    headerBackTitleVisible: false,
   }), [colors]);
 
   return (

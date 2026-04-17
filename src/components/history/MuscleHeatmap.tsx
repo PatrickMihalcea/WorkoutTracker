@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import Body from 'react-native-body-highlighter';
 import { useProfileStore } from '../../stores/profile.store';
 import { Card } from '../ui';
@@ -69,11 +69,11 @@ const MUSCLE_TO_SLUGS: Record<string, BodySlug[]> = {
 };
 
 const INTENSITY_COLORS = [
-  '#1a3a2a',
-  '#2d6b45',
-  '#3d9960',
-  '#4dcc7a',
-  '#5dffa0',
+  'rgba(34, 85, 204, 0.25)',
+  'rgba(78, 170, 221, 0.50)',
+  'rgba(240, 208, 96, 0.72)',
+  'rgba(240, 112, 48, 0.88)',
+  'rgba(208, 32, 32, 1.0)',
 ];
 
 function toBodyData(slices: MuscleSlice[], overrideMax?: number) {
@@ -102,6 +102,42 @@ interface MuscleHeatmapProps {
   subtitle?: string;
   bare?: boolean;
   maxValue?: number;
+}
+
+function HeatmapTooltip({ colors }: { colors: ReturnType<typeof useTheme>['colors'] }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <>
+      <TouchableOpacity
+        onPress={() => setVisible(true)}
+        activeOpacity={0.7}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Text style={{ color: colors.textMuted, fontSize: 14, lineHeight: 18 }}>ⓘ</Text>
+      </TouchableOpacity>
+      <Modal visible={visible} transparent animationType="fade">
+        <TouchableOpacity
+          style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }}
+          onPress={() => setVisible(false)}
+          activeOpacity={1}
+        >
+          <View style={{
+            backgroundColor: colors.surface,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 16,
+            maxWidth: 280,
+            marginHorizontal: 24,
+          }}>
+            <Text style={{ color: colors.text, fontSize: 13, fontFamily: fonts.regular, lineHeight: 20 }}>
+              {'Each set counts 1.0 for the primary muscle and 0.33 for each secondary muscle. Cardio and full-body exercises are excluded. Colour intensity shows relative volume — the most-trained muscle is always at peak intensity.'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
+  );
 }
 
 export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set distribution by muscle group', bare = false, maxValue }: MuscleHeatmapProps) {
@@ -169,7 +205,12 @@ export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set 
 
   return (
       <Wrapper style={bare ? styles.bareContainer : styles.card}>
-      {title ? <Text style={styles.title}>{title}</Text> : null}
+      {title ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <Text style={[styles.title, { marginBottom: 0 }]}>{title}</Text>
+          <HeatmapTooltip colors={colors} />
+        </View>
+      ) : null}
       {subtitle ? <Text style={styles.subtitle}>{isEmpty ? 'No completed sets yet' : subtitle}</Text> : null}
 
       <View style={styles.bodyRow}>

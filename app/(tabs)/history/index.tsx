@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -11,7 +11,17 @@ import { Dashboard, GranularityMode, ChartMode } from '../../../src/components/h
 import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { colors } from '../../../src/constants';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
+
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+});
 
 function granularityModeToBackend(mode: GranularityMode): Granularity {
   if (mode === 'W' || mode === 'M') return 'day';
@@ -20,6 +30,8 @@ function granularityModeToBackend(mode: GranularityMode): Granularity {
 }
 
 export default function HistoryScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { chartMode, setChartMode } = useHistoryView();
   const user = useAuthStore((s) => s.user);
   const { profile } = useProfileStore();
@@ -71,7 +83,8 @@ export default function HistoryScreen() {
 
   const handleChangeWeeks = useCallback((w: number) => {
     setWeeks(w);
-  }, []);
+    loadDashboard(w, granularity, chartMode);
+  }, [granularity, chartMode, loadDashboard]);
 
   const handleChangeGranularity = useCallback((mode: GranularityMode) => {
     setGranularity(mode);
@@ -124,12 +137,3 @@ export default function HistoryScreen() {
 
   return null;
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-});

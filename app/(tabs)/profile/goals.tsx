@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { Button, Card, Input } from '../../../src/components/ui';
-import { colors, fonts, spacing } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
 import { BODY_MEASUREMENT_METRICS, MeasurementMetricKey } from '../../../src/models';
 import { UserProfileUpdate } from '../../../src/models/profile';
 import { useProfileStore } from '../../../src/stores/profile.store';
@@ -13,6 +13,8 @@ import {
   measurementGoalToStored,
   measurementUnitLabelForMetric,
 } from '../../../src/utils/measurementGoals';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
 
 type GoalFormValues = Record<MeasurementMetricKey, string>;
 
@@ -24,6 +26,8 @@ function buildEmptyGoalForm(): GoalFormValues {
 }
 
 export default function GoalsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const { profile, updateProfile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
@@ -172,7 +176,7 @@ export default function GoalsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -180,7 +184,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xl * 2,
+    paddingBottom: spacing.xl + 50,
   },
   headerRow: {
     flexDirection: 'row',

@@ -46,6 +46,8 @@ import {
 } from '../../utils/superset';
 
 const TAB_BAR_HEIGHT = 60;
+const SLIDE_IN_MS = 500;
+const SLIDE_OUT_MS = 300;
 
 export function WorkoutOverlay() {
   const { colors } = useTheme();
@@ -94,6 +96,7 @@ export function WorkoutOverlay() {
 
   const [elapsed, setElapsed] = useState('0m 00s');
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [showTimerSettings, setShowTimerSettings] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -109,8 +112,7 @@ export function WorkoutOverlay() {
       if (which === 'swap') {
         setShowSwapPicker(true);
       } else if (which === 'add') {
-        setAutoOpenPicker(true);
-        setShowAddExercise(true);
+        setShowDirectAddPicker(true);
       }
     }
   }, []));
@@ -119,6 +121,7 @@ export function WorkoutOverlay() {
     pendingPickerReopenRef.current = source;
     setShowSwapPicker(false);
     setShowAddExercise(false);
+    setShowDirectAddPicker(false);
     setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
   }, [router]);
 
@@ -127,13 +130,13 @@ export function WorkoutOverlay() {
       setShowFullScreen(true);
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 300,
+        duration: SLIDE_IN_MS,
         useNativeDriver: true,
       }).start();
     } else {
       Animated.timing(slideAnim, {
         toValue: screenHeight,
-        duration: 250,
+        duration: SLIDE_OUT_MS,
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (finished) setShowFullScreen(false);
@@ -313,7 +316,14 @@ export function WorkoutOverlay() {
   const handleCancel = () => {
     Alert.alert('Cancel Workout', 'Discard this workout session?', [
       { text: 'Keep Going', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: () => cancelWorkout() },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: () => {
+          minimize();
+          setTimeout(() => cancelWorkout(), SLIDE_OUT_MS);
+        },
+      },
     ]);
   };
 
@@ -571,7 +581,7 @@ export function WorkoutOverlay() {
       <Button
         title="+ Add Exercise"
         variant="dashed"
-        onPress={() => setShowAddExercise(true)}
+        onPress={() => setShowDirectAddPicker(true)}
         style={{ marginBottom: 12 }}
       />
       <TouchableOpacity
@@ -629,6 +639,7 @@ export function WorkoutOverlay() {
             <BottomSheetModal
               visible={showHeatmap}
               onClose={() => setShowHeatmap(false)}
+              showCloseButton={false}
             >
               <MuscleHeatmap
                 data={muscleHeatmapData}
@@ -731,6 +742,22 @@ export function WorkoutOverlay() {
               distanceUnit={distanceUnit}
               onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
               autoOpenPicker={autoOpenPicker}
+            />
+
+            <ExercisePickerModal
+              visible={showDirectAddPicker}
+              onClose={() => setShowDirectAddPicker(false)}
+              onSelect={(exercise) => {
+                setShowDirectAddPicker(false);
+                handleAddExerciseConfirm(exercise, [{
+                  set_number: 1,
+                  target_weight: 0,
+                  target_reps_min: 8,
+                  target_reps_max: 12,
+                  target_rir: null,
+                }]);
+              }}
+              onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
             />
 
             <ExercisePickerModal

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { routineService } from '../../../../src/services';
 import { confirmDeleteExercise } from '../../../../src/utils/confirmDeleteExercise';
 import { DayOfWeekPicker, SwipeToDeleteRow, AddRowButton, InlineEditRow, Button, OverflowMenu, ExercisePickerModal, SupersetBracket } from '../../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../../src/components/ui';
-import { colors, fonts } from '../../../../src/constants';
+import { fonts, spacing } from '../../../../src/constants';
 import {
   DayOfWeek,
   RoutineDayExercise,
@@ -46,6 +46,8 @@ import {
   type SupersetGroups,
 } from '../../../../src/utils/superset';
 import { DayViewHeaderDropdown } from '../../../../src/components/routine/DayViewHeaderDropdown';
+import { useTheme } from '../../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../../src/constants/themes';
 
 function SwipeableExerciseRow({
   ex,
@@ -56,6 +58,7 @@ function SwipeableExerciseRow({
   onLongPress,
   menuItems,
   children,
+  styles,
 }: {
   ex: RoutineDayExercise;
   isExpanded: boolean;
@@ -65,6 +68,7 @@ function SwipeableExerciseRow({
   onLongPress?: () => void;
   menuItems?: OverflowMenuItem[];
   children?: React.ReactNode;
+  styles: Record<string, any>;
 }) {
   const setsCount = ex.sets?.length ?? ex.target_sets;
   const setsLabel =
@@ -114,11 +118,13 @@ function ExerciseSetsEditor({
   wUnit,
   dUnit,
   onSave,
+  styles,
 }: {
   entry: RoutineDayExercise;
   wUnit: WeightUnit;
   dUnit: DistanceUnit;
   onSave: () => void;
+  styles: Record<string, any>;
 }) {
   const initial = setsToTemplateRows(entry.sets ?? [], entry.target_reps, wUnit);
   const [useRepRange, setUseRepRange] = useState(initial.hasRepRange);
@@ -167,6 +173,8 @@ function ExerciseSetsEditor({
 }
 
 export default function DayEditorScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
   const router = useRouter();
   const { user } = useAuthStore();
@@ -182,6 +190,7 @@ export default function DayEditorScreen() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
@@ -195,8 +204,7 @@ export default function DayEditorScreen() {
       if (which === 'swap') {
         setShowSwapPicker(true);
       } else if (which === 'add') {
-        setAutoOpenPicker(true);
-        setShowAddExercise(true);
+        setShowDirectAddPicker(true);
       }
     }
   }, []));
@@ -205,6 +213,7 @@ export default function DayEditorScreen() {
     if (source) pendingPickerReopenRef.current = source;
     setShowSwapPicker(false);
     setShowAddExercise(false);
+    setShowDirectAddPicker(false);
     setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
   }, [router]);
 
@@ -278,7 +287,7 @@ export default function DayEditorScreen() {
     }));
     try {
       const dayExercises = day?.exercises ?? [];
-      await routineService.addExerciseToDay(
+      const newEntry = await routineService.addExerciseToDay(
         {
           routine_day_id: dayId,
           exercise_id: exercise.id,
@@ -288,6 +297,7 @@ export default function DayEditorScreen() {
         },
         normalizedSets,
       );
+      setExpandedIds((prev) => new Set([...prev, newEntry.id]));
       setShowAddExercise(false);
       refresh();
     } catch (error: unknown) {
@@ -509,8 +519,9 @@ export default function DayEditorScreen() {
                   onDelete={() => handleExRemove(item.entry.id)}
                   onLongPress={drag}
                   menuItems={buildExerciseMenuItems(item.entry, day.exercises.indexOf(item.entry))}
+                  styles={styles}
                 >
-                  <ExerciseSetsEditor entry={item.entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} />
+                  <ExerciseSetsEditor entry={item.entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} styles={styles} />
                 </SwipeableExerciseRow>
               ) : (
                 <View>
@@ -526,8 +537,9 @@ export default function DayEditorScreen() {
                           onDelete={() => handleExRemove(entry.id)}
                           onLongPress={drag}
                           menuItems={buildExerciseMenuItems(entry, day.exercises.indexOf(entry))}
+                          styles={styles}
                         >
-                          <ExerciseSetsEditor entry={entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} />
+                          <ExerciseSetsEditor entry={entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} styles={styles} />
                         </SwipeableExerciseRow>
                       </SupersetBracket>
                     );
@@ -538,7 +550,7 @@ export default function DayEditorScreen() {
           )}
         />
 
-        <AddRowButton label="+ Add Exercise" onPress={() => setShowAddExercise(true)} />
+        <AddRowButton label="+ Add Exercise" onPress={() => setShowDirectAddPicker(true)} />
 
         <TouchableOpacity onPress={handleRemoveDay} style={styles.removeDayBtn}>
           <Text style={styles.removeDayText}>Remove Day</Text>
@@ -564,18 +576,31 @@ export default function DayEditorScreen() {
         selectedExerciseId={swapEntryId ? (day?.exercises.find((entry) => entry.id === swapEntryId)?.exercise_id ?? null) : null}
         onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
       />
+
+      <ExercisePickerModal
+        visible={showDirectAddPicker}
+        onClose={() => setShowDirectAddPicker(false)}
+        onSelect={(exercise) => {
+          setShowDirectAddPicker(false);
+          handleAddExerciseConfirm(exercise, [{
+            set_number: 1, target_weight: 0,
+            target_reps_min: 8, target_reps_max: 12, target_rir: null,
+          }]);
+        }}
+        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   content: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: spacing.xl+50, 
   },
   labelRow: {
     marginBottom: 20,
@@ -623,7 +648,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   exerciseNameLink: {
-    color: '#98c6fb',
+    color: colors.accent,
   },
   exerciseNameTapTarget: {
     alignSelf: 'flex-start',

@@ -1,44 +1,11 @@
+import { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors, fonts } from '../../../src/constants';
+import { fonts } from '../../../src/constants';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
 
-interface SettingsItemProps {
-  label: string;
-  onPress: () => void;
-}
-
-function SettingsItem({ label, onPress }: SettingsItemProps) {
-  return (
-    <TouchableOpacity style={styles.item} onPress={onPress}>
-      <Text style={styles.itemText}>{label}</Text>
-      <Text style={styles.itemArrow}>›</Text>
-    </TouchableOpacity>
-  );
-}
-
-export default function SettingsScreen() {
-  const router = useRouter();
-
-  return (
-    <View style={styles.container}>
-      <Text style={styles.sectionHeader}>Account</Text>
-      <View style={styles.section}>
-        <SettingsItem label="Profile" onPress={() => router.push('/(tabs)/profile/edit')} />
-        <SettingsItem label="Account" onPress={() => router.push('/(tabs)/profile/account')} />
-      </View>
-
-      <Text style={styles.sectionHeader}>Preferences</Text>
-      <View style={styles.section}>
-        <SettingsItem label="Units" onPress={() => router.push('/(tabs)/profile/units')} />
-        <SettingsItem label="Notifications" onPress={() => router.push('/(tabs)/profile/notifications')} />
-        <SettingsItem label="Colour Customization" onPress={() => router.push('/(tabs)/profile/colour-customization')} />
-        <SettingsItem label="Workouts" onPress={() => router.push('/(tabs)/profile/workouts')} />
-      </View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -80,3 +47,66 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 });
+
+interface SettingsItemProps {
+  label: string;
+  onPress: () => void;
+  styles: ReturnType<typeof createStyles>;
+}
+
+function SettingsItem({ label, onPress, styles }: SettingsItemProps) {
+  return (
+    <TouchableOpacity style={styles.item} onPress={onPress}>
+      <Text style={styles.itemText}>{label}</Text>
+      <Text style={styles.itemArrow}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
+export default function SettingsScreen() {
+  const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.sectionHeader}>Account</Text>
+      <View style={styles.section}>
+        <SettingsItem
+          label="Profile"
+          onPress={() => router.push('/(tabs)/profile/edit')}
+          styles={styles}
+        />
+        <SettingsItem
+          label="Account"
+          onPress={() => router.push('/(tabs)/profile/account')}
+          styles={styles}
+        />
+      </View>
+
+      <Text style={styles.sectionHeader}>Preferences</Text>
+      <View style={styles.section}>
+        <SettingsItem
+          label="Units"
+          onPress={() => router.push('/(tabs)/profile/units')}
+          styles={styles}
+        />
+        <SettingsItem
+          label="Notifications"
+          onPress={() => router.push('/(tabs)/profile/notifications')}
+          styles={styles}
+        />
+        <SettingsItem
+          label="Colour Customization"
+          onPress={() => router.push('/(tabs)/profile/colour-customization')}
+          styles={styles}
+        />
+        <SettingsItem
+          label="Workouts"
+          onPress={() => router.push('/(tabs)/profile/workouts')}
+          styles={styles}
+        />
+      </View>
+    </View>
+  );
+}

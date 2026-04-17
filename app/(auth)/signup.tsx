@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Text,
   StyleSheet,
@@ -7,10 +7,36 @@ import {
 import { Link } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { Button, Input } from '../../src/components/ui';
-import { colors, fonts, spacing } from '../../src/constants';
+import { fonts, spacing } from '../../src/constants';
 import { AuthScaffold } from '../../src/components/auth/AuthScaffold';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../src/constants/themes';
+
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  signUpButton: {
+    marginTop: spacing.xs,
+    backgroundColor: colors.text,
+    borderColor: colors.text,
+    borderWidth: 1,
+  },
+  link: {
+    alignSelf: 'center',
+    marginTop: spacing.md,
+  },
+  linkText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontFamily: fonts.regular,
+  },
+  linkBold: {
+    color: colors.text,
+    fontFamily: fonts.semiBold,
+  },
+});
 
 export default function SignUpScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -83,25 +109,3 @@ export default function SignUpScreen() {
     </AuthScaffold>
   );
 }
-
-const styles = StyleSheet.create({
-  signUpButton: {
-    marginTop: spacing.xs,
-    backgroundColor: '#CFEFEB',
-    borderColor: '#CFEFEB',
-    borderWidth: 1,
-  },
-  link: {
-    alignSelf: 'center',
-    marginTop: spacing.md,
-  },
-  linkText: {
-    color: '#9EBABB',
-    fontSize: 14,
-    fontFamily: fonts.regular,
-  },
-  linkBold: {
-    color: '#DFFCF8',
-    fontFamily: fonts.semiBold,
-  },
-});

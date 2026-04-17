@@ -17,8 +17,10 @@ import { BodyMeasurement, BODY_MEASUREMENT_METRICS, MeasurementMetricKey } from 
 import { measurementService } from '../../../src/services';
 import { profileService } from '../../../src/services/profile.service';
 import { Button, Card, Input } from '../../../src/components/ui';
-import { colors, fonts, spacing } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
 import { cmToIn, inToCm, kgToLbs, lbsToKg } from '../../../src/utils/units';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
 
 type FormValues = Record<MeasurementMetricKey, string>;
 type FormSnapshot = {
@@ -70,6 +72,8 @@ function areSnapshotsEqual(a: FormSnapshot | null, b: FormSnapshot | null): bool
 }
 
 export default function MeasurementsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const user = useAuthStore((s) => s.user);
   const { profile, setProfile } = useProfileStore();
@@ -584,7 +588,7 @@ export default function MeasurementsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -592,7 +596,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
-    paddingBottom: spacing.xl * 2,
+    paddingBottom: spacing.xl + 50,
   },
   headerRow: {
     flexDirection: 'row',
@@ -697,7 +701,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
   },
   logActionDanger: {
-    color: colors.danger,
+    color: '#FF6B6B',
   },
   metricRow: {
     flexDirection: 'row',

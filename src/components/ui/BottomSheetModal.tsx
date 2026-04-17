@@ -14,7 +14,6 @@ import {
   StyleProp,
   ViewStyle,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../contexts/ThemeContext';
 import { fonts } from '../../constants';
 import { KeyboardDismiss } from './KeyboardDismiss';
@@ -44,7 +43,7 @@ export function BottomSheetModal({
   sheetStyle,
   onClose,
 }: BottomSheetModalProps) {
-  const { colors, gradients } = useTheme();
+  const { colors } = useTheme();
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const sheetTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const [modalVisible, setModalVisible] = useState(false);
@@ -129,13 +128,7 @@ export function BottomSheetModal({
               <Text style={styles.closeBtn}>✕</Text>
             </TouchableOpacity>
           )}
-          <View style={[styles.sheet, { paddingHorizontal: contentPaddingHorizontal }, fullHeight && styles.sheetFull, sheetStyle]}>
-            <LinearGradient
-              colors={gradients.surfaceElevated}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFillObject}
-            />
+          <View style={[styles.sheet, { paddingHorizontal: contentPaddingHorizontal, backgroundColor: colors.surface }, fullHeight && styles.sheetFull, sheetStyle]}>
             {title ? <Text style={styles.title}>{title}</Text> : null}
             <Body style={scrollable ? styles.scrollBody : styles.viewBody} {...bodyProps}>
               {children}

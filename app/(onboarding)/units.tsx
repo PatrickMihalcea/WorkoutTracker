@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { OnboardingScaffold } from '../../src/components/onboarding/OnboardingScaffold';
 import { Button } from '../../src/components/ui';
-import { colors, fonts, spacing } from '../../src/constants';
+import { fonts, spacing } from '../../src/constants';
 import { DistanceUnit, HeightUnit, WeightUnit } from '../../src/models/profile';
 import { useProfileStore } from '../../src/stores/profile.store';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../src/constants/themes';
 
 interface UnitOption {
   label: string;
@@ -20,9 +22,10 @@ interface UnitRowProps {
   value: string;
   options: UnitOption[];
   onSelect: (next: string) => void;
+  styles: ReturnType<typeof createStyles>;
 }
 
-function UnitRow({ label, helper, value, options, onSelect }: UnitRowProps) {
+function UnitRow({ label, helper, value, options, onSelect, styles }: UnitRowProps) {
   return (
     <View style={styles.groupCard}>
       <Text style={styles.groupLabel}>{label}</Text>
@@ -48,6 +51,8 @@ function UnitRow({ label, helper, value, options, onSelect }: UnitRowProps) {
 }
 
 export default function UnitsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const { updateProfile } = useProfileStore();
 
@@ -71,7 +76,7 @@ export default function UnitsScreen() {
       onBack={() => router.back()}
       title="Dial in your units"
       subtitle="Choose how your numbers appear so every set, rep, and distance reads naturally to you."
-      footer={<Button title="Continue" onPress={handleContinue} />}
+      footer={<Button title="Continue" onPress={handleContinue} variant="cta" size="lg" />}
     >
       <UnitRow
         label="Weight"
@@ -82,6 +87,7 @@ export default function UnitsScreen() {
           { label: 'Kilograms', value: 'kg', hint: 'KG' },
           { label: 'Pounds', value: 'lbs', hint: 'LBS' },
         ]}
+        styles={styles}
       />
 
       <UnitRow
@@ -93,6 +99,7 @@ export default function UnitsScreen() {
           { label: 'Centimeters', value: 'cm', hint: 'CM' },
           { label: 'Feet/Inches', value: 'in', hint: 'FT/IN' },
         ]}
+        styles={styles}
       />
 
       <UnitRow
@@ -104,17 +111,18 @@ export default function UnitsScreen() {
           { label: 'Kilometers', value: 'km', hint: 'KM' },
           { label: 'Miles', value: 'miles', hint: 'MI' },
         ]}
+        styles={styles}
       />
     </OnboardingScaffold>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   groupCard: {
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: 'rgba(22, 22, 22, 0.92)',
+    backgroundColor: colors.surface,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
@@ -125,7 +133,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   groupHelper: {
-    color: '#9AAEAE',
+    color: colors.textMuted,
     fontSize: 13,
     fontFamily: fonts.regular,
     lineHeight: 18,
@@ -139,16 +147,16 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#363636',
-    backgroundColor: '#121212',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceLight,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     minHeight: 70,
     justifyContent: 'center',
   },
   unitCardSelected: {
-    borderColor: '#4ECDC4',
-    backgroundColor: 'rgba(78, 205, 196, 0.14)',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
   },
   unitCardLabel: {
     color: colors.text,
@@ -157,7 +165,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   unitCardLabelSelected: {
-    color: '#DEFFFC',
+    color: colors.text,
   },
   unitCardHint: {
     color: colors.textMuted,
@@ -166,6 +174,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   unitCardHintSelected: {
-    color: '#8FD5CE',
+    color: colors.textSecondary,
   },
 });

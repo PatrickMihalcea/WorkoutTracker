@@ -17,6 +17,7 @@ export interface OverflowMenuItem {
   label: string;
   onPress: () => void;
   destructive?: boolean;
+  highlight?: boolean;
   disabled?: boolean;
 }
 
@@ -46,11 +47,14 @@ export function OverflowMenu({ items }: OverflowMenuProps) {
       shadowOpacity: 0.3,
       shadowRadius: 8,
       elevation: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     menuItem: { paddingVertical: 12, paddingHorizontal: 20 },
     menuItemText: { fontSize: 15, fontFamily: fonts.regular, color: colors.text },
     menuItemDestructive: { color: '#FF6B6B' },
     menuItemDisabled: { color: colors.textMuted },
+    menuItemHighlight: { color: colors.accent },
   }), [colors]);
 
   const handleOpen = useCallback(() => {
@@ -103,6 +107,7 @@ export function OverflowMenu({ items }: OverflowMenuProps) {
                     styles.menuItemText,
                     item.destructive && styles.menuItemDestructive,
                     item.disabled && styles.menuItemDisabled,
+                    item.highlight && styles.menuItemHighlight,
                   ]}
                 >
                   {item.label}

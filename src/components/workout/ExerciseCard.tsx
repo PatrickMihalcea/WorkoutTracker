@@ -224,7 +224,7 @@ export function ExerciseCard({
       color: colors.text,
     },
     exerciseNameLink: {
-      color: '#98c6fb',
+      color: colors.accent,
     },
     exerciseNameTapTarget: {
       alignSelf: 'flex-start',
@@ -232,7 +232,7 @@ export function ExerciseCard({
     muscleGroup: {
       fontSize: 13,
       fontFamily: fonts.light,
-      color: colors.textMuted,
+      color: colors.textSecondary,
       marginTop: 2,
       textTransform: 'capitalize',
     },
@@ -253,8 +253,8 @@ export function ExerciseCard({
     },
     colHeader: {
       fontSize: 11,
-      fontFamily: fonts.bold,
-      color: colors.textMuted,
+      fontFamily: fonts.semiBold,
+      color: colors.textSecondary,
       textAlign: 'center',
     },
     setLabelCol: { width: 28, alignItems: 'center', justifyContent: 'center' },

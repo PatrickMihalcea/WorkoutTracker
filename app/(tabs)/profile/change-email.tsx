@@ -1,10 +1,21 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { Button, Input } from '../../../src/components/ui';
-import { colors } from '../../../src/constants';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
+
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+    padding: 20,
+  },
+});
 
 export default function ChangeEmailScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user, updateEmail } = useAuthStore();
   const [email, setEmail] = useState(user?.email ?? '');
   const [loading, setLoading] = useState(false);
@@ -46,11 +57,3 @@ export default function ChangeEmailScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 20,
-  },
-});

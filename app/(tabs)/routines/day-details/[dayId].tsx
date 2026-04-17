@@ -5,7 +5,7 @@ import { useAuthStore } from '../../../../src/stores/auth.store';
 import { useProfileStore } from '../../../../src/stores/profile.store';
 import { useRoutineStore } from '../../../../src/stores/routine.store';
 import { dashboardService, routineService, RoutineChartData } from '../../../../src/services';
-import { colors, fonts, spacing } from '../../../../src/constants';
+import { fonts, spacing } from '../../../../src/constants';
 import {
   ChartFilterBar,
   MetricChips,
@@ -22,6 +22,8 @@ import {
 import { DayOfWeek, DAY_LABELS, RoutineDayWithExercises } from '../../../../src/models';
 import { MuscleHeatmap } from '../../../../src/components/history/MuscleHeatmap';
 import { DayViewHeaderDropdown } from '../../../../src/components/routine/DayViewHeaderDropdown';
+import { useTheme } from '../../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../../src/constants/themes';
 
 type RoutineMetric = 'volume' | 'reps' | 'duration';
 
@@ -38,6 +40,8 @@ const granularityToBackend = (mode: GranularityMode) => {
 };
 
 function DayDetailsContent() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
   const { user } = useAuthStore();
   const { profile } = useProfileStore();
@@ -335,7 +339,7 @@ export default function DayDetailsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

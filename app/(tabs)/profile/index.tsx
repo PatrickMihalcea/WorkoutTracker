@@ -1,16 +1,227 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Image, Alert, ActivityIndicator } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { sessionService } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { Card, EmptyState } from '../../../src/components/ui';
-import { colors, fonts, spacing } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
 import { WorkoutSessionWithRoutine } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 import { formatHeight } from '../../../src/utils/units';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
+
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl + 50,
+  },
+  contentEmpty: {
+    paddingBottom: spacing.xl,
+  },
+  loadingHistoryContainer: {
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroCard: {
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceLight,
+  },
+  displayName: {
+    fontSize: 24,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  name: {
+    fontSize: 16,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  bio: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  quickActionCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  quickActionCardAccent: {
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceLight,
+  },
+  quickActionTitle: {
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+  },
+  quickActionSub: {
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  quickActionArrow: {
+    fontSize: 20,
+    fontFamily: fonts.light,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  statRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
+  },
+  stat: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.border,
+  },
+  statValue: {
+    fontSize: 19,
+    fontFamily: fonts.bold,
+    color: colors.text,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: spacing.sm,
+  },
+  sessionCard: {
+    marginBottom: 12,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  sessionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  headerTextWrap: {
+    flex: 1,
+  },
+  routineDayLabel: {
+    fontSize: 17,
+    fontFamily: fonts.bold,
+    color: colors.text,
+  },
+  routineName: {
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  recordBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(93, 196, 122, 0.16)',
+    borderColor: '#5DC47A',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  recordDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#5DC47A',
+  },
+  recordBadgeText: {
+    fontSize: 11,
+    fontFamily: fonts.bold,
+    color: '#89E6A2',
+  },
+  sessionMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  weekPill: {
+    borderWidth: 1,
+    borderColor: '#2E6FBF',
+    backgroundColor: 'rgba(46, 111, 191, 0.16)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  weekPillText: {
+    fontSize: 11,
+    fontFamily: fonts.semiBold,
+    color: '#88BBF0',
+  },
+  sessionDuration: {
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    marginLeft: 'auto',
+  },
+  sessionTimeLine: {
+    fontSize: 12,
+    fontFamily: fonts.light,
+    color: colors.textMuted,
+    marginTop: 8,
+  },
+  sessionDateInline: {
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+  },
+});
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { profile } = useProfileStore();
 
   const [sessions, setSessions] = useState<WorkoutSessionWithRoutine[]>([]);
@@ -146,8 +357,22 @@ export default function ProfileScreen() {
     );
   };
 
+  const renderHeaderRight = useCallback(() => (
+    <TouchableOpacity
+      onPress={() => router.push('/(tabs)/profile/settings')}
+      activeOpacity={0.7}
+      style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <Image
+        source={require('../../../assets/icons/setting.png')}
+        style={{ width: 20, height: 20, tintColor: '#FFFFFF' }}
+      />
+    </TouchableOpacity>
+  ), [router]);
+
   return (
     <View style={styles.container}>
+      <Stack.Screen options={{ headerRight: renderHeaderRight }} />
       <FlatList
         data={sessions}
         keyExtractor={(item) => item.id}
@@ -158,18 +383,9 @@ export default function ProfileScreen() {
         ListHeaderComponent={(
           <>
             <Card style={styles.heroCard}>
-              <View style={styles.topRow}>
-                <Text style={styles.displayName} numberOfLines={1} ellipsizeMode="tail">
-                  @{profile?.display_name ?? 'user'}
-                </Text>
-                <TouchableOpacity
-                  style={styles.iconBtn}
-                  onPress={() => router.push('/(tabs)/profile/settings')}
-                  activeOpacity={0.8}
-                >
-                  <Image source={require('../../../assets/icons/setting.png')} style={styles.settingsIcon} />
-                </TouchableOpacity>
-              </View>
+              <Text style={styles.displayName} numberOfLines={1} ellipsizeMode="tail">
+                @{profile?.display_name ?? 'user'}
+              </Text>
 
               {profile?.name ? <Text style={styles.name}>{profile.name}</Text> : null}
               {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
@@ -235,231 +451,3 @@ export default function ProfileScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl + spacing.md,
-  },
-  contentEmpty: {
-    paddingBottom: spacing.xl,
-  },
-  loadingHistoryContainer: {
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroCard: {
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderColor: '#2D6666',
-    backgroundColor: '#171D1D',
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  displayName: {
-    fontSize: 24,
-    fontFamily: fonts.bold,
-    color: '#D9F6F2',
-    flexShrink: 1,
-  },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#2D6666',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(78, 205, 196, 0.08)',
-  },
-  settingsIcon: {
-    width: 18,
-    height: 18,
-    tintColor: '#8FE2DA',
-  },
-  name: {
-    fontSize: 16,
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  bio: {
-    fontSize: 14,
-    fontFamily: fonts.regular,
-    color: '#88A2A2',
-    marginBottom: spacing.sm,
-  },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  quickActionCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  quickActionCardAccent: {
-    borderColor: '#2D6666',
-    backgroundColor: '#152020',
-  },
-  quickActionTitle: {
-    fontSize: 15,
-    fontFamily: fonts.semiBold,
-    color: colors.text,
-  },
-  quickActionSub: {
-    fontSize: 12,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
-  quickActionArrow: {
-    fontSize: 20,
-    fontFamily: fonts.light,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
-  statRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: '#2D6666',
-    paddingTop: spacing.sm,
-  },
-  stat: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.xs,
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#2D6666',
-  },
-  statValue: {
-    fontSize: 19,
-    fontFamily: fonts.bold,
-    color: colors.text,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontFamily: fonts.regular,
-    color: '#88A2A2',
-    marginTop: spacing.xs,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    fontFamily: fonts.semiBold,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: spacing.sm,
-  },
-  sessionCard: {
-    marginBottom: 12,
-    backgroundColor: '#161C20',
-    borderColor: '#2A333A',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  sessionHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  headerTextWrap: {
-    flex: 1,
-  },
-  routineDayLabel: {
-    fontSize: 17,
-    fontFamily: fonts.bold,
-    color: colors.text,
-  },
-  routineName: {
-    fontSize: 13,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  recordBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(93, 196, 122, 0.16)',
-    borderColor: '#5DC47A',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  recordDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#5DC47A',
-  },
-  recordBadgeText: {
-    fontSize: 11,
-    fontFamily: fonts.bold,
-    color: '#89E6A2',
-  },
-  sessionMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 2,
-  },
-  weekPill: {
-    borderWidth: 1,
-    borderColor: '#355A73',
-    backgroundColor: 'rgba(53, 90, 115, 0.22)',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  weekPillText: {
-    fontSize: 11,
-    fontFamily: fonts.semiBold,
-    color: '#9FC4DD',
-  },
-  sessionDuration: {
-    fontSize: 14,
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-    marginLeft: 'auto',
-  },
-  sessionTimeLine: {
-    fontSize: 12,
-    fontFamily: fonts.light,
-    color: colors.textMuted,
-    marginTop: 8,
-  },
-  sessionDateInline: {
-    fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
-  },
-});

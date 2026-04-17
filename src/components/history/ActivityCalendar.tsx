@@ -8,9 +8,10 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { colors, fonts, spacing } from '../../constants';
+import { fonts, spacing } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../constants/themes';
 
-export const ACTIVITY_FILL_COLOR = '#4ECDC4';
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_HEADERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -32,6 +33,12 @@ const CELL_GAP = 2;
 const DAY_CELL_HEIGHT = 20;
 const DAY_CELL_HEIGHT_COMPACT = 16;
 const DAY_CELL_HEIGHT_TALL = 24;
+
+function useActivityCalendarStyles() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  return { styles };
+}
 
 function startOfDay(d: Date): Date {
   const x = new Date(d);
@@ -150,11 +157,13 @@ function DayCell({
   filledDays,
   compact,
   tall,
+  styles,
 }: {
   dayKey: string | null;
   filledDays: Set<string>;
   compact?: boolean;
   tall?: boolean;
+  styles: ReturnType<typeof createStyles>;
 }) {
   const slotStyle = [
     styles.dayCellSlot,
@@ -182,12 +191,14 @@ function MonthCard({
   cardHeight,
   compact,
   tallCells,
+  styles,
 }: {
   item: MonthCalendar;
   filledDays: Set<string>;
   cardHeight?: number;
   compact?: boolean;
   tallCells?: boolean;
+  styles: ReturnType<typeof createStyles>;
 }) {
   return (
     <View style={[styles.monthCard, compact && styles.monthCardCompact, cardHeight ? { height: cardHeight } : null]}>
@@ -215,6 +226,7 @@ function MonthCard({
                 filledDays={filledDays}
                 compact={compact}
                 tall={tallCells}
+                styles={styles}
               />
             ))}
           </View>
@@ -247,6 +259,7 @@ export function MonthCalendarGrid({
   style?: ViewStyle;
   contentContainerStyle?: ViewStyle;
 }) {
+  const { styles } = useActivityCalendarStyles();
   if (!virtualized) {
     return (
       <ScrollView
@@ -264,6 +277,7 @@ export function MonthCalendarGrid({
                 cardHeight={cardHeight}
                 compact={compact}
                 tallCells={tallCells}
+                styles={styles}
               />
             </View>
           ))}
@@ -289,6 +303,7 @@ export function MonthCalendarGrid({
             cardHeight={cardHeight}
             compact={compact}
             tallCells={tallCells}
+            styles={styles}
           />
         </View>
       )}
@@ -305,6 +320,7 @@ export function WeekCalendarList({
   filledDays: Set<string>;
   contentContainerStyle?: ViewStyle;
 }) {
+  const { styles } = useActivityCalendarStyles();
   const sections = useMemo(() => {
     const map = new Map<string, WeekRow[]>();
     for (const row of rows) {
@@ -342,7 +358,7 @@ export function WeekCalendarList({
       renderItem={({ item }) => (
         <View style={styles.weekRow}>
           {item.dayKeys.map((k, idx) => (
-            <DayCell key={k ?? `${item.key}-b${idx}`} dayKey={k} filledDays={filledDays} />
+            <DayCell key={k ?? `${item.key}-b${idx}`} dayKey={k} filledDays={filledDays} styles={styles} />
           ))}
         </View>
       )}
@@ -350,7 +366,7 @@ export function WeekCalendarList({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   monthListContent: {
     paddingBottom: spacing.sm,
   },
@@ -432,8 +448,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dayCellFilled: {
-    backgroundColor: ACTIVITY_FILL_COLOR,
-    borderColor: ACTIVITY_FILL_COLOR,
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   dayCellText: {
     color: colors.textSecondary,

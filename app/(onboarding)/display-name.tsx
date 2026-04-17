@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { OnboardingScaffold } from '../../src/components/onboarding/OnboardingScaffold';
 import { Input, Button } from '../../src/components/ui';
-import { colors, fonts, spacing } from '../../src/constants';
+import { fonts, spacing } from '../../src/constants';
 import { Sex } from '../../src/models/profile';
 import { profileService } from '../../src/services';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useProfileStore } from '../../src/stores/profile.store';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../src/constants/themes';
 
 const SEX_OPTIONS: { value: Sex; label: string }[] = [
   { value: 'male', label: 'Male' },
@@ -18,6 +20,8 @@ const SEX_OPTIONS: { value: Sex; label: string }[] = [
 ];
 
 export default function DisplayNameScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const { user } = useAuthStore();
   const { setProfile } = useProfileStore();
@@ -108,7 +112,7 @@ export default function DisplayNameScreen() {
       totalSteps={5}
       title="Build your athlete profile"
       subtitle="Lock in your identity so your stats, records, and progress feel truly yours."
-      footer={<Button title="Continue" onPress={handleContinue} loading={loading} />}
+      footer={<Button title="Continue" onPress={handleContinue} loading={loading} variant="cta" size="lg" />}
     >
       <View style={styles.sectionBlock}>
         <Text style={styles.fieldLabel}>Display Name</Text>
@@ -158,7 +162,7 @@ export default function DisplayNameScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   fieldLabel: {
     fontSize: 14,
     fontFamily: fonts.semiBold,
@@ -178,13 +182,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: 'rgba(23, 23, 23, 0.92)',
+    backgroundColor: colors.surface,
     paddingVertical: spacing.sm + spacing.xs,
     paddingHorizontal: spacing.md,
   },
   sexCardSelected: {
-    borderColor: '#4ECDC4',
-    backgroundColor: 'rgba(78, 205, 196, 0.14)',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
   },
   sexLabel: {
     fontSize: 16,
@@ -192,13 +196,13 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   sexLabelSelected: {
-    color: '#D8FFFB',
+    color: colors.text,
   },
   pickerCard: {
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: 'rgba(22, 22, 22, 0.92)',
+    backgroundColor: colors.surface,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.xs,
     alignItems: 'center',

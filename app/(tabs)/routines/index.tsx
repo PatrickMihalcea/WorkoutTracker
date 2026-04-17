@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,11 +12,70 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { Button, Card, EmptyState, OverflowMenu, OverflowMenuItem } from '../../../src/components/ui';
-import { colors, fonts, spacing } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
 import { Routine } from '../../../src/models';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
+
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  list: {
+    padding: spacing.sm,
+    paddingBottom: 80,
+  },
+  routineCard: {
+    marginBottom: 12,
+    paddingHorizontal: spacing.md,
+  },
+  activeCard: {
+    borderColor: colors.accent,
+  },
+  routineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  routineInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: spacing.xs,
+  },
+  menuWrap: {
+    marginLeft: spacing.xs,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  routineName: {
+    fontSize: 18,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    flexShrink: 1,
+    lineHeight: 22,
+  },
+  routineMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+  },
+  routineMetaActive: {
+    color: colors.textSecondary,
+  },
+});
 
 export default function RoutineListScreen() {
   const router = useRouter();
+  const { colors, gradients } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuthStore();
   const { routines, fetchRoutines, setActive, deleteRoutine, duplicateRoutine } = useRoutineStore();
   const [refreshing, setRefreshing] = useState(false);
@@ -86,7 +145,10 @@ export default function RoutineListScreen() {
       onPress={() => router.push(`/(tabs)/routines/${item.id}`)}
       onLongPress={() => handleDelete(item)}
     >
-      <Card style={StyleSheet.flatten([styles.routineCard, item.is_active ? styles.activeCard : undefined])} gradientColors= {item.is_active ? ['#122828', '#0a1a1a'] : undefined}>
+      <Card
+        style={StyleSheet.flatten([styles.routineCard, item.is_active ? styles.activeCard : undefined])}
+        gradientColors={item.is_active ? gradients.accent : undefined}
+      >
         <View style={styles.routineHeader}>
           <View style={styles.routineInfo}>
             <Text style={styles.routineName}>{item.name}</Text>
@@ -101,6 +163,7 @@ export default function RoutineListScreen() {
                   label: 'Set Active',
                   onPress: () => handleSetActive(item),
                   disabled: item.is_active,
+                  highlight: !item.is_active,
                 },
                 {
                   label: 'Edit',
@@ -164,58 +227,3 @@ export default function RoutineListScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-  },
-  list: {
-    padding: spacing.sm,
-    paddingBottom: 80,
-  },
-  routineCard: {
-    marginBottom: 12,
-    paddingHorizontal: spacing.md,
-  },
-  activeCard: {
-    borderColor: '#244343',
-  },
-  routineHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  routineInfo: {
-    flex: 1,
-    minWidth: 0,
-    paddingRight: spacing.xs,
-  },
-  menuWrap: {
-    marginLeft: spacing.xs,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-  },
-  routineName: {
-    fontSize: 18,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    flexShrink: 1,
-    lineHeight: 22,
-  },
-  routineMeta: {
-    marginTop: 2,
-    fontSize: 12,
-    fontFamily: fonts.regular,
-    color: colors.textMuted,
-  },
-  routineMetaActive: {
-    color: '#88A2A2',
-  },
-});

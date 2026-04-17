@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { OnboardingScaffold } from '../../src/components/onboarding/OnboardingScaffold';
 import { Button } from '../../src/components/ui';
-import { colors, fonts, spacing } from '../../src/constants';
+import { fonts, spacing } from '../../src/constants';
 import { kgToLbs, lbsToKg } from '../../src/utils/units';
 import { useProfileStore } from '../../src/stores/profile.store';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../src/constants/themes';
 
 function formatOptional(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '';
@@ -14,6 +16,8 @@ function formatOptional(value: number | null | undefined): string {
 }
 
 export default function GoalsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const { profile, updateProfile } = useProfileStore();
   const [saving, setSaving] = useState(false);
@@ -85,7 +89,7 @@ export default function GoalsScreen() {
       onBack={() => router.back()}
       title="Set your goals"
       subtitle="Optional targets help shape your long-term trend lines. You can skip any field and edit later."
-      footer={<Button title="Continue" onPress={handleContinue} loading={saving} />}
+      footer={<Button title="Continue" onPress={handleContinue} loading={saving} variant="cta" size="lg" />}
     >
       <View style={[styles.goalCard, styles.goalCardPrimary]}>
         <View style={styles.goalTopRow}>
@@ -123,7 +127,7 @@ export default function GoalsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   goalCard: {
     borderRadius: 14,
     borderWidth: 1,
@@ -131,12 +135,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   goalCardPrimary: {
-    borderColor: '#3D7170',
-    backgroundColor: 'rgba(18, 42, 44, 0.72)',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
   },
   goalCardSecondary: {
-    borderColor: '#365A5F',
-    backgroundColor: 'rgba(18, 32, 36, 0.68)',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   goalTopRow: {
     flexDirection: 'row',
@@ -152,16 +156,16 @@ const styles = StyleSheet.create({
   goalUnit: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#4A7A7D',
+    borderColor: colors.border,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    color: '#A9D8D8',
+    color: colors.textSecondary,
     fontSize: 11,
     fontFamily: fonts.semiBold,
     letterSpacing: 0.2,
   },
   goalHint: {
-    color: '#9EB2B4',
+    color: colors.textMuted,
     fontSize: 12,
     lineHeight: 17,
     fontFamily: fonts.regular,
@@ -171,8 +175,8 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#314E52',
-    backgroundColor: 'rgba(10, 16, 18, 0.92)',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceLight,
     color: colors.text,
     paddingHorizontal: spacing.sm + spacing.xs,
     fontSize: 16,

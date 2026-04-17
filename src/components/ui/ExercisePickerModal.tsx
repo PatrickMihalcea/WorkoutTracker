@@ -67,7 +67,7 @@ function FilterDropdown<T extends string>({
     filterLabel: {
       fontSize: 11,
       fontFamily: fonts.bold,
-      color: colors.textMuted,
+      color: colors.textSecondary,
       textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
@@ -230,7 +230,7 @@ export function ExercisePickerModal({
     sectionHeader: {
       fontSize: 12,
       fontFamily: fonts.bold,
-      color: colors.textMuted,
+      color: colors.textSecondary,
       textTransform: 'uppercase',
       letterSpacing: 1,
       marginTop: 12,

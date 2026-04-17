@@ -14,12 +14,16 @@ import {
 } from '../../../src/components/history/ActivityCalendar';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { colors, fonts, spacing } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
 
 type ViewMode = 'month' | 'week';
 const FILTER_BAR_HEIGHT = 40;
 
 export default function ActivityScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { initialRange } = useLocalSearchParams<{ initialRange?: string }>();
   const { user } = useAuthStore();
   const { profile } = useProfileStore();
@@ -121,7 +125,7 @@ export default function ActivityScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -170,6 +174,7 @@ const styles = StyleSheet.create({
   },
   calendarContent: {
     paddingTop: FILTER_BAR_HEIGHT + spacing.xs,
+    paddingBottom: spacing.xl+50,
   },
   flex: {
     flex: 1,

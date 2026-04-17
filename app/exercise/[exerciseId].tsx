@@ -16,7 +16,7 @@ import {
   ExerciseDetailData,
 } from '../../src/services';
 import { updateCustomExercise } from '../../src/services/exerciseMutation.service';
-import { colors, fonts, spacing } from '../../src/constants';
+import { fonts, spacing } from '../../src/constants';
 import {
   SimpleLineChart,
   MetricChips,
@@ -33,6 +33,8 @@ import { distanceUnitLabel } from '../../src/utils/units';
 import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
 import { confirmDeleteExercise } from '../../src/utils/confirmDeleteExercise';
 import { Equipment, ExerciseType, MuscleGroup } from '../../src/models';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../src/constants/themes';
 
 type MetricKey = string;
 
@@ -155,6 +157,8 @@ function getMinYStep(metricKey: string): number {
 }
 
 function ExerciseDetailContent() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
   const router = useRouter();
   const { user } = useAuthStore();
@@ -517,14 +521,14 @@ export default function ExerciseDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   content: {
     paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.xl * 2,
+    paddingBottom: spacing.xl+50,
   },
   centered: {
     flex: 1,
