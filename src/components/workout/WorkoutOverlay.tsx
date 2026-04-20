@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../../stores/auth.store';
 import { useWorkoutStore } from '../../stores/workout.store';
@@ -50,6 +50,7 @@ import {
 const TAB_BAR_HEIGHT = 60;
 const SLIDE_IN_MS = 500;
 const SLIDE_OUT_MS = 300;
+const SESSION_ID_PATH_REGEX = /^\/profile\/[0-9a-fA-F-]{36}$/;
 type TooltipWarningVariant = 'empty-finish' | 'first-entry-walkthrough';
 type WorkoutTooltipKey = 'setToggleDemo' | 'setSwipeActions' | 'supersetMenu' | 'reorderLongPress';
 
@@ -90,6 +91,7 @@ const WORKOUT_TOOLTIP_COPY: Record<WorkoutTooltipKey, { title: string; message: 
 export function WorkoutOverlay() {
   const { colors } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuthStore();
   const { profile, updateProfile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
@@ -120,6 +122,7 @@ export function WorkoutOverlay() {
     swapExercise,
     completeWorkout,
     cancelWorkout,
+    enforceWorkoutDurationLimit,
     startRestTimer,
     tickRestTimer,
     dismissRestTimer,
@@ -173,13 +176,32 @@ export function WorkoutOverlay() {
     }
   }, []));
 
+  const openExerciseDetail = useCallback((exerciseId: string) => {
+    const href = `/exercise/${exerciseId}` as const;
+    if (pathname.startsWith('/exercise/')) {
+      router.replace(href);
+      return;
+    }
+    router.push(href);
+  }, [pathname, router]);
+
+  const openWorkoutDetail = useCallback((sessionId: string, justCompleted?: boolean) => {
+    const suffix = justCompleted ? '?justCompleted=1' : '';
+    const href = `/(tabs)/profile/${sessionId}${suffix}` as const;
+    if (SESSION_ID_PATH_REGEX.test(pathname)) {
+      router.replace(href);
+      return;
+    }
+    router.push(href);
+  }, [pathname, router]);
+
   const navigateToExerciseDetail = useCallback((exerciseId: string, source: 'swap' | 'add') => {
     pendingPickerReopenRef.current = source;
     setShowSwapPicker(false);
     setShowAddExercise(false);
     setShowDirectAddPicker(false);
-    setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
-  }, [router]);
+    setTimeout(() => openExerciseDetail(exerciseId), 280);
+  }, [openExerciseDetail]);
 
   useEffect(() => {
     if (expanded && session) {
@@ -202,11 +224,14 @@ export function WorkoutOverlay() {
 
   useEffect(() => {
     if (!session) return;
-    const tick = () => setElapsed(formatElapsed(session.started_at));
+    const tick = () => {
+      setElapsed(formatElapsed(session.started_at));
+      void enforceWorkoutDurationLimit();
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [session]);
+  }, [enforceWorkoutDurationLimit, session?.id, session?.started_at]);
 
   useEffect(() => {
     if (!restTimer) return;
@@ -469,14 +494,14 @@ export function WorkoutOverlay() {
     try {
       const completedSessionId = await completeWorkout(weightUnit);
       if (completedSessionId) {
-        router.push(`/(tabs)/profile/${completedSessionId}?justCompleted=1`);
+        openWorkoutDetail(completedSessionId, true);
       }
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message || 'Failed to complete workout.');
     } finally {
       setIsCompleting(false);
     }
-  }, [completeWorkout, isCompleting, router, weightUnit]);
+  }, [completeWorkout, isCompleting, openWorkoutDetail, weightUnit]);
 
   const handleComplete = useCallback(() => {
     if (isCompleting) return;
@@ -1467,7 +1492,7 @@ export function WorkoutOverlay() {
                         onSeparate={() => handleSeparate(item.id)}
                         onSwap={() => handleSwap(item.id)}
                         onDuplicate={() => handleDuplicate(item.id)}
-                        onDetails={() => router.push(`/exercise/${item.exercise_id}`)}
+                        onDetails={() => openExerciseDetail(item.exercise_id)}
                         noBottomMargin={needsNoMargin}
                       />
                     );

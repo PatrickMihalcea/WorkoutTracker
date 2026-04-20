@@ -29,9 +29,16 @@ interface OverflowMenuProps {
   demoVisible?: boolean;
   demoMenuStyle?: StyleProp<ViewStyle>;
   demoTriggerStyle?: StyleProp<ViewStyle>;
+  triggerColor?: string;
 }
 
-export function OverflowMenu({ items, demoVisible = false, demoMenuStyle, demoTriggerStyle }: OverflowMenuProps) {
+export function OverflowMenu({
+  items,
+  demoVisible = false,
+  demoMenuStyle,
+  demoTriggerStyle,
+  triggerColor,
+}: OverflowMenuProps) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const [anchorY, setAnchorY] = useState(0);
@@ -53,7 +60,7 @@ export function OverflowMenu({ items, demoVisible = false, demoMenuStyle, demoTr
   const styles = useMemo(() => StyleSheet.create({
     trigger: { paddingHorizontal: 4, paddingVertical: 2, justifyContent: 'center', alignItems: 'center' },
     triggerInner: { justifyContent: 'center', alignItems: 'center' },
-    dots: { fontSize: 22, color: colors.textSecondary, fontFamily: fonts.bold, lineHeight: 24 },
+    dots: { fontSize: 22, color: triggerColor ?? colors.textSecondary, fontFamily: fonts.bold, lineHeight: 24 },
     overlay: { flex: 1 },
     menu: {
       position: 'absolute',
@@ -81,7 +88,7 @@ export function OverflowMenu({ items, demoVisible = false, demoMenuStyle, demoTr
     menuItemDestructive: { color: '#FF6B6B' },
     menuItemDisabled: { color: colors.textMuted },
     menuItemHighlight: { color: colors.accent },
-  }), [colors]);
+  }), [colors, triggerColor]);
 
   const handleOpen = useCallback(() => {
     const node = findNodeHandle(triggerRef.current);
@@ -98,7 +105,7 @@ export function OverflowMenu({ items, demoVisible = false, demoMenuStyle, demoTr
 
   const handleItemPress = useCallback((item: OverflowMenuItem) => {
     setOpen(false);
-    requestAnimationFrame(() => item.onPress());
+    setTimeout(() => item.onPress(), 250);
   }, []);
 
   return (

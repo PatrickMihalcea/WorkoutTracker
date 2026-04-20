@@ -15,7 +15,6 @@ function InnerLayout() {
         name="activity"
         options={{
           title: 'Activity',
-          headerBackTitle: 'Dashboard',
         }}
       />
     </AppStack>

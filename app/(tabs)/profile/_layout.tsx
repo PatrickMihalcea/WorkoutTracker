@@ -17,7 +17,7 @@ export default function ProfileLayout() {
       <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
       <Stack.Screen name="measurements" options={{ title: 'Measurements', headerBackButtonMenuEnabled: false }} />
       <Stack.Screen name="goals" options={{ title: 'Goals', headerBackButtonMenuEnabled: false }} />
-      <Stack.Screen name="[sessionId]" options={{ title: 'Workout Details', headerBackTitle: 'Profile' }} />
+      <Stack.Screen name="[sessionId]" options={{ title: 'Workout Details' }} />
     </AppStack>
   );
 }

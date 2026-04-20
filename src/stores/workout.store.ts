@@ -31,6 +31,14 @@ export interface RestTimer {
 }
 
 type SupersetGroups = Record<string, string | null>;
+const WORKOUT_DURATION_LIMIT_MS = 24 * 60 * 60 * 1000;
+let durationLimitCancelInFlight = false;
+
+function hasExceededWorkoutDurationLimit(startedAt: string, nowMs: number = Date.now()): boolean {
+  const startedMs = new Date(startedAt).getTime();
+  if (!Number.isFinite(startedMs)) return false;
+  return nowMs - startedMs >= WORKOUT_DURATION_LIMIT_MS;
+}
 
 function resetWorkoutState() {
   return {
@@ -77,6 +85,7 @@ interface WorkoutState {
   updateExerciseInState: (exercise: Exercise) => void;
   completeWorkout: (weightUnit: string) => Promise<string | null>;
   cancelWorkout: () => Promise<void>;
+  enforceWorkoutDurationLimit: () => Promise<boolean>;
   reset: () => void;
   startRestTimer: (seconds: number) => void;
   tickRestTimer: () => void;
@@ -105,6 +114,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
   hydrateActiveSession: async (session) => {
     if (!session) {
+      set(resetWorkoutState());
+      void notificationService.cancelRestTimerNotification();
+      return false;
+    }
+
+    if (hasExceededWorkoutDurationLimit(session.started_at)) {
+      await workoutRowService.deleteBySession(session.id);
+      await sessionService.cancel(session.id);
       set(resetWorkoutState());
       void notificationService.cancelRestTimerNotification();
       return false;
@@ -374,6 +391,15 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         void notificationService.cancelRestTimerNotification();
         return false;
       }
+
+      if (hasExceededWorkoutDurationLimit(session.started_at)) {
+        await workoutRowService.deleteBySession(session.id);
+        await sessionService.cancel(session.id);
+        set(resetWorkoutState());
+        void notificationService.cancelRestTimerNotification();
+        return false;
+      }
+
       return await get().hydrateActiveSession(session);
     } finally {
       set({ loading: false });
@@ -782,6 +808,24 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     await sessionService.cancel(session.id);
     set(resetWorkoutState());
     void notificationService.cancelRestTimerNotification();
+  },
+
+  enforceWorkoutDurationLimit: async () => {
+    const { session } = get();
+    if (!session) return false;
+    if (!hasExceededWorkoutDurationLimit(session.started_at)) return false;
+    if (durationLimitCancelInFlight) return true;
+
+    durationLimitCancelInFlight = true;
+    try {
+      await workoutRowService.deleteBySession(session.id);
+      await sessionService.cancel(session.id);
+      set(resetWorkoutState());
+      void notificationService.cancelRestTimerNotification();
+      return true;
+    } finally {
+      durationLimitCancelInFlight = false;
+    }
   },
 
   reset: () => {

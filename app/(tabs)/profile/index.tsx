@@ -3,6 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, Image, Alert, Activ
 import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { sessionService } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useSessionStore } from '../../../src/stores/session.store';
 import { Card, EmptyState } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
 import { WorkoutSessionWithRoutine } from '../../../src/models';
@@ -224,10 +225,8 @@ export default function ProfileScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { profile } = useProfileStore();
 
-  const [sessions, setSessions] = useState<WorkoutSessionWithRoutine[]>([]);
-  const [sessionRecordCounts, setSessionRecordCounts] = useState<Record<string, number>>({});
+  const { sessions, recordCounts: sessionRecordCounts, sessionsLoaded: historyLoaded, fetchSessions, removeSession } = useSessionStore();
   const [refreshing, setRefreshing] = useState(false);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   const displayWeight = () => {
     if (!profile?.weight_kg) return '--';
@@ -242,46 +241,20 @@ export default function ProfileScreen() {
     return formatHeight(profile.height_cm, profile.height_unit);
   };
 
-  const loadSessions = useCallback(async () => {
-    try {
-      const data = await sessionService.getAll();
-      const completed = data.filter((s) => s.status === 'completed');
-
-      const countEntries = await Promise.all(
-        completed.map(async (session) => {
-          try {
-            const count = await sessionService.getRecordsAchievedCount(session.id);
-            return [session.id, count] as const;
-          } catch {
-            return [session.id, 0] as const;
-          }
-        }),
-      );
-
-      const counts = Object.fromEntries(countEntries);
-      setSessionRecordCounts(counts);
-      setSessions(completed);
-    } catch {
-      // Handle quietly
-    } finally {
-      setHistoryLoaded(true);
-    }
-  }, []);
-
   useFocusEffect(
     useCallback(() => {
-      loadSessions();
-    }, [loadSessions]),
+      void fetchSessions();
+    }, [fetchSessions]),
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadSessions();
+      await fetchSessions();
     } finally {
       setRefreshing(false);
     }
-  }, [loadSessions]);
+  }, [fetchSessions]);
 
   const handleDeleteSession = (item: WorkoutSessionWithRoutine) => {
     Alert.alert(
@@ -295,12 +268,7 @@ export default function ProfileScreen() {
           onPress: async () => {
             try {
               await sessionService.deleteSession(item.id);
-              setSessions((prev) => prev.filter((s) => s.id !== item.id));
-              setSessionRecordCounts((prev) => {
-                const next = { ...prev };
-                delete next[item.id];
-                return next;
-              });
+              removeSession(item.id);
             } catch {
               Alert.alert('Error', 'Failed to delete workout');
             }
@@ -361,7 +329,7 @@ export default function ProfileScreen() {
     <TouchableOpacity
       onPress={() => router.push('/(tabs)/profile/settings')}
       activeOpacity={0.7}
-      style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+      style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', }}
     >
       <Image
         source={require('../../../assets/icons/setting.png')}

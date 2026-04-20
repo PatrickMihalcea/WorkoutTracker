@@ -6,6 +6,7 @@ import { useProfileStore } from './profile.store';
 
 interface RoutineState {
   routines: Routine[];
+  routinesLoaded: boolean;
   activeRoutine: RoutineWithDays | null;
   activeRoutineInitialized: boolean;
   currentRoutine: RoutineWithDays | null;
@@ -24,6 +25,7 @@ interface RoutineState {
 
 export const useRoutineStore = create<RoutineState>((set) => ({
   routines: [],
+  routinesLoaded: false,
   activeRoutine: null,
   activeRoutineInitialized: false,
   currentRoutine: null,
@@ -33,7 +35,7 @@ export const useRoutineStore = create<RoutineState>((set) => ({
     set({ loading: true });
     try {
       const routines = await routineService.getAll();
-      set({ routines });
+      set({ routines, routinesLoaded: true });
     } finally {
       set({ loading: false });
     }

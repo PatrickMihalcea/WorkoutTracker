@@ -12,7 +12,8 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
@@ -171,12 +172,18 @@ function SwipeableExerciseRow({
                 <Text onPress={handleDetailsPress} style={[styles.exerciseName, styles.exerciseNameLink]}>
                   {ex.exercise?.name ?? 'Exercise'}
                 </Text>
-                <Text style={styles.expandArrow}>{isExpanded ? '⏷' : '⏵'}</Text>
+                <Ionicons
+                  style={styles.expandArrow}
+                  name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                />
               </>
             ) : (
               <>
                 <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
-                <Text style={styles.expandArrow}>{isExpanded ? '⏷' : '⏵'}</Text>
+                <Ionicons
+                  style={styles.expandArrow}
+                  name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                />
               </>
             )}
           </View>
@@ -196,8 +203,9 @@ export default function RoutineDetailScreen() {
   const { scrollEnabled } = useChartInteraction();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuthStore();
-  const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
+  const { routines, currentRoutine, fetchRoutineDetail } = useRoutineStore();
   const { profile, updateProfile } = useProfileStore();
   const { expand: expandWorkout } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
@@ -218,6 +226,12 @@ export default function RoutineDetailScreen() {
   const [showCopyWeekModal, setShowCopyWeekModal] = useState(false);
   const [copyActionMode, setCopyActionMode] = useState<'from' | 'to' | null>(null);
   const [selectedCopyWeekValue, setSelectedCopyWeekValue] = useState<number | 'new' | null>(null);
+
+  const [showCopyDayModal, setShowCopyDayModal] = useState(false);
+  const [copyDaySource, setCopyDaySource] = useState<RoutineDayWithExercises | null>(null);
+  const [copyDayTargetRoutineId, setCopyDayTargetRoutineId] = useState<string | null>(null);
+  const [copyDayTargetWeek, setCopyDayTargetWeek] = useState<number | null>(null);
+  const [copyingDay, setCopyingDay] = useState(false);
 
   const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
   const [addExerciseDayId, setAddExerciseDayId] = useState<string | null>(null);
@@ -251,12 +265,21 @@ export default function RoutineDetailScreen() {
     }
   }, []));
 
+  const openExerciseDetail = useCallback((exerciseId: string) => {
+    const href = `/exercise/${exerciseId}` as const;
+    if (pathname.startsWith('/exercise/')) {
+      router.replace(href);
+      return;
+    }
+    router.push(href);
+  }, [pathname, router]);
+
   const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
     if (source) pendingPickerReopenRef.current = source;
     setShowSwapPicker(false);
     setShowDirectAddPicker(false);
-    setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
-  }, [router]);
+    setTimeout(() => openExerciseDetail(exerciseId), 280);
+  }, [openExerciseDetail]);
 
   const { session: activeSession, startWorkout } = useWorkoutStore();
 
@@ -488,15 +511,42 @@ export default function RoutineDetailScreen() {
     }
   }, [activeSession, user, startWorkout, expandWorkout]);
 
-  const handleDuplicateDay = useCallback(async (day: RoutineDayWithExercises) => {
+  const copyDayRoutineOptions = useMemo(() =>
+    routines.map((r) => ({ key: r.id, label: r.name, value: r.id })),
+  [routines]);
+
+  const copyDayWeekOptions = useMemo(() => {
+    const target = routines.find((r) => r.id === copyDayTargetRoutineId);
+    if (!target) return [];
+    return Array.from({ length: target.week_count }, (_, i) => ({
+      key: `cdw-${i + 1}`,
+      label: `Week ${i + 1}`,
+      value: i + 1,
+    }));
+  }, [routines, copyDayTargetRoutineId]);
+
+  const openCopyDayModal = useCallback((day: RoutineDayWithExercises) => {
+    setCopyDaySource(day);
+    setCopyDayTargetRoutineId(id ?? null);
+    setCopyDayTargetWeek(selectedWeek);
+    setShowCopyDayModal(true);
+  }, [id, selectedWeek]);
+
+  const handleConfirmCopyDay = useCallback(async () => {
+    if (!copyDaySource || !copyDayTargetRoutineId || copyDayTargetWeek == null) return;
+    setCopyingDay(true);
     try {
-      const newDay = await routineService.duplicateDay(day.id);
-      if (id) fetchRoutineDetail(id);
-      router.push(`/(tabs)/routines/day/${newDay.id}`);
+      await routineService.copyDayTo(copyDaySource.id, copyDayTargetRoutineId, copyDayTargetWeek);
+      setShowCopyDayModal(false);
+      if (copyDayTargetRoutineId === id && id) fetchRoutineDetail(id);
+      const targetName = routines.find((r) => r.id === copyDayTargetRoutineId)?.name ?? 'routine';
+      setToastMessage(`Copied "${copyDaySource.label}" to ${targetName} · Week ${copyDayTargetWeek}.`);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
+    } finally {
+      setCopyingDay(false);
     }
-  }, [id, fetchRoutineDetail, router]);
+  }, [copyDaySource, copyDayTargetRoutineId, copyDayTargetWeek, id, routines, fetchRoutineDetail]);
 
   const openAddWeekMenu = useCallback(() => {
     if (!currentRoutine || updatingWeeks) return;
@@ -847,15 +897,15 @@ export default function RoutineDetailScreen() {
       onPress: () => handleStartDay(day),
     },
     {
-      label: 'Duplicate',
-      onPress: () => handleDuplicateDay(day),
+      label: 'Copy To',
+      onPress: () => openCopyDayModal(day),
     },
     {
       label: 'Remove',
       onPress: () => handleDeleteDay(day.id, day.label),
       destructive: true,
     },
-  ], [activeSession, handleStartDay, handleDuplicateDay, handleDeleteDay, router]);
+  ], [handleStartDay, openCopyDayModal, handleDeleteDay, router]);
 
   if (!currentRoutine) return null;
 
@@ -1079,8 +1129,12 @@ export default function RoutineDetailScreen() {
             updateProfile({ show_routine_performance: !perfExpanded });
           }}
         >
-          <Text style={styles.subHeader}>Performance
-            <Text style={styles.chevron}>{perfExpanded ? ' ⏷' : ' ⏵'}</Text>
+          <Text style={styles.subHeader}>
+            Performance
+            <Ionicons
+              style={styles.chevron}
+              name={perfExpanded ? 'chevron-down' : 'chevron-forward'}
+            />
           </Text>
           
         </TouchableOpacity>
@@ -1258,6 +1312,52 @@ export default function RoutineDetailScreen() {
         }}
         onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
       />
+
+      <BottomSheetModal
+        visible={showCopyDayModal}
+        title={`Copy "${copyDaySource?.label ?? 'Day'}"`}
+        onClose={() => { if (!copyingDay) setShowCopyDayModal(false); }}
+        scrollable
+      >
+        <Text style={styles.fieldLabel}>Routine</Text>
+        <ChipPicker
+          items={copyDayRoutineOptions}
+          selected={copyDayTargetRoutineId}
+          onChange={(val) => {
+            setCopyDayTargetRoutineId(val ?? null);
+            setCopyDayTargetWeek(1);
+          }}
+          allowDeselect={false}
+          keyboardPersistTaps
+          horizontal={false}
+          maxHeight={160}
+          style={copyingDay ? styles.disabledSection : undefined}
+        />
+        <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Week</Text>
+        <ChipPicker
+          items={copyDayWeekOptions}
+          selected={copyDayTargetWeek}
+          onChange={(val) => setCopyDayTargetWeek(val ?? null)}
+          allowDeselect={false}
+          keyboardPersistTaps
+          horizontal={false}
+          maxHeight={160}
+          style={copyingDay ? styles.disabledSection : undefined}
+        />
+        <View style={styles.modalActions}>
+          <Button
+            title="Cancel"
+            variant="ghost"
+            onPress={() => setShowCopyDayModal(false)}
+            disabled={copyingDay}
+          />
+          <Button
+            title={copyingDay ? 'Copying...' : 'Copy'}
+            onPress={handleConfirmCopyDay}
+            disabled={copyingDay || !copyDayTargetRoutineId || copyDayTargetWeek == null}
+          />
+        </View>
+      </BottomSheetModal>
     </View>
   );
 }
@@ -1441,6 +1541,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   exerciseInfo: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 14,
   },
   nameRow: {
     flexDirection: 'row',
@@ -1450,6 +1552,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   expandArrow: {
     fontSize: 12,
     color: colors.textMuted,
+    marginLeft: 2,
+    flexShrink: 0,
   },
   setsEditorContainer: {
     paddingHorizontal: 8,
@@ -1463,6 +1567,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     lineHeight: 20,
     includeFontPadding: false,
+    flexShrink: 1,
   },
   exerciseNameLink: {
     color: colors.accent,
@@ -1481,6 +1586,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.bold,
     color: colors.textSecondary,
+    marginLeft: 14,
+    minWidth: 58,
+    textAlign: 'right',
+    flexShrink: 0,
   },
   menuWrap: {
     marginLeft: 8,

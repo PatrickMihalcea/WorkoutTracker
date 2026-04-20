@@ -5,10 +5,12 @@ import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts } from '../../src/constants';
 import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
+import { useProfileStore } from '../../src/stores/profile.store';
 import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
 import { WorkoutOverlay, WorkoutOverlayProvider, useWorkoutOverlay } from '../../src/components/workout';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useWorkoutStore } from '../../src/stores/workout.store';
+import { useSessionStore } from '../../src/stores/session.store';
 import { useTheme } from '../../src/contexts/ThemeContext';
 
 const { Navigator } = createMaterialTopTabNavigator();
@@ -91,10 +93,12 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
 function TabLayoutInner() {
   const { colors } = useTheme();
   const segments = useSegments();
-  const { chartMode } = useHistoryView();
+  const { chartMode, loadDashboard, weeks, granularity } = useHistoryView();
   const { chartActive } = useChartInteraction();
   const { user } = useAuthStore();
+  const { profile } = useProfileStore();
   const { session, resumeWorkout } = useWorkoutStore();
+  const { fetchSessions } = useSessionStore();
   const { suppressNextAutoExpand } = useWorkoutOverlay();
   const isAtTabRoot = segments.length <= 2;
   const currentTab = segments.find((segment) => (
@@ -110,6 +114,15 @@ function TabLayoutInner() {
       suppressNextAutoExpand();
       resumeWorkout(user.id);
     }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
+    const wUnit = profile?.weight_unit ?? 'kg';
+    const hUnit = profile?.height_unit ?? 'cm';
+    void loadDashboard(user.id, weeks, granularity, chartMode, wUnit, hUnit);
+    void fetchSessions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   return (

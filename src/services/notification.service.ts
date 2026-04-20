@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { DayOfWeek, RoutineWithDays } from '../models';
 import { UserProfile } from '../models/profile';
 import { routineService } from './routine.service';
@@ -9,6 +9,22 @@ const WORKOUT_DAY_KIND = 'workout_day';
 const DEFAULT_REMINDER_TIME = '08:00';
 
 let initialized = false;
+let notificationsModule: typeof import('expo-notifications') | null = null;
+
+function isAndroidExpoGo(): boolean {
+  return Platform.OS === 'android'
+    && (
+      Constants.executionEnvironment === 'storeClient'
+      || Constants.appOwnership === 'expo'
+    );
+}
+
+async function getNotifications(): Promise<typeof import('expo-notifications') | null> {
+  if (isAndroidExpoGo()) return null;
+  if (notificationsModule) return notificationsModule;
+  notificationsModule = await import('expo-notifications');
+  return notificationsModule;
+}
 
 function toExpoWeekday(day: DayOfWeek): number {
   switch (day) {
@@ -79,16 +95,21 @@ function buildWorkoutBody(labels: string[]): string {
   return `Today's workout: ${labels.join(' + ')}.`;
 }
 
-function isGranted(status: Notifications.NotificationPermissionsStatus): boolean {
-  return status.granted;
+function isGranted(status: { granted?: boolean } | null | undefined): boolean {
+  return Boolean(status?.granted);
 }
 
 async function hasPermission(): Promise<boolean> {
+  const Notifications = await getNotifications();
+  if (!Notifications) return false;
   const status = await Notifications.getPermissionsAsync();
   return isGranted(status);
 }
 
 async function cancelByKind(kind: string): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications) return;
+
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const matches = scheduled
     .filter((n) => {
@@ -105,6 +126,9 @@ async function scheduleWorkoutDayFor(
   labels: string[],
   profile: UserProfile,
 ): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications) return;
+
   const hasWorkout = labels.length > 0;
   const shouldNotify = hasWorkout || profile.notify_workout_rest_days_enabled;
 
@@ -138,6 +162,11 @@ async function scheduleWorkoutDayFor(
 export const notificationService = {
   async initialize(): Promise<void> {
     if (initialized) return;
+    const Notifications = await getNotifications();
+    if (!Notifications) {
+      initialized = true;
+      return;
+    }
 
     Notifications.setNotificationHandler({
       handleNotification: async (notification) => {
@@ -179,6 +208,8 @@ export const notificationService = {
 
   async ensurePermissions(): Promise<boolean> {
     await this.initialize();
+    const Notifications = await getNotifications();
+    if (!Notifications) return false;
 
     const current = await Notifications.getPermissionsAsync();
     if (isGranted(current)) return true;
@@ -194,6 +225,8 @@ export const notificationService = {
 
   async scheduleRestTimerNotification(seconds: number): Promise<void> {
     await this.initialize();
+    const Notifications = await getNotifications();
+    if (!Notifications) return;
     await this.cancelRestTimerNotification();
 
     if (seconds <= 0) return;
@@ -225,6 +258,8 @@ export const notificationService = {
 
   async syncWorkoutDayReminder(profile: UserProfile | null): Promise<void> {
     await this.initialize();
+    const Notifications = await getNotifications();
+    if (!Notifications) return;
     await this.cancelWorkoutDayReminderNotifications();
 
     if (!profile?.notify_workout_day_enabled) return;

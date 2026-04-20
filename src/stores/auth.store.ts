@@ -39,7 +39,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         await useProfileStore.getState().fetchProfile(typedSession.user.id);
       }
     } catch {
-      set({ initialized: true });
+      await authService.signOut().catch(() => {});
+      set({
+        session: null,
+        user: null,
+        initialized: true,
+      });
     }
 
     authService.onAuthStateChange(async (session) => {

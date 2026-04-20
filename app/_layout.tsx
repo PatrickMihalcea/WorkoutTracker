@@ -7,31 +7,56 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { useAuthStore } from '../src/stores/auth.store';
 import { useProfileStore } from '../src/stores/profile.store';
+import { useRoutineStore } from '../src/stores/routine.store';
 import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { notificationService } from '../src/services';
 
 const HAS_OPENED_KEY = 'has_opened_before';
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync().catch(() => {
+  // noop: can throw in dev hot-reload paths if already handled.
+});
 
 function RootLayoutInner() {
   const { colors, gradients } = useTheme();
   const { session, initialized, initialize } = useAuthStore();
   const { profile, loading: profileLoading } = useProfileStore();
+  const { fetchRoutines, fetchActiveRoutine } = useRoutineStore();
   const segments = useSegments();
   const router = useRouter();
   const [hasOpenedBefore, setHasOpenedBefore] = useState<boolean | null>(null);
+  const [initTimedOut, setInitTimedOut] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(HAS_OPENED_KEY).then((value) => {
-      setHasOpenedBefore(value === 'true');
-      if (value !== 'true') {
-        void AsyncStorage.setItem(HAS_OPENED_KEY, 'true');
+    let active = true;
+    void (async () => {
+      try {
+        const value = await AsyncStorage.getItem(HAS_OPENED_KEY);
+        if (!active) return;
+        setHasOpenedBefore(value === 'true');
+        if (value !== 'true') {
+          await AsyncStorage.setItem(HAS_OPENED_KEY, 'true');
+        }
+      } catch {
+        if (!active) return;
+        // Never block app startup on local storage issues.
+        setHasOpenedBefore(false);
       }
-    });
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Safety valve: if initialization hangs (e.g. network timeout before auth resolves),
+  // force past the splash screen after 8s to avoid an ANR on Android.
+  useEffect(() => {
+    const id = setTimeout(() => setInitTimedOut(true), 8000);
+    return () => clearTimeout(id);
   }, []);
 
   const [fontsLoaded] = useFonts({
@@ -49,13 +74,34 @@ function RootLayoutInner() {
     void notificationService.initialize();
   }, []);
 
-  const ready = fontsLoaded && initialized && !profileLoading && hasOpenedBefore !== null;
+  const ready = (fontsLoaded && initialized && !profileLoading && hasOpenedBefore !== null) || initTimedOut;
 
-  const onLayoutRootView = useCallback(async () => {
-    if (ready) {
-      await SplashScreen.hideAsync();
-    }
+  useEffect(() => {
+    if (!ready) return;
+    if (!session?.user) return;
+    if (!profile?.onboarding_complete) return;
+
+    void fetchRoutines();
+    void fetchActiveRoutine();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, session?.user?.id, profile?.onboarding_complete]);
+
+  useEffect(() => {
+    if (!ready) return;
+    void SplashScreen.hideAsync().catch(() => {
+      // noop
+    });
   }, [ready]);
+
+  // Hard fallback so splash cannot get stuck forever.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void SplashScreen.hideAsync().catch(() => {
+        // noop
+      });
+    }, 12000);
+    return () => clearTimeout(id);
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
@@ -116,13 +162,15 @@ function RootLayoutInner() {
     },
   }), [colors]);
 
-  const exerciseHeaderOptions = useMemo(() => ({
+  const exerciseHeaderOptions = useMemo<NativeStackNavigationOptions>(() => ({
     headerShown: true,
     headerStyle: { backgroundColor: colors.background },
     headerTintColor: colors.text,
     headerTitle: 'Exercise Details',
     headerTitleStyle: { fontFamily: 'Monospaceland-Bold' },
-    headerBackTitle: 'Back',
+    headerBackButtonDisplayMode: 'minimal' as const,
+    headerBackTitle: '',
+    headerLeftBackgroundVisible: false,
   }), [colors]);
 
   if (!ready) {
@@ -135,7 +183,7 @@ function RootLayoutInner() {
   }
 
   return (
-    <GestureHandlerRootView style={styles.root} onLayout={onLayoutRootView}>
+    <GestureHandlerRootView style={styles.root}>
       <LinearGradient
         colors={gradients.background}
         start={{ x: 0.5, y: 0 }}

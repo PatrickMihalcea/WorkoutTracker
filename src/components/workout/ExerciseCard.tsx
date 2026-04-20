@@ -333,6 +333,7 @@ export function ExerciseCard({
                   demoVisible={demoOverflowVisible}
                   demoMenuStyle={demoOverflowMenuStyle}
                   demoTriggerStyle={demoOverflowTriggerStyle}
+                  triggerColor="#000000"
                 />
               )}
             </View>

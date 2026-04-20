@@ -30,6 +30,7 @@ interface DurationPickerModalProps {
 
 export function DurationPickerModal({ visible, onClose, onConfirm, value }: DurationPickerModalProps) {
   const { colors } = useTheme();
+  const androidPickerPopupTextColor = '#111111';
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const sheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const [modalVisible, setModalVisible] = useState(false);
@@ -85,7 +86,7 @@ export function DurationPickerModal({ visible, onClose, onConfirm, value }: Dura
     label: { flex: 1, fontSize: 12, fontFamily: fonts.bold, color: colors.textMuted, textAlign: 'center' },
     pickerRow: { flexDirection: 'row', alignItems: 'center', height: PICKER_H, marginBottom: 20 },
     pickerSlot: { flex: 1, height: PICKER_H },
-    picker: { height: PICKER_H },
+    picker: { height: PICKER_H, color: colors.text },
     separator: {
       fontSize: 24,
       fontFamily: fonts.bold,
@@ -125,20 +126,62 @@ export function DurationPickerModal({ visible, onClose, onConfirm, value }: Dura
 
           <View style={styles.pickerRow}>
             <View style={styles.pickerSlot}>
-              <Picker selectedValue={hours} onValueChange={setHours} style={styles.picker} itemStyle={itemStyle}>
-                {HOURS.map((v) => <Picker.Item key={v} label={String(v).padStart(2, '0')} value={v} />)}
+              <Picker
+                selectedValue={hours}
+                onValueChange={setHours}
+                style={styles.picker}
+                itemStyle={itemStyle}
+                mode={Platform.OS === 'android' ? 'dropdown' : undefined}
+                dropdownIconColor={colors.text}
+              >
+                {HOURS.map((v) => (
+                  <Picker.Item
+                    key={v}
+                    label={String(v).padStart(2, '0')}
+                    value={v}
+                    color={Platform.OS === 'android' ? androidPickerPopupTextColor : colors.text}
+                  />
+                ))}
               </Picker>
             </View>
             <Text style={styles.separator}>:</Text>
             <View style={styles.pickerSlot}>
-              <Picker selectedValue={minutes} onValueChange={setMinutes} style={styles.picker} itemStyle={itemStyle}>
-                {MINUTES.map((v) => <Picker.Item key={v} label={String(v).padStart(2, '0')} value={v} />)}
+              <Picker
+                selectedValue={minutes}
+                onValueChange={setMinutes}
+                style={styles.picker}
+                itemStyle={itemStyle}
+                mode={Platform.OS === 'android' ? 'dropdown' : undefined}
+                dropdownIconColor={colors.text}
+              >
+                {MINUTES.map((v) => (
+                  <Picker.Item
+                    key={v}
+                    label={String(v).padStart(2, '0')}
+                    value={v}
+                    color={Platform.OS === 'android' ? androidPickerPopupTextColor : colors.text}
+                  />
+                ))}
               </Picker>
             </View>
             <Text style={styles.separator}>:</Text>
             <View style={styles.pickerSlot}>
-              <Picker selectedValue={seconds} onValueChange={setSeconds} style={styles.picker} itemStyle={itemStyle}>
-                {SECONDS.map((v) => <Picker.Item key={v} label={String(v).padStart(2, '0')} value={v} />)}
+              <Picker
+                selectedValue={seconds}
+                onValueChange={setSeconds}
+                style={styles.picker}
+                itemStyle={itemStyle}
+                mode={Platform.OS === 'android' ? 'dropdown' : undefined}
+                dropdownIconColor={colors.text}
+              >
+                {SECONDS.map((v) => (
+                  <Picker.Item
+                    key={v}
+                    label={String(v).padStart(2, '0')}
+                    value={v}
+                    color={Platform.OS === 'android' ? androidPickerPopupTextColor : colors.text}
+                  />
+                ))}
               </Picker>
             </View>
           </View>

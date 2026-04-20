@@ -821,6 +821,52 @@ export const routineService = {
     );
   },
 
+  async copyDayTo(dayId: string, targetRoutineId: string, targetWeekIndex: number): Promise<RoutineDay> {
+    const source = await this.getDayWithExercises(dayId);
+
+    const newDay = await this.addDay({
+      routine_id: targetRoutineId,
+      day_of_week: source.day_of_week,
+      label: source.label,
+      week_index: targetWeekIndex,
+    });
+
+    const groupMap = new Map<string, string>();
+
+    for (const ex of source.exercises) {
+      const setsPayload = (ex.sets ?? []).map((s) => ({
+        set_number: s.set_number,
+        target_weight: s.target_weight,
+        target_reps_min: s.target_reps_min,
+        target_reps_max: s.target_reps_max,
+        target_rir: s.target_rir ?? null,
+        target_duration: s.target_duration ?? 0,
+        target_distance: s.target_distance ?? 0,
+        is_warmup: s.is_warmup ?? false,
+      }));
+
+      const newEntry = await this.addExerciseToDay(
+        {
+          routine_day_id: newDay.id,
+          exercise_id: ex.exercise_id,
+          sort_order: ex.sort_order,
+          target_sets: ex.target_sets,
+          target_reps: ex.target_reps,
+        },
+        setsPayload,
+      );
+
+      if (ex.superset_group) {
+        if (!groupMap.has(ex.superset_group)) {
+          groupMap.set(ex.superset_group, generateGroupId());
+        }
+        await this.setSupersetGroup(newEntry.id, groupMap.get(ex.superset_group)!);
+      }
+    }
+
+    return newDay;
+  },
+
   async duplicateDay(dayId: string): Promise<RoutineDay> {
     const source = await this.getDayWithExercises(dayId);
 

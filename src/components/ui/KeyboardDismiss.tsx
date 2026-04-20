@@ -11,12 +11,15 @@ import { useTheme } from '../../contexts/ThemeContext';
 
 export function KeyboardDismiss() {
   const { colors } = useTheme();
+  const isSupportedPlatform = Platform.OS === 'ios';
   const [visible, setVisible] = useState(false);
   const [bottom] = useState(new Animated.Value(0));
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    if (!isSupportedPlatform) return;
+
+    const showEvent = 'keyboardWillShow';
+    const hideEvent = 'keyboardWillHide';
 
     const onShow = (e: { endCoordinates: { height: number } }) => {
       setVisible(true);
@@ -42,7 +45,7 @@ export function KeyboardDismiss() {
       showSub.remove();
       hideSub.remove();
     };
-  }, [bottom]);
+  }, [bottom, isSupportedPlatform]);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { position: 'absolute', right: 12, zIndex: 9999, elevation: 9999 },
@@ -59,7 +62,7 @@ export function KeyboardDismiss() {
     arrow: { fontSize: 16, lineHeight: 18, color: colors.text },
   }), [colors]);
 
-  if (!visible) return null;
+  if (!isSupportedPlatform || !visible) return null;
 
   return (
     <Animated.View style={[styles.container, { bottom }]} pointerEvents="box-none">

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { BottomSheetModal, Button } from '../ui';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -37,6 +37,7 @@ export function RestTimerModal({
   autoSave = false,
 }: RestTimerModalProps) {
   const { colors } = useTheme();
+  const androidMenuTextColor = '#111111';
   const [selected, setSelected] = useState(currentValue);
   const [saving, setSaving] = useState(false);
 
@@ -45,7 +46,23 @@ export function RestTimerModal({
   }, [visible, currentValue]);
 
   const styles = useMemo(() => StyleSheet.create({
-    pickerItem: { color: colors.text, fontSize: 20, fontFamily: fonts.regular },
+    pickerWrap: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      backgroundColor: colors.surfaceLight,
+      marginBottom: 12,
+      overflow: 'hidden',
+    },
+    picker: {
+      color: colors.text,
+      height: Platform.OS === 'android' ? 56 : 216,
+    },
+    pickerItemIOS: {
+      color: colors.text,
+      fontSize: 20,
+      fontFamily: fonts.regular,
+    },
   }), [colors]);
 
   const handleSave = async () => {
@@ -73,11 +90,25 @@ export function RestTimerModal({
 
   return (
     <BottomSheetModal visible={visible} title="Rest Timer" onClose={onClose}>
-      <Picker selectedValue={selected} onValueChange={handleValueChange} itemStyle={styles.pickerItem}>
-        {OPTIONS.map((opt) => (
-          <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
-        ))}
-      </Picker>
+      <View style={styles.pickerWrap}>
+        <Picker
+          selectedValue={selected}
+          onValueChange={handleValueChange}
+          style={styles.picker}
+          itemStyle={Platform.OS === 'ios' ? styles.pickerItemIOS : undefined}
+          dropdownIconColor={colors.text}
+          mode={Platform.OS === 'android' ? 'dropdown' : undefined}
+        >
+          {OPTIONS.map((opt) => (
+            <Picker.Item
+              key={opt.value}
+              label={opt.label}
+              value={opt.value}
+              color={Platform.OS === 'android' ? androidMenuTextColor : colors.text}
+            />
+          ))}
+        </Picker>
+      </View>
       {!autoSave && <Button title="Save" onPress={handleSave} loading={saving} />}
     </BottomSheetModal>
   );

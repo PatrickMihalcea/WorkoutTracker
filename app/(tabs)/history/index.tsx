@@ -5,10 +5,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { dashboardService } from '../../../src/services';
-import type { DashboardData, Granularity } from '../../../src/services';
-import { Dashboard, GranularityMode, ChartMode } from '../../../src/components/history/Dashboard';
+import { Dashboard } from '../../../src/components/history/Dashboard';
 import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
+import type { GranularityMode, HistoryChartMode } from '../../../src/components/history/HistoryViewContext';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useTheme } from '../../../src/contexts/ThemeContext';
@@ -23,74 +22,49 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
 });
 
-function granularityModeToBackend(mode: GranularityMode): Granularity {
-  if (mode === 'W' || mode === 'M') return 'day';
-  if (mode === '6M' || mode === '3M') return 'week';
-  return 'month';
-}
-
 export default function HistoryScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { chartMode, setChartMode } = useHistoryView();
+  const {
+    chartMode, setChartMode,
+    dashboardData, dashboardLoading,
+    weeks, setWeeks,
+    granularity, setGranularity,
+    loadDashboard,
+  } = useHistoryView();
   const user = useAuthStore((s) => s.user);
   const { profile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
   const hUnit = profile?.height_unit ?? 'cm';
-
   const [refreshing, setRefreshing] = useState(false);
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [dashboardLoading, setDashboardLoading] = useState(false);
-  const [weeks, setWeeks] = useState(12);
-  const [granularity, setGranularity] = useState<GranularityMode>('W');
-
   const userId = user?.id ?? '';
-
-  const loadDashboard = useCallback(async (w: number, gMode: GranularityMode, cMode: ChartMode) => {
-    if (!userId) return;
-    setDashboardLoading(true);
-    try {
-      let data: DashboardData;
-      if (cMode === 'rel') {
-        data = await dashboardService.getDashboardDataRaw(userId, w, wUnit, hUnit);
-      } else {
-        const g = granularityModeToBackend(gMode);
-        data = await dashboardService.getDashboardData(userId, w, g, wUnit, hUnit);
-      }
-      setDashboardData(data);
-    } catch {
-      // Handle quietly
-    } finally {
-      setDashboardLoading(false);
-    }
-  }, [userId, wUnit, hUnit]);
 
   useFocusEffect(
     useCallback(() => {
-      loadDashboard(weeks, granularity, chartMode);
+      void loadDashboard(userId, weeks, granularity, chartMode, wUnit, hUnit);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [weeks, granularity, loadDashboard, chartMode]),
+    }, [userId, weeks, granularity, chartMode, wUnit, hUnit]),
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadDashboard(weeks, granularity, chartMode);
+      await loadDashboard(userId, weeks, granularity, chartMode, wUnit, hUnit);
     } finally {
       setRefreshing(false);
     }
-  }, [weeks, granularity, chartMode, loadDashboard]);
+  }, [userId, weeks, granularity, chartMode, wUnit, hUnit, loadDashboard]);
 
   const handleChangeWeeks = useCallback((w: number) => {
     setWeeks(w);
-    loadDashboard(w, granularity, chartMode);
-  }, [granularity, chartMode, loadDashboard]);
+    void loadDashboard(userId, w, granularity, chartMode, wUnit, hUnit);
+  }, [userId, granularity, chartMode, wUnit, hUnit, loadDashboard, setWeeks]);
 
   const handleChangeGranularity = useCallback((mode: GranularityMode) => {
     setGranularity(mode);
-  }, []);
+  }, [setGranularity]);
 
-  const handleChangeChartMode = useCallback((mode: ChartMode) => {
+  const handleChangeChartMode = useCallback((mode: HistoryChartMode) => {
     setChartMode(mode);
   }, [setChartMode]);
 
@@ -100,7 +74,7 @@ export default function HistoryScreen() {
   useEffect(() => {
     if (prevGranRef.current !== granularity) {
       prevGranRef.current = granularity;
-      loadDashboard(weeks, granularity, chartMode);
+      void loadDashboard(userId, weeks, granularity, chartMode, wUnit, hUnit);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [granularity]);
@@ -108,7 +82,7 @@ export default function HistoryScreen() {
   useEffect(() => {
     if (prevChartModeRef.current !== chartMode) {
       prevChartModeRef.current = chartMode;
-      loadDashboard(weeks, granularity, chartMode);
+      void loadDashboard(userId, weeks, granularity, chartMode, wUnit, hUnit);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartMode]);

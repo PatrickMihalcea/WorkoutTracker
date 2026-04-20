@@ -148,7 +148,6 @@ export default function CreateRoutineScreen() {
               value={name}
               onChangeText={setName}
               placeholder='e.g. "Push Pull Legs" or "Upper Lower"'
-              autoFocus
             />
           </View>
         ) : (

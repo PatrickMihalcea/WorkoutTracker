@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { Equipment, Exercise, ExerciseType, MuscleGroup } from '../../models';
 import { exerciseService } from '../../services';
@@ -180,6 +182,7 @@ export function ExercisePickerModal({
   const [newExerciseType, setNewExerciseType] = useState<ExerciseType>(ExerciseType.WeightReps);
   const [newSecondaryMuscles, setNewSecondaryMuscles] = useState<string[]>([]);
   const [pendingDeletedSelection, setPendingDeletedSelection] = useState<Exercise | null>(null);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const railHeightRef = useRef(0);
   const lastRailLetterRef = useRef<string | null>(null);
@@ -265,7 +268,7 @@ export function ExercisePickerModal({
       paddingVertical: 30,
     },
     footer: { gap: 8, paddingBottom: 16 },
-    formBody: { flex: 1 },
+    formBody: { paddingBottom: 8 },
     formFieldLabel: {
       color: colors.textSecondary,
       fontSize: 14,
@@ -299,6 +302,20 @@ export function ExercisePickerModal({
       setPendingDeletedSelection(null);
       suppressCloseWarningRef.current = false;
     }
+  }, [visible]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!visible) setIsKeyboardVisible(false);
   }, [visible]);
 
   const loadExercises = async () => {
@@ -473,6 +490,7 @@ export function ExercisePickerModal({
       visible={visible}
       title={showCreateExercise ? 'Create New Exercise' : 'Select Exercise'}
       fullHeight
+      scrollable={showCreateExercise}
       contentPaddingHorizontal={10}
       onClose={() => {
         if (showCreateExercise) { setShowCreateExercise(false); resetCreateForm(); return; }
@@ -563,9 +581,11 @@ export function ExercisePickerModal({
               </View>
             )}
           </View>
-          <View style={styles.footer}>
-            <Button title="+ Create New Exercise" variant="secondary" onPress={() => setShowCreateExercise(true)} />
-          </View>
+          {!(Platform.OS === 'android' && isKeyboardVisible) && (
+            <View style={styles.footer}>
+              <Button title="+ Create New Exercise" variant="secondary" onPress={() => setShowCreateExercise(true)} />
+            </View>
+          )}
         </>
       )}
     </BottomSheetModal>

@@ -10,7 +10,8 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { Picker } from '@react-native-picker/picker';
+import { useLocalSearchParams, usePathname, useRouter, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { routineService, sessionService } from '../../../src/services';
@@ -18,7 +19,7 @@ import type { SessionRecordAchieved, SessionRecordMetric } from '../../../src/se
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useAuthStore } from '../../../src/stores/auth.store';
-import { Card, Input, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle } from '../../../src/components/ui';
+import { Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle } from '../../../src/components/ui';
 import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { SetRow } from '../../../src/components/workout/SetRow';
@@ -63,6 +64,10 @@ interface ExerciseEditorState {
 }
 
 const TEMP_SET_PREFIX = 'temp-set-';
+const DURATION_PICKER_HEIGHT = Platform.OS === 'ios' ? 200 : 56;
+const DURATION_HOURS = Array.from({ length: 24 }, (_, i) => i);
+const DURATION_MINUTES = Array.from({ length: 60 }, (_, i) => i);
+const DURATION_SECONDS = Array.from({ length: 60 }, (_, i) => i);
 
 function formatMuscleGroupLabel(muscleGroup: string): string {
   if (!muscleGroup) return '';
@@ -108,10 +113,10 @@ function groupSetsByExercise(sets: SetLogWithExercise[]): ExerciseGroup[] {
     .sort((a, b) => a.exerciseOrder - b.exerciseOrder);
 }
 
-function computeDurationMinutes(startedAt: string, completedAt: string | null): number {
+function computeDurationSeconds(startedAt: string, completedAt: string | null): number {
   const start = new Date(startedAt).getTime();
   const end = completedAt ? new Date(completedAt).getTime() : Date.now();
-  return Math.max(0, Math.floor((end - start) / 60000));
+  return Math.max(0, Math.floor((end - start) / 1000));
 }
 
 function toWorkoutRows(sets: SetLogWithExercise[], weightUnit: 'kg' | 'lbs', distUnit: 'km' | 'miles'): WorkoutRow[] {
@@ -266,7 +271,9 @@ function computeTemplateTargets(day: RoutineDayWithExercises): {
 
 export default function SessionDetailScreen() {
   const router = useRouter();
+  const pathname = usePathname();
   const { colors } = useTheme();
+  const androidPickerPopupTextColor = '#111111';
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { sessionId, justCompleted } = useLocalSearchParams<{ sessionId: string; justCompleted?: string }>();
   const { profile } = useProfileStore();
@@ -281,9 +288,10 @@ export default function SessionDetailScreen() {
   const [showEdit, setShowEdit] = useState(false);
   const [editDate, setEditDate] = useState(new Date());
   const [editTime, setEditTime] = useState(new Date());
-  const [editDuration, setEditDuration] = useState('');
+  const [editDurationSeconds, setEditDurationSeconds] = useState(0);
   const [showDatePicker, setShowDatePicker] = useState(Platform.OS === 'ios');
   const [showTimePicker, setShowTimePicker] = useState(Platform.OS === 'ios');
+  const [showDurationWheels, setShowDurationWheels] = useState(false);
   const [exerciseEditor, setExerciseEditor] = useState<ExerciseEditorState | null>(null);
   const [savingExerciseSets, setSavingExerciseSets] = useState(false);
   const [tempSetCounter, setTempSetCounter] = useState(0);
@@ -294,6 +302,15 @@ export default function SessionDetailScreen() {
   const [showCompletionBanner, setShowCompletionBanner] = useState(justCompleted === '1');
   const [routineDayTemplate, setRoutineDayTemplate] = useState<RoutineDayWithExercises | null>(null);
   const [templateResolved, setTemplateResolved] = useState(false);
+
+  const openExerciseDetail = useCallback((exerciseId: string) => {
+    const href = `/exercise/${exerciseId}` as const;
+    if (pathname.startsWith('/exercise/')) {
+      router.replace(href);
+      return;
+    }
+    router.push(href);
+  }, [pathname, router]);
 
   useEffect(() => {
     setShowCompletionBanner(justCompleted === '1');
@@ -317,10 +334,6 @@ export default function SessionDetailScreen() {
       setLoading(false);
     }
   }, [sessionId]);
-
-  useEffect(() => {
-    void loadSession();
-  }, [loadSession]);
 
   useFocusEffect(useCallback(() => {
     void loadSession();
@@ -388,18 +401,18 @@ export default function SessionDetailScreen() {
     const start = new Date(session.started_at);
     setEditDate(start);
     setEditTime(start);
-    setEditDuration(String(computeDurationMinutes(session.started_at, session.completed_at)));
+    setEditDurationSeconds(computeDurationSeconds(session.started_at, session.completed_at));
     setShowDatePicker(false);
     setShowTimePicker(false);
+    setShowDurationWheels(false);
     setShowEdit(true);
   };
 
   const endTime = useMemo(() => {
     const d = new Date(editDate);
     d.setHours(editTime.getHours(), editTime.getMinutes(), 0, 0);
-    const mins = parseInt(editDuration, 10) || 0;
-    return new Date(d.getTime() + mins * 60000);
-  }, [editDate, editTime, editDuration]);
+    return new Date(d.getTime() + editDurationSeconds * 1000);
+  }, [editDate, editTime, editDurationSeconds]);
 
   const handleDateChange = (_event: DateTimePickerEvent, date?: Date) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
@@ -411,17 +424,24 @@ export default function SessionDetailScreen() {
     if (date) setEditTime(date);
   };
 
+  const durationHours = Math.floor(editDurationSeconds / 3600);
+  const durationMinutes = Math.floor((editDurationSeconds % 3600) / 60);
+  const durationSeconds = editDurationSeconds % 60;
+
+  const setDurationFromParts = useCallback((hours: number, minutes: number, seconds: number) => {
+    setEditDurationSeconds(hours * 3600 + minutes * 60 + seconds);
+  }, []);
+
   const handleSaveEdit = async () => {
     if (!session) return;
-    const mins = parseInt(editDuration, 10);
-    if (isNaN(mins) || mins <= 0) {
+    if (editDurationSeconds <= 0) {
       Alert.alert('Error', 'Duration must be a positive number');
       return;
     }
 
     const startedAt = new Date(editDate);
     startedAt.setHours(editTime.getHours(), editTime.getMinutes(), 0, 0);
-    const completedAt = new Date(startedAt.getTime() + mins * 60000);
+    const completedAt = new Date(startedAt.getTime() + editDurationSeconds * 1000);
 
     try {
       await sessionService.updateSession(session.id, {
@@ -819,8 +839,6 @@ export default function SessionDetailScreen() {
     return items;
   };
 
-  const canGoBack = router.canGoBack();
-
   const stackScreenOptions = {
     headerRight: () => (
       <TouchableOpacity
@@ -834,16 +852,6 @@ export default function SessionDetailScreen() {
           : <Text style={styles.startBtnText}>▶ Start</Text>}
       </TouchableOpacity>
     ),
-    ...(!canGoBack ? {
-      headerLeft: () => (
-        <TouchableOpacity
-          onPress={() => router.replace('/(tabs)/profile')}
-          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-        >
-          <Text style={styles.headerBackBtn}>‹ Profile</Text>
-        </TouchableOpacity>
-      ),
-    } : {}),
   };
 
   if (loading) {
@@ -1056,7 +1064,7 @@ export default function SessionDetailScreen() {
                 <View style={styles.exerciseHeader}>
                   <View style={styles.exerciseHeaderText}>
                     <Text
-                      onPress={() => router.push(`/exercise/${group.exerciseId}`)}
+                      onPress={() => openExerciseDetail(group.exerciseId)}
                       suppressHighlighting
                       style={[styles.exerciseName, styles.exerciseNameLink]}
                     >
@@ -1123,7 +1131,7 @@ export default function SessionDetailScreen() {
                   themeVariant="dark"
                 />
               ) : (
-                <TouchableOpacity onPress={() => setShowDatePicker(true)}>
+                <TouchableOpacity style={styles.pickerValueButton} onPress={() => setShowDatePicker(true)} activeOpacity={0.7}>
                   <Text style={styles.pickerButtonText}>{editDate.toLocaleDateString()}</Text>
                 </TouchableOpacity>
               )}
@@ -1143,7 +1151,7 @@ export default function SessionDetailScreen() {
                   themeVariant="dark"
                 />
               ) : (
-                <TouchableOpacity onPress={() => setShowTimePicker(true)}>
+                <TouchableOpacity style={styles.pickerValueButton} onPress={() => setShowTimePicker(true)} activeOpacity={0.7}>
                   <Text style={styles.pickerButtonText}>{editTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
                 </TouchableOpacity>
               )}
@@ -1152,12 +1160,86 @@ export default function SessionDetailScreen() {
               <DateTimePicker value={editTime} mode="time" display="default" onChange={handleTimeChange} themeVariant="dark" />
             )}
 
-            <Input
-              label="Duration (minutes)"
-              value={editDuration}
-              onChangeText={setEditDuration}
-              keyboardType="number-pad"
-            />
+            <View style={styles.editRow}>
+              <Text style={styles.editRowLabel}>Duration</Text>
+              <TouchableOpacity
+                style={styles.pickerValueButton}
+                onPress={() => setShowDurationWheels((prev) => !prev)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.pickerButtonText}>{formatDurationValue(editDurationSeconds)}</Text>
+              </TouchableOpacity>
+            </View>
+            {showDurationWheels && (
+              <View style={styles.durationWheelWrap}>
+                <View style={styles.durationWheelLabelsRow}>
+                  <Text style={styles.durationWheelLabel}>Hours</Text>
+                  <Text style={styles.durationWheelLabel}>Min</Text>
+                  <Text style={styles.durationWheelLabel}>Sec</Text>
+                </View>
+                <View style={styles.durationWheelRow}>
+                  <View style={styles.durationWheelSlot}>
+                    <Picker
+                      selectedValue={durationHours}
+                      onValueChange={(value: number) => setDurationFromParts(value, durationMinutes, durationSeconds)}
+                      style={styles.durationWheelPicker}
+                      itemStyle={styles.durationWheelItem}
+                      mode={Platform.OS === 'android' ? 'dropdown' : undefined}
+                      dropdownIconColor={colors.text}
+                    >
+                      {DURATION_HOURS.map((value) => (
+                        <Picker.Item
+                          key={value}
+                          label={String(value).padStart(2, '0')}
+                          value={value}
+                          color={Platform.OS === 'android' ? androidPickerPopupTextColor : colors.text}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                  <Text style={styles.durationWheelSeparator}>:</Text>
+                  <View style={styles.durationWheelSlot}>
+                    <Picker
+                      selectedValue={durationMinutes}
+                      onValueChange={(value: number) => setDurationFromParts(durationHours, value, durationSeconds)}
+                      style={styles.durationWheelPicker}
+                      itemStyle={styles.durationWheelItem}
+                      mode={Platform.OS === 'android' ? 'dropdown' : undefined}
+                      dropdownIconColor={colors.text}
+                    >
+                      {DURATION_MINUTES.map((value) => (
+                        <Picker.Item
+                          key={value}
+                          label={String(value).padStart(2, '0')}
+                          value={value}
+                          color={Platform.OS === 'android' ? androidPickerPopupTextColor : colors.text}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                  <Text style={styles.durationWheelSeparator}>:</Text>
+                  <View style={styles.durationWheelSlot}>
+                    <Picker
+                      selectedValue={durationSeconds}
+                      onValueChange={(value: number) => setDurationFromParts(durationHours, durationMinutes, value)}
+                      style={styles.durationWheelPicker}
+                      itemStyle={styles.durationWheelItem}
+                      mode={Platform.OS === 'android' ? 'dropdown' : undefined}
+                      dropdownIconColor={colors.text}
+                    >
+                      {DURATION_SECONDS.map((value) => (
+                        <Picker.Item
+                          key={value}
+                          label={String(value).padStart(2, '0')}
+                          value={value}
+                          color={Platform.OS === 'android' ? androidPickerPopupTextColor : colors.text}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+              </View>
+            )}
 
             <View style={styles.endTimeRow}>
               <Text style={styles.fieldLabel}>End Time</Text>
@@ -1170,7 +1252,7 @@ export default function SessionDetailScreen() {
               <Button
                 title="Cancel"
                 variant="ghost"
-                onPress={() => setShowEdit(false)}
+                onPress={() => { setShowDurationWheels(false); setShowEdit(false); }}
               />
               <Button title="Save" onPress={handleSaveEdit} />
             </View>
@@ -1265,7 +1347,7 @@ export default function SessionDetailScreen() {
         selectedExerciseId={swapGroupKey
           ? (groupSetsByExercise(session?.sets ?? []).find((group) => group.key === swapGroupKey)?.exerciseId ?? null)
           : null}
-        onExerciseDetails={(exerciseId) => router.push(`/exercise/${exerciseId}`)}
+        onExerciseDetails={openExerciseDetail}
       />
 
       <AddExerciseModal
@@ -1275,7 +1357,7 @@ export default function SessionDetailScreen() {
         weightUnit={weightUnit}
         distanceUnit={distUnit}
         onDeleteExercise={() => {}}
-        onExerciseDetails={(exerciseId) => router.push(`/exercise/${exerciseId}`)}
+        onExerciseDetails={openExerciseDetail}
       />
     </View>
     </>
@@ -1462,7 +1544,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   muscleGroup: {
     fontSize: 13,
     fontFamily: fonts.light,
-    color: colors.textMuted,
+    color: colors.textSecondary,
     marginTop: 2,
     textTransform: 'capitalize',
   },
@@ -1478,7 +1560,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   tableCol: {
     fontSize: 11,
     fontFamily: fonts.bold,
-    color: colors.textMuted,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   tableRow: {
@@ -1577,6 +1659,57 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.text,
   },
+  pickerValueButton: {
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  durationWheelWrap: {
+    marginBottom: 12,
+  },
+  durationWheelLabelsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  durationWheelLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  durationWheelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: DURATION_PICKER_HEIGHT,
+    marginBottom: 6,
+  },
+  durationWheelSlot: {
+    flex: 1,
+    height: DURATION_PICKER_HEIGHT,
+  },
+  durationWheelPicker: {
+    height: DURATION_PICKER_HEIGHT,
+    color: colors.text,
+  },
+  durationWheelSeparator: {
+    fontSize: 22,
+    fontFamily: fonts.bold,
+    color: colors.textMuted,
+    width: 18,
+    textAlign: 'center',
+    marginTop: Platform.OS === 'ios' ? 8 : 0,
+  },
+  durationWheelItem: {
+    color: colors.text,
+    fontSize: 22,
+  },
   endTimeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1607,11 +1740,5 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: '#4ECDC4',
     fontSize: 14,
     fontFamily: fonts.semiBold,
-  },
-  headerBackBtn: {
-    color: colors.text,
-    fontSize: 17,
-    fontFamily: fonts.regular,
-    paddingLeft: 8,
   },
 });

@@ -25,6 +25,7 @@
       }
     },
     "android": {
+      "icon": "./assets/Setora.png",
       "adaptiveIcon": {
         "foregroundImage": "./assets/Setora.png",
         "backgroundColor": "#0f172a"
@@ -38,7 +39,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-notifications"
+      "expo-notifications",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "router": {},

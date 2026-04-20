@@ -9,7 +9,7 @@ import {
   Animated,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import Svg, {
@@ -123,6 +123,7 @@ export function Dashboard({
 }: Dashboard2Props) {
   const { colors, styles } = useDashboardStyles();
   const router = useRouter();
+  const pathname = usePathname();
   const { profile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
   const hUnit = profile?.height_unit ?? 'cm';
@@ -140,11 +141,20 @@ export function Dashboard({
     }
   }, []));
 
+  const openExerciseDetail = useCallback((exerciseId: string) => {
+    const href = `/exercise/${exerciseId}` as const;
+    if (pathname.startsWith('/exercise/')) {
+      router.replace(href);
+      return;
+    }
+    router.push(href);
+  }, [pathname, router]);
+
   const navigateToExerciseDetail = useCallback((exerciseId: string) => {
     pendingPickerReopenRef.current = true;
     setShowExercisePicker(false);
-    setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
-  }, [router]);
+    setTimeout(() => openExerciseDetail(exerciseId), 280);
+  }, [openExerciseDetail]);
   const [spotlightMetric, setSpotlightMetric] = useState<SpotlightMetric>('weight');
   const [filtersOpen, setFiltersOpen] = useState(true);
   const filterAnim = useRef(new Animated.Value(1)).current;

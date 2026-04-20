@@ -20,7 +20,15 @@ export const authService = {
 
   async getSession() {
     const { data, error } = await supabase.auth.getSession();
-    if (error) throw error;
+    if (error) {
+      const message = String(error.message ?? '').toLowerCase();
+      const isRefreshTokenError = message.includes('refresh token');
+      if (isRefreshTokenError) {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        return null;
+      }
+      throw error;
+    }
     return data.session;
   },
 

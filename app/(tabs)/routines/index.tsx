@@ -77,16 +77,11 @@ export default function RoutineListScreen() {
   const { colors, gradients } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuthStore();
-  const { routines, fetchRoutines, setActive, deleteRoutine, duplicateRoutine } = useRoutineStore();
+  const { routines, fetchRoutines, setActive, deleteRoutine, duplicateRoutine, routinesLoaded } = useRoutineStore();
   const [refreshing, setRefreshing] = useState(false);
-  const [routinesLoaded, setRoutinesLoaded] = useState(false);
 
   const loadRoutines = useCallback(async () => {
-    try {
-      await fetchRoutines();
-    } finally {
-      setRoutinesLoaded(true);
-    }
+    await fetchRoutines();
   }, [fetchRoutines]);
 
   useFocusEffect(
@@ -101,7 +96,6 @@ export default function RoutineListScreen() {
       await fetchRoutines();
     } finally {
       setRefreshing(false);
-      setRoutinesLoaded(true);
     }
   }, [fetchRoutines]);
 

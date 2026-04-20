@@ -7,7 +7,8 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, usePathname, useRouter, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRoutineStore } from '../../../../src/stores/routine.store';
 import { useAuthStore } from '../../../../src/stores/auth.store';
@@ -97,12 +98,18 @@ function SwipeableExerciseRow({
                 <Text onPress={handleDetailsPress} style={[styles.exerciseName, styles.exerciseNameLink]}>
                   {ex.exercise?.name ?? 'Exercise'}
                 </Text>
-                <Text style={styles.expandArrow}>{isExpanded ? '⏷' : '⏵'}</Text>
+                <Ionicons
+                  style={styles.expandArrow}
+                  name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                />
               </>
             ) : (
               <>
                 <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
-                <Text style={styles.expandArrow}>{isExpanded ? '⏷' : '⏵'}</Text>
+                <Ionicons
+                  style={styles.expandArrow}
+                  name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                />
               </>
             )}
           </View>
@@ -180,6 +187,7 @@ export default function DayEditorScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuthStore();
   const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
   const { profile } = useProfileStore();
@@ -212,13 +220,22 @@ export default function DayEditorScreen() {
     }
   }, []));
 
+  const openExerciseDetail = useCallback((exerciseId: string) => {
+    const href = `/exercise/${exerciseId}` as const;
+    if (pathname.startsWith('/exercise/')) {
+      router.replace(href);
+      return;
+    }
+    router.push(href);
+  }, [pathname, router]);
+
   const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
     if (source) pendingPickerReopenRef.current = source;
     setShowSwapPicker(false);
     setShowAddExercise(false);
     setShowDirectAddPicker(false);
-    setTimeout(() => router.push(`/exercise/${exerciseId}`), 280);
-  }, [router]);
+    setTimeout(() => openExerciseDetail(exerciseId), 280);
+  }, [openExerciseDetail]);
 
   const loadDay = useCallback(() => {
     if (!currentRoutine || !dayId) return;
@@ -637,6 +654,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   exerciseInfo: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 14,
   },
   nameRow: {
     flexDirection: 'row',
@@ -649,6 +668,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     lineHeight: 20,
     includeFontPadding: false,
+    flexShrink: 1,
   },
   exerciseNameLink: {
     color: colors.accent,
@@ -659,6 +679,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   expandArrow: {
     fontSize: 12,
     color: colors.textMuted,
+    marginLeft: 2,
+    flexShrink: 0,
   },
   exerciseMeta: {
     fontSize: 12,
@@ -671,7 +693,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.bold,
     color: colors.textSecondary,
+    marginLeft: 14,
+    minWidth: 58,
+    textAlign: 'right',
     marginRight: 8,
+    flexShrink: 0,
   },
   menuWrap: {
     marginLeft: 4,

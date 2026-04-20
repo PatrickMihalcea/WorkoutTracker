@@ -224,7 +224,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
     colHeader: {
       fontSize: 11,
       fontFamily: fonts.bold,
-      color: colors.textMuted,
+      color: colors.textSecondary,
       textAlign: 'center',
     },
     colSet: { width: 36, alignItems: 'center', justifyContent: 'center' },
