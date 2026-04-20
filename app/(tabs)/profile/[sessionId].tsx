@@ -1481,7 +1481,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: 12,
     fontSize: 13,
     fontFamily: fonts.regular,
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
   recordsExerciseBlock: {
     paddingTop: 10,
@@ -1505,7 +1505,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: fonts.regular,
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
   recordValue: {
     fontSize: 13,

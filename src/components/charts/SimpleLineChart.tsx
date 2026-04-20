@@ -5,6 +5,7 @@ import {
   StyleSheet,
   GestureResponderEvent,
   LayoutChangeEvent,
+  Platform,
 } from 'react-native';
 import Svg, { Line, Circle, Polyline, Text as SvgText } from 'react-native-svg';
 import { colors, fonts, spacing } from '../../constants';
@@ -272,6 +273,8 @@ export function SimpleLineChart({
     setMeasuredWidth(e.nativeEvent.layout.width);
   }, []);
 
+  const shouldCaptureChartGesture = useCallback(() => Platform.OS === 'android', []);
+
   if (points.length === 0) return null;
 
   return (
@@ -320,6 +323,8 @@ export function SimpleLineChart({
         </View>
         <View
           style={styles.chartScroll}
+          onStartShouldSetResponderCapture={shouldCaptureChartGesture}
+          onMoveShouldSetResponderCapture={shouldCaptureChartGesture}
           onLayout={handleLayout}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}

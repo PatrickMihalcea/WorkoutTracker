@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView,
   StyleSheet,
+  Platform,
   NativeSyntheticEvent,
   NativeScrollEvent,
   GestureResponderEvent,
@@ -530,6 +531,8 @@ export function SimpleScrollableChart({
     });
   }, [data, slotIndices, slotWidth, barWidth, yAxis.maxValue, yAxis.minValue]);
 
+  const shouldCaptureChartGesture = useCallback(() => Platform.OS === 'android', []);
+
   return (
     <View style={[styles.chartSection, !title && styles.chartSectionCompact]}>
       {title ? <SectionTitle title={title} /> : null}
@@ -574,6 +577,8 @@ export function SimpleScrollableChart({
           <ScrollView
             ref={scrollRef}
             horizontal
+            onStartShouldSetResponderCapture={shouldCaptureChartGesture}
+            onMoveShouldSetResponderCapture={shouldCaptureChartGesture}
             showsHorizontalScrollIndicator={false}
             onScroll={handleScroll}
             scrollEventThrottle={16}
