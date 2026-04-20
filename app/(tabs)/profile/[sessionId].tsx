@@ -1079,11 +1079,13 @@ export default function SessionDetailScreen() {
               <Card style={[styles.exerciseCard, position !== null && styles.exerciseCardNoMargin]}>
                 <View style={styles.exerciseHeader}>
                   <View style={styles.exerciseHeaderIdentity}>
-                    <Image
-                      source={group.thumbnailUrl ? { uri: group.thumbnailUrl } : EXERCISE_THUMB_PLACEHOLDER}
-                      style={styles.exerciseThumb}
-                      resizeMode="cover"
-                    />
+                    <TouchableOpacity onPress={() => openExerciseDetail(group.exerciseId)} activeOpacity={0.7}>
+                      <Image
+                        source={group.thumbnailUrl ? { uri: group.thumbnailUrl } : EXERCISE_THUMB_PLACEHOLDER}
+                        style={styles.exerciseThumb}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
                     <View style={styles.exerciseHeaderText}>
                       <Text
                         onPress={() => openExerciseDetail(group.exerciseId)}

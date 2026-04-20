@@ -220,6 +220,35 @@ export function ExerciseCard({
     );
   };
 
+  const renderExerciseThumb = () => {
+    if (!onDetails) {
+      return (
+        <Image
+          source={thumbnailSource}
+          style={styles.exerciseThumb}
+          resizeMode="cover"
+          onError={() => setThumbnailLoadFailed(true)}
+        />
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        onPress={handleDetailsPress}
+        onLongPress={handleNameLongPress}
+        activeOpacity={0.7}
+        style={styles.exerciseThumbTapTarget}
+      >
+        <Image
+          source={thumbnailSource}
+          style={styles.exerciseThumb}
+          resizeMode="cover"
+          onError={() => setThumbnailLoadFailed(true)}
+        />
+      </TouchableOpacity>
+    );
+  };
+
   const menuItems = useMemo((): OverflowMenuItem[] => {
     const items: OverflowMenuItem[] = [];
     if (canSupersetPrev) items.push({ label: 'Superset Prev', onPress: () => onSupersetPrev?.() });
@@ -285,6 +314,9 @@ export function ExerciseCard({
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surfaceLight,
+    },
+    exerciseThumbTapTarget: {
+      borderRadius: 20,
     },
     exerciseIdentityText: {
       flex: 1,
@@ -360,17 +392,12 @@ export function ExerciseCard({
 
   if (reorderCollapsed) {
     return (
-      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
+      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={false}>
         <Card style={[styles.cardCollapsed, marginOverride]}>
           {completionOverlay}
           <View style={styles.headerCollapsed}>
             <View style={styles.exerciseIdentity}>
-              <Image
-                source={thumbnailSource}
-                style={styles.exerciseThumb}
-                resizeMode="cover"
-                onError={() => setThumbnailLoadFailed(true)}
-              />
+              {renderExerciseThumb()}
               <View style={styles.exerciseIdentityText}>
                 {renderExerciseName(doneTextColor)}
                 <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
@@ -389,7 +416,7 @@ export function ExerciseCard({
 
   if (isCollapsed) {
     return (
-      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
+      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={false}>
         <Card style={[styles.cardCollapsed, marginOverride]}>
           {completionOverlay}
           <TouchableOpacity
@@ -400,12 +427,7 @@ export function ExerciseCard({
           >
             <View style={styles.headerCollapsed}>
               <View style={styles.exerciseIdentity}>
-                <Image
-                  source={thumbnailSource}
-                  style={styles.exerciseThumb}
-                  resizeMode="cover"
-                  onError={() => setThumbnailLoadFailed(true)}
-                />
+                {renderExerciseThumb()}
                 <View style={styles.exerciseIdentityText}>
                   {renderExerciseName(doneTextColor)}
                   <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
@@ -445,12 +467,7 @@ export function ExerciseCard({
       >
         <View style={styles.header}>
           <View style={styles.exerciseIdentity}>
-            <Image
-              source={thumbnailSource}
-              style={styles.exerciseThumb}
-              resizeMode="cover"
-              onError={() => setThumbnailLoadFailed(true)}
-            />
+            {renderExerciseThumb()}
             <View style={styles.exerciseIdentityText}>
               {renderExerciseName(doneTextColor)}
               <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
@@ -582,7 +599,7 @@ export function ExerciseCard({
   );
 
   return (
-    <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
+    <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={false}>
       {cardContent}
     </SwipeToDeleteRow>
   );

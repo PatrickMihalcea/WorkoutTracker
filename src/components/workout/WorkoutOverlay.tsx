@@ -70,7 +70,7 @@ const WORKOUT_TOOLTIP_COPY: Record<WorkoutTooltipKey, { title: string; message: 
   },
   setSwipeActions: {
     title: 'Swipe Set Actions',
-    message: 'Swipe set rows left or right to mark Warmup or Delete quickly. Swipe an exercise right to delete the whole block.',
+    message: 'Swipe set rows left or right to mark Warmup or Delete quickly.',
     demoTitle: 'Set 2',
     demoHint: 'Swipe right for W, swipe left for X',
   },

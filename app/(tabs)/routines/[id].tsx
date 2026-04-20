@@ -173,7 +173,13 @@ function SwipeableExerciseRow({
         activeOpacity={0.7}
       >
         <View style={styles.exerciseIdentity}>
-          <Image source={thumbnailSource} style={styles.exerciseThumb} resizeMode="cover" />
+          {onDetails ? (
+            <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7}>
+              <Image source={thumbnailSource} style={styles.exerciseThumb} resizeMode="cover" />
+            </TouchableOpacity>
+          ) : (
+            <Image source={thumbnailSource} style={styles.exerciseThumb} resizeMode="cover" />
+          )}
           <View style={styles.exerciseInfo}>
             <View style={styles.nameRow}>
               {onDetails ? (

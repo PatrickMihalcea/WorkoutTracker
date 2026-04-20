@@ -24,7 +24,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
 function RootLayoutInner() {
   const { colors, gradients } = useTheme();
   const { session, initialized, initialize } = useAuthStore();
-  const { profile, loading: profileLoading } = useProfileStore();
+  const { profile, loading: profileLoading, resolved: profileResolved } = useProfileStore();
   const { fetchRoutines, fetchActiveRoutine } = useRoutineStore();
   const segments = useSegments();
   const router = useRouter();
@@ -74,7 +74,8 @@ function RootLayoutInner() {
     void notificationService.initialize();
   }, []);
 
-  const ready = (fontsLoaded && initialized && !profileLoading && hasOpenedBefore !== null) || initTimedOut;
+  const profileReady = !session?.user || profileResolved;
+  const ready = (fontsLoaded && initialized && !profileLoading && profileReady && hasOpenedBefore !== null) || initTimedOut;
 
   useEffect(() => {
     if (!ready) return;
@@ -105,9 +106,12 @@ function RootLayoutInner() {
 
   useEffect(() => {
     if (!ready) return;
+    if (session?.user && !profileResolved) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const inOnboarding = segments[0] === '(onboarding)';
+    const currentSegment = segments[segments.length - 1];
+    const inOnboardingFinalStep = inOnboarding && currentSegment === 'first-routine';
 
     if (!session && !inAuthGroup) {
       router.replace(hasOpenedBefore ? '/(auth)/login' : '/(auth)/signup');
@@ -119,10 +123,10 @@ function RootLayoutInner() {
       }
     } else if (session && !inOnboarding && !inAuthGroup && (!profile || !profile.onboarding_complete)) {
       router.replace('/(onboarding)/display-name');
-    } else if (session && inOnboarding && profile?.onboarding_complete) {
+    } else if (session && inOnboarding && profile?.onboarding_complete && !inOnboardingFinalStep) {
       router.replace('/(tabs)/today');
     }
-  }, [session, profile, ready, segments, router]);
+  }, [session, profile, profileResolved, ready, segments, router]);
 
   useEffect(() => {
     if (!ready) return;
