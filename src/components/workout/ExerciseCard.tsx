@@ -1,5 +1,14 @@
-import React, { useEffect, useRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, LayoutAnimation, Animated } from 'react-native';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  LayoutAnimation,
+  Animated,
+  Image,
+  ImageSourcePropType,
+} from 'react-native';
 import type { LayoutAnimationConfig } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit, DistanceUnit } from '../../models';
@@ -15,6 +24,7 @@ import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType'
 import { useThemeColors } from '../../hooks/useThemeColors';
 
 const ANIM_DURATION = 300;
+const EXERCISE_PLACEHOLDER = require('../../../assets/Setora-black-and-white.png');
 
 const collapseLayout: LayoutAnimationConfig = {
   duration: 320,
@@ -109,6 +119,19 @@ export function ExerciseCard({
   const didLongPressNameRef = useRef(false);
 
   const canAnimate = setCompletion !== 'transparent';
+  const [thumbnailLoadFailed, setThumbnailLoadFailed] = useState(false);
+
+  const thumbnailUri = useMemo(() => {
+    if (entry.exercise?.thumbnail_url) return entry.exercise.thumbnail_url;
+    if (entry.exercise?.media_type === 'image' || entry.exercise?.media_type === 'gif') {
+      return entry.exercise.media_url;
+    }
+    return null;
+  }, [entry.exercise?.media_type, entry.exercise?.media_url, entry.exercise?.thumbnail_url]);
+
+  const thumbnailSource: ImageSourcePropType = !thumbnailLoadFailed && thumbnailUri
+    ? { uri: thumbnailUri }
+    : EXERCISE_PLACEHOLDER;
 
   useEffect(() => {
     if (allDone === prevAllDone.current) return;
@@ -131,6 +154,10 @@ export function ExerciseCard({
     }
   }, [allDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    setThumbnailLoadFailed(false);
+  }, [entry.exercise?.id, thumbnailUri]);
+
   /** Overlay that fades in over the card gradient when all sets are done. */
   const completionOverlay = canAnimate ? (
     <Animated.View
@@ -140,6 +167,7 @@ export function ExerciseCard({
   ) : null;
 
   const doneTextColor = (allDone && canAnimate) ? '#000000' : undefined;
+  const menuTriggerColor = allDone ? '#000000' : '#FFFFFF';
 
   const handleToggle = () => {
     LayoutAnimation.configureNext(collapseLayout);
@@ -163,17 +191,61 @@ export function ExerciseCard({
 
   const renderExerciseName = (done?: string) => {
     if (!onDetails) {
-      return <Text style={[styles.exerciseName, done && { color: done }]}>{exerciseName}</Text>;
+      return (
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={[styles.exerciseName, done && { color: done }]}
+        >
+          {exerciseName}
+        </Text>
+      );
     }
     return (
-      <Text
+      <TouchableOpacity
         onPress={handleDetailsPress}
         onLongPress={handleNameLongPress}
-        suppressHighlighting
-        style={[styles.exerciseName, styles.exerciseNameLink, done && { color: done }]}
+        activeOpacity={0.7}
+        style={styles.exerciseNameTapTarget}
       >
-        {exerciseName}
-      </Text>
+        <Text
+          suppressHighlighting
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={[styles.exerciseName, styles.exerciseNameLink, done && { color: done }]}
+        >
+          {exerciseName}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderExerciseThumb = () => {
+    if (!onDetails) {
+      return (
+        <Image
+          source={thumbnailSource}
+          style={styles.exerciseThumb}
+          resizeMode="cover"
+          onError={() => setThumbnailLoadFailed(true)}
+        />
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        onPress={handleDetailsPress}
+        onLongPress={handleNameLongPress}
+        activeOpacity={0.7}
+        style={styles.exerciseThumbTapTarget}
+      >
+        <Image
+          source={thumbnailSource}
+          style={styles.exerciseThumb}
+          resizeMode="cover"
+          onError={() => setThumbnailLoadFailed(true)}
+        />
+      </TouchableOpacity>
     );
   };
 
@@ -208,7 +280,7 @@ export function ExerciseCard({
     },
     header: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent: 'flex-start',
       alignItems: 'center',
       paddingBottom: 12,
       marginBottom: 8,
@@ -217,7 +289,7 @@ export function ExerciseCard({
     },
     headerCollapsed: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent: 'flex-start',
       alignItems: 'center',
       backgroundColor: 'transparent',
       zIndex: 2100,
@@ -228,11 +300,41 @@ export function ExerciseCard({
       fontFamily: fonts.bold,
       color: colors.text,
     },
+    exerciseIdentity: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    exerciseThumb: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceLight,
+    },
+    exerciseThumbTapTarget: {
+      borderRadius: 20,
+    },
+    exerciseIdentityText: {
+      flex: 1,
+      minWidth: 0,
+    },
+    headerRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+      marginLeft: 8,
+      flexShrink: 0,
+    },
     exerciseNameLink: {
       color: colors.accent,
     },
     exerciseNameTapTarget: {
       alignSelf: 'flex-start',
+      maxWidth: '100%',
     },
     muscleGroup: {
       fontSize: 13,
@@ -245,7 +347,6 @@ export function ExerciseCard({
       fontSize: 16,
       fontFamily: fonts.bold,
       color: colors.text,
-      marginRight: 4,
     },
     columnHeaders: {
       flexDirection: 'row',
@@ -291,17 +392,22 @@ export function ExerciseCard({
 
   if (reorderCollapsed) {
     return (
-      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
+      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={false}>
         <Card style={[styles.cardCollapsed, marginOverride]}>
           {completionOverlay}
           <View style={styles.headerCollapsed}>
-            <View style={{ flex: 1 }}>
-              {renderExerciseName(doneTextColor)}
-              <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
+            <View style={styles.exerciseIdentity}>
+              {renderExerciseThumb()}
+              <View style={styles.exerciseIdentityText}>
+                {renderExerciseName(doneTextColor)}
+                <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
+              </View>
             </View>
-            <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
-              {completedCount}/{rows.length}
-            </Text>
+            <View style={styles.headerRight}>
+              <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
+                {completedCount}/{rows.length}
+              </Text>
+            </View>
           </View>
         </Card>
       </SwipeToDeleteRow>
@@ -310,7 +416,7 @@ export function ExerciseCard({
 
   if (isCollapsed) {
     return (
-      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
+      <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={false}>
         <Card style={[styles.cardCollapsed, marginOverride]}>
           {completionOverlay}
           <TouchableOpacity
@@ -320,22 +426,27 @@ export function ExerciseCard({
             style={styles.headerPressLayer}
           >
             <View style={styles.headerCollapsed}>
-              <View style={{ flex: 1 }}>
-                {renderExerciseName(doneTextColor)}
-                <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
+              <View style={styles.exerciseIdentity}>
+                {renderExerciseThumb()}
+                <View style={styles.exerciseIdentityText}>
+                  {renderExerciseName(doneTextColor)}
+                  <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
+                </View>
               </View>
-              <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
-                {completedCount}/{rows.length}
-              </Text>
-              {showMenu && (
-                <OverflowMenu
-                  items={menuItems}
-                  demoVisible={demoOverflowVisible}
-                  demoMenuStyle={demoOverflowMenuStyle}
-                  demoTriggerStyle={demoOverflowTriggerStyle}
-                  triggerColor="#000000"
-                />
-              )}
+              <View style={styles.headerRight}>
+                <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
+                  {completedCount}/{rows.length}
+                </Text>
+                {showMenu && (
+                  <OverflowMenu
+                    items={menuItems}
+                    demoVisible={demoOverflowVisible}
+                    demoMenuStyle={demoOverflowMenuStyle}
+                    demoTriggerStyle={demoOverflowTriggerStyle}
+                    triggerColor={menuTriggerColor}
+                  />
+                )}
+              </View>
             </View>
           </TouchableOpacity>
         </Card>
@@ -355,21 +466,27 @@ export function ExerciseCard({
         style={styles.headerPressLayer}
       >
         <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            {renderExerciseName(doneTextColor)}
-            <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
+          <View style={styles.exerciseIdentity}>
+            {renderExerciseThumb()}
+            <View style={styles.exerciseIdentityText}>
+              {renderExerciseName(doneTextColor)}
+              <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
+            </View>
           </View>
-          <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
-            {completedCount}/{rows.length}
-          </Text>
-          {showMenu && (
-            <OverflowMenu
-              items={menuItems}
-              demoVisible={demoOverflowVisible}
-              demoMenuStyle={demoOverflowMenuStyle}
-              demoTriggerStyle={demoOverflowTriggerStyle}
-            />
-          )}
+          <View style={styles.headerRight}>
+            <Text style={[styles.setCount, doneTextColor && { color: doneTextColor }]}>
+              {completedCount}/{rows.length}
+            </Text>
+            {showMenu && (
+              <OverflowMenu
+                items={menuItems}
+                demoVisible={demoOverflowVisible}
+                demoMenuStyle={demoOverflowMenuStyle}
+                demoTriggerStyle={demoOverflowTriggerStyle}
+                triggerColor={menuTriggerColor}
+              />
+            )}
+          </View>
         </View>
       </TouchableOpacity>
 
@@ -482,7 +599,7 @@ export function ExerciseCard({
   );
 
   return (
-    <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={!!onRemove}>
+    <SwipeToDeleteRow onDelete={() => onRemove?.()} expandedHeight={5000} enabled={false}>
       {cardContent}
     </SwipeToDeleteRow>
   );

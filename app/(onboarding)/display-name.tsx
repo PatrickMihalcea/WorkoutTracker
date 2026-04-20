@@ -19,6 +19,8 @@ const SEX_OPTIONS: { value: Sex; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
+const MIN_BIRTHDAY = new Date(1900, 0, 1);
+
 export default function DisplayNameScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -31,9 +33,11 @@ export default function DisplayNameScreen() {
   const defaultDate = new Date();
   defaultDate.setFullYear(defaultDate.getFullYear() - 25);
   const [birthday, setBirthday] = useState(defaultDate);
+  const [showDatePicker, setShowDatePicker] = useState(Platform.OS === 'ios');
   const [loading, setLoading] = useState(false);
 
   const handleBirthdayChange = (_event: DateTimePickerEvent, next?: Date) => {
+    if (Platform.OS === 'android') setShowDatePicker(false);
     if (next) setBirthday(next);
   };
 
@@ -121,6 +125,7 @@ export default function DisplayNameScreen() {
           value={displayName}
           onChangeText={setDisplayName}
           placeholder="e.g. ironlifter42"
+          autoFocus={false}
           autoCapitalize="none"
           autoCorrect={false}
           containerStyle={styles.inputNoBottom}
@@ -148,16 +153,28 @@ export default function DisplayNameScreen() {
 
       <View style={styles.sectionBlock}>
         <Text style={styles.fieldLabel}>Birthday</Text>
-        <View style={styles.pickerCard}>
-          <DateTimePicker
-            value={birthday}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleBirthdayChange}
-            maximumDate={new Date()}
-            themeVariant="dark"
-          />
-        </View>
+        {Platform.OS === 'android' && (
+          <TouchableOpacity
+            style={styles.pickerButton}
+            onPress={() => setShowDatePicker(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.pickerButtonText}>{birthday.toLocaleDateString()}</Text>
+          </TouchableOpacity>
+        )}
+        {showDatePicker && (
+          <View style={styles.pickerCard}>
+            <DateTimePicker
+              value={birthday}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'compact' : 'default'}
+              onChange={handleBirthdayChange}
+              minimumDate={MIN_BIRTHDAY}
+              maximumDate={new Date()}
+              themeVariant="dark"
+            />
+          </View>
+        )}
       </View>
     </OnboardingScaffold>
   );
@@ -207,5 +224,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.xs,
     alignItems: 'center',
+  },
+  pickerButton: {
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  pickerButtonText: {
+    fontSize: 16,
+    fontFamily: fonts.regular,
+    color: colors.text,
   },
 });

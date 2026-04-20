@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -91,6 +92,18 @@ export function OnboardingScaffold({
       showSub.remove();
       hideSub.remove();
     };
+  }, []);
+
+  useEffect(() => {
+    const blurFocusedInput = () => {
+      const focused = TextInput.State.currentlyFocusedInput?.();
+      if (focused && typeof (focused as { blur?: () => void }).blur === 'function') {
+        (focused as { blur: () => void }).blur();
+      }
+    };
+
+    const id = setTimeout(blurFocusedInput, 80);
+    return () => clearTimeout(id);
   }, []);
 
   const progressWidth = useMemo<`${number}%`>(

@@ -12,19 +12,25 @@ import {
   Keyboard,
   Platform,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Equipment, Exercise, ExerciseType, MuscleGroup } from '../../models';
-import { exerciseService } from '../../services';
+import { exerciseMediaService, exerciseService } from '../../services';
 import { useAuthStore } from '../../stores/auth.store';
 import { BottomSheetModal } from './BottomSheetModal';
 import { Button } from './Button';
 import { Input } from './Input';
 import { ChipPicker, MultiChipPicker } from './ChipPicker';
+import { FieldDropdown } from './FieldDropdown';
 import { useTheme } from '../../contexts/ThemeContext';
 import { fonts } from '../../constants';
 import { confirmDeleteExercise } from '../../utils/confirmDeleteExercise';
 import { EXERCISE_TYPE_ITEMS } from '../../utils/exerciseType';
 
 const chartIcon = require('../../../assets/icons/chart.png');
+const exerciseThumbPlaceholder = require('../../../assets/Setora-black-and-white.png');
+const UPLOAD_ICON_MAX_DIMENSION = 480;
+const UPLOAD_ICON_COMPRESSION_QUALITY = 0.72;
 
 const MUSCLE_GROUP_ITEMS = Object.values(MuscleGroup).map((mg) => ({
   key: mg,
@@ -38,11 +44,48 @@ const EQUIPMENT_ITEMS = Object.values(Equipment).map((equipment) => ({
   value: equipment,
 }));
 
+const EXERCISE_TYPE_DROPDOWN_ITEMS = EXERCISE_TYPE_ITEMS.map((item) => ({
+  key: item.key,
+  label: item.label,
+  value: item.value as ExerciseType,
+  description: item.description,
+}));
+
 const ALPHABET_INDEX = ['#', ...Array.from({ length: 26 }, (_v, i) => String.fromCharCode(65 + i))];
 
 function getExerciseIndexLetter(name: string): string {
   const first = name.trim().charAt(0).toUpperCase();
   return /^[A-Z]$/.test(first) ? first : '#';
+}
+
+async function optimizeExercisePhotoForUpload(
+  asset: ImagePicker.ImagePickerAsset,
+): Promise<{ uri: string; contentType: string }> {
+  const width = asset.width ?? 0;
+  const height = asset.height ?? 0;
+  const actions: Array<{ resize: { width?: number; height?: number } }> = [];
+
+  if (width > 0 && height > 0) {
+    if (width >= height && width > UPLOAD_ICON_MAX_DIMENSION) {
+      actions.push({ resize: { width: UPLOAD_ICON_MAX_DIMENSION } });
+    } else if (height > width && height > UPLOAD_ICON_MAX_DIMENSION) {
+      actions.push({ resize: { height: UPLOAD_ICON_MAX_DIMENSION } });
+    }
+  }
+
+  const optimized = await ImageManipulator.manipulateAsync(
+    asset.uri,
+    actions,
+    {
+      compress: UPLOAD_ICON_COMPRESSION_QUALITY,
+      format: ImageManipulator.SaveFormat.JPEG,
+    },
+  );
+
+  return {
+    uri: optimized.uri,
+    contentType: 'image/jpeg',
+  };
 }
 
 type FilterOption<T extends string> = { key: T; label: string; value: T };
@@ -181,6 +224,9 @@ export function ExercisePickerModal({
   const [newExerciseEquipment, setNewExerciseEquipment] = useState<Equipment>(Equipment.Barbell);
   const [newExerciseType, setNewExerciseType] = useState<ExerciseType>(ExerciseType.WeightReps);
   const [newSecondaryMuscles, setNewSecondaryMuscles] = useState<string[]>([]);
+  const [newExerciseMediaUri, setNewExerciseMediaUri] = useState<string | null>(null);
+  const [newExerciseMediaMimeType, setNewExerciseMediaMimeType] = useState<string>('image/jpeg');
+  const [savingCreateExercise, setSavingCreateExercise] = useState(false);
   const [pendingDeletedSelection, setPendingDeletedSelection] = useState<Exercise | null>(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -248,6 +294,23 @@ export function ExercisePickerModal({
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
+    exercisePreview: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      marginRight: 10,
+      backgroundColor: colors.surfaceLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    exercisePreviewImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 22,
+    },
     exerciseRowContent: { flex: 1 },
     exerciseRowSelected: { backgroundColor: colors.surfaceLight },
     chartIconBtn: { paddingLeft: 12 },
@@ -270,11 +333,44 @@ export function ExercisePickerModal({
     footer: { gap: 8, paddingBottom: 16 },
     formBody: { paddingBottom: 8 },
     formFieldLabel: {
-      color: colors.textSecondary,
-      fontSize: 14,
-      fontFamily: fonts.regular,
+      color: colors.accent,
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
       marginBottom: 8,
-      marginTop: 12,
+      marginTop: 0,
+    },
+    mediaPickerButton: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      backgroundColor: colors.surfaceLight,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    mediaPickerButtonTextWrap: {
+      flex: 1,
+      gap: 2,
+    },
+    mediaPickerButtonTitle: {
+      fontSize: 14,
+      fontFamily: fonts.semiBold,
+      color: colors.text,
+    },
+    mediaPickerButtonHint: {
+      fontSize: 12,
+      fontFamily: fonts.regular,
+      color: colors.textMuted,
+    },
+    selectedMediaPreview: {
+      width: 52,
+      height: 52,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
     },
   }), [colors]);
 
@@ -299,6 +395,9 @@ export function ExercisePickerModal({
       setNewExerciseMuscle(MuscleGroup.Chest);
       setNewExerciseEquipment(Equipment.Barbell);
       setNewExerciseType(ExerciseType.WeightReps);
+      setNewExerciseMediaUri(null);
+      setNewExerciseMediaMimeType('image/jpeg');
+      setSavingCreateExercise(false);
       setPendingDeletedSelection(null);
       suppressCloseWarningRef.current = false;
     }
@@ -386,6 +485,40 @@ export function ExercisePickerModal({
     handlePressIndexLetter(letter);
   };
 
+  const getExercisePreviewUrl = (exercise: Exercise): string | null => {
+    if (exercise.thumbnail_url) return exercise.thumbnail_url;
+    if (exercise.media_type === 'image' || exercise.media_type === 'gif') {
+      return exercise.media_url;
+    }
+    return null;
+  };
+
+  const handlePickExerciseImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Please allow photo library access to attach an exercise image.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.85,
+      selectionLimit: 1,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    try {
+      const optimized = await optimizeExercisePhotoForUpload(asset);
+      setNewExerciseMediaUri(optimized.uri);
+      setNewExerciseMediaMimeType(optimized.contentType);
+    } catch {
+      setNewExerciseMediaUri(asset.uri);
+      setNewExerciseMediaMimeType(asset.mimeType ?? 'image/jpeg');
+    }
+  };
+
   const handleDeleteExercise = (exercise: Exercise) => {
     if (!user || exercise.user_id !== user.id) return;
     const afterDeleted = () => {
@@ -399,29 +532,41 @@ export function ExercisePickerModal({
     void confirmDeleteExercise(exercise, user.id, afterDeleted);
   };
 
-  const renderRow = (item: Exercise) => (
-    <View key={item.id} style={[styles.exerciseRow, highlightedExerciseId === item.id && styles.exerciseRowSelected]}>
-      <TouchableOpacity
-        style={styles.exerciseRowContent}
-        onPress={() => {
-          suppressCloseWarningRef.current = true;
-          setPendingDeletedSelection(null);
-          onSelect(item);
-          onClose();
-        }}
-        onLongPress={item.user_id === user?.id ? () => handleDeleteExercise(item) : undefined}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.exerciseName}>{item.name}</Text>
-        <Text style={styles.exerciseMeta}>{item.muscle_group.replace(/_/g, ' ')} · {item.equipment.replace(/_/g, ' ')}</Text>
-      </TouchableOpacity>
-      {onExerciseDetails && (
-        <TouchableOpacity style={styles.chartIconBtn} onPress={() => onExerciseDetails(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Image source={chartIcon} style={styles.chartIcon} />
+  const renderRow = (item: Exercise) => {
+    const previewUrl = getExercisePreviewUrl(item);
+
+    return (
+      <View key={item.id} style={[styles.exerciseRow, highlightedExerciseId === item.id && styles.exerciseRowSelected]}>
+        <View style={styles.exercisePreview}>
+          <Image
+            source={previewUrl ? { uri: previewUrl } : exerciseThumbPlaceholder}
+            style={styles.exercisePreviewImage}
+            resizeMode="cover"
+          />
+        </View>
+
+        <TouchableOpacity
+          style={styles.exerciseRowContent}
+          onPress={() => {
+            suppressCloseWarningRef.current = true;
+            setPendingDeletedSelection(null);
+            onSelect(item);
+            onClose();
+          }}
+          onLongPress={item.user_id === user?.id ? () => handleDeleteExercise(item) : undefined}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.exerciseName}>{item.name}</Text>
+          <Text style={styles.exerciseMeta}>{item.muscle_group.replace(/_/g, ' ')} · {item.equipment.replace(/_/g, ' ')}</Text>
         </TouchableOpacity>
-      )}
-    </View>
-  );
+        {onExerciseDetails && (
+          <TouchableOpacity style={styles.chartIconBtn} onPress={() => onExerciseDetails(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Image source={chartIcon} style={styles.chartIcon} />
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   const handleCreateExercise = async () => {
     if (!user || !newExerciseName.trim()) { Alert.alert('Error', 'Please enter an exercise name'); return; }
@@ -433,6 +578,7 @@ export function ExercisePickerModal({
     );
     if (duplicate) { Alert.alert('Duplicate', 'An exercise with the same name, muscle group, and equipment already exists.'); return; }
     try {
+      setSavingCreateExercise(true);
       const exercise = await exerciseService.create({
         user_id: user.id,
         name: newExerciseName.trim(),
@@ -441,19 +587,45 @@ export function ExercisePickerModal({
         exercise_type: newExerciseType,
         secondary_muscles: newSecondaryMuscles,
       });
-      setExercises((prev) => [...prev, exercise]);
+
+      let nextExercise = exercise;
+      if (newExerciseMediaUri) {
+        const uploadTarget = await exerciseMediaService.createUploadUrl({
+          exerciseId: exercise.id,
+          slot: 'media',
+          contentType: newExerciseMediaMimeType,
+        });
+
+        await exerciseMediaService.uploadFileToSignedUrl({
+          fileUri: newExerciseMediaUri,
+          uploadUrl: uploadTarget.uploadUrl,
+          contentType: newExerciseMediaMimeType,
+        });
+
+        nextExercise = await exerciseService.update(exercise.id, {
+          media_type: 'image',
+          media_url: uploadTarget.publicUrl,
+          thumbnail_url: uploadTarget.publicUrl,
+        });
+      }
+
+      setExercises((prev) => [...prev, nextExercise]);
       setSearch(''); setMuscleFilter(null); setEquipmentFilter(null);
-      setHighlightedExerciseId(exercise.id);
+      setHighlightedExerciseId(nextExercise.id);
       setShowCreateExercise(false); setNewExerciseName(''); setNewSecondaryMuscles([]);
       setNewExerciseMuscle(MuscleGroup.Chest); setNewExerciseEquipment(Equipment.Barbell);
       setNewExerciseType(ExerciseType.WeightReps);
+      setNewExerciseMediaUri(null); setNewExerciseMediaMimeType('image/jpeg');
     } catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
+    finally { setSavingCreateExercise(false); }
   };
 
   const resetCreateForm = () => {
     setNewExerciseName(''); setNewSecondaryMuscles([]);
     setNewExerciseMuscle(MuscleGroup.Chest); setNewExerciseEquipment(Equipment.Barbell);
     setNewExerciseType(ExerciseType.WeightReps);
+    setNewExerciseMediaUri(null); setNewExerciseMediaMimeType('image/jpeg');
+    setSavingCreateExercise(false);
   };
 
   const handleRequestClose = () => {
@@ -500,17 +672,55 @@ export function ExercisePickerModal({
       {showCreateExercise ? (
         <>
           <View style={styles.formBody}>
-            <Input label="Exercise Name" value={newExerciseName} onChangeText={setNewExerciseName} placeholder="e.g. Bench Press" />
+            <Text style={styles.formFieldLabel}>Exercise Name</Text>
+            <Input value={newExerciseName} onChangeText={setNewExerciseName} placeholder="e.g. Bench Press" />
             <Text style={styles.formFieldLabel}>Exercise Type</Text>
-            <ChipPicker items={EXERCISE_TYPE_ITEMS} selected={newExerciseType} onChange={(value) => setNewExerciseType((value as ExerciseType) ?? ExerciseType.WeightReps)} allowDeselect={false} />
+            <FieldDropdown
+              selected={newExerciseType}
+              options={EXERCISE_TYPE_DROPDOWN_ITEMS}
+              onChange={setNewExerciseType}
+              placeholder="Select exercise type"
+            />
             <Text style={styles.formFieldLabel}>Primary Muscle Group</Text>
-            <ChipPicker items={MUSCLE_GROUP_ITEMS} selected={newExerciseMuscle} onChange={(value) => setNewExerciseMuscle(value as MuscleGroup)} allowDeselect={false} horizontal={false} maxHeight={150} />
+            <FieldDropdown
+              selected={newExerciseMuscle}
+              options={MUSCLE_GROUP_ITEMS}
+              onChange={setNewExerciseMuscle}
+              placeholder="Select primary muscle"
+            />
             <Text style={styles.formFieldLabel}>Secondary Muscles (optional)</Text>
             <MultiChipPicker items={MUSCLE_GROUP_ITEMS} selected={newSecondaryMuscles} onChange={setNewSecondaryMuscles} horizontal={false} maxHeight={150} />
             <Text style={styles.formFieldLabel}>Equipment</Text>
-            <ChipPicker items={EQUIPMENT_ITEMS} selected={newExerciseEquipment} onChange={(value) => setNewExerciseEquipment(value as Equipment)} allowDeselect={false} />
+            <FieldDropdown
+              selected={newExerciseEquipment}
+              options={EQUIPMENT_ITEMS}
+              onChange={setNewExerciseEquipment}
+              placeholder="Select equipment"
+            />
+            <Text style={styles.formFieldLabel}>Exercise Photo (optional)</Text>
+            <TouchableOpacity style={styles.mediaPickerButton} onPress={() => { void handlePickExerciseImage(); }} activeOpacity={0.8}>
+              {newExerciseMediaUri ? (
+                <Image source={{ uri: newExerciseMediaUri }} style={styles.selectedMediaPreview} resizeMode="cover" />
+              ) : (
+                <View style={styles.selectedMediaPreview} />
+              )}
+              <View style={styles.mediaPickerButtonTextWrap}>
+                <Text style={styles.mediaPickerButtonTitle}>{newExerciseMediaUri ? 'Change photo' : 'Add photo'}</Text>
+                <Text style={styles.mediaPickerButtonHint}>
+                  {newExerciseMediaUri ? 'Photo is optimized to a max 480px icon before upload.' : 'Pick an image from your photo library.'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {newExerciseMediaUri && (
+              <Button
+                title="Remove Photo"
+                variant="ghost"
+                size="sm"
+                onPress={() => { setNewExerciseMediaUri(null); setNewExerciseMediaMimeType('image/jpeg'); }}
+              />
+            )}
           </View>
-          <View style={styles.footer}><Button title="Save Exercise" onPress={handleCreateExercise} /></View>
+          <View style={styles.footer}><Button title="Save Exercise" variant="accent" onPress={handleCreateExercise} loading={savingCreateExercise} /></View>
         </>
       ) : (
         <>

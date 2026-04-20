@@ -22,6 +22,8 @@ const SEX_OPTIONS: { value: Sex; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
+const MIN_BIRTHDAY = new Date(1900, 0, 1);
+
 export default function EditProfileScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -111,6 +113,7 @@ export default function EditProfileScreen() {
           mode="date"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={handleDateChange}
+          minimumDate={MIN_BIRTHDAY}
           maximumDate={new Date()}
           themeVariant="dark"
         />

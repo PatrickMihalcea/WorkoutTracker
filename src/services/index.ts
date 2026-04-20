@@ -14,3 +14,4 @@ export type { ExerciseDetailData, PersonalRecord, SetRecord, WeightDurationRecor
 export type { SessionRecordAchieved, SessionRecordMetric } from './session.service';
 export { notificationService } from './notification.service';
 export { onboardingService } from './onboarding.service';
+export { exerciseMediaService } from './exerciseMedia.service';

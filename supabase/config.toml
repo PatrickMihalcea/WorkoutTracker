@@ -1,2 +1,11 @@
 [functions.generate-onboarding-routine]
 verify_jwt = false
+
+[functions.create-exercise-media-upload-url]
+verify_jwt = false
+
+[functions.delete-exercise-media]
+verify_jwt = false
+
+[functions.delete-user-media]
+verify_jwt = false

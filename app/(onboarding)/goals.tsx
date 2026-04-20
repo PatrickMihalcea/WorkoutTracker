@@ -100,6 +100,7 @@ export default function GoalsScreen() {
         <TextInput
           value={bodyWeightGoal}
           onChangeText={setBodyWeightGoal}
+          autoFocus={false}
           keyboardType="decimal-pad"
           placeholder={`Optional (${weightLabel})`}
           placeholderTextColor={colors.textMuted}
@@ -116,6 +117,7 @@ export default function GoalsScreen() {
         <TextInput
           value={bodyFatGoal}
           onChangeText={setBodyFatGoal}
+          autoFocus={false}
           keyboardType="decimal-pad"
           placeholder="Optional (%)"
           placeholderTextColor={colors.textMuted}

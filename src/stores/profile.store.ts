@@ -6,6 +6,7 @@ import { notificationService } from '../services/notification.service';
 interface ProfileState {
   profile: UserProfile | null;
   loading: boolean;
+  resolved: boolean;
 
   fetchProfile: (userId: string) => Promise<void>;
   updateProfile: (updates: UserProfileUpdate) => Promise<void>;
@@ -15,12 +16,16 @@ interface ProfileState {
 export const useProfileStore = create<ProfileState>((set, get) => ({
   profile: null,
   loading: false,
+  resolved: false,
 
   fetchProfile: async (userId) => {
-    set({ loading: true });
+    set({ loading: true, resolved: false });
     try {
       const profile = await profileService.getByUserId(userId);
-      set({ profile });
+      set({ profile, resolved: true });
+    } catch (error) {
+      set({ profile: null, resolved: true });
+      throw error;
     } finally {
       set({ loading: false });
     }
@@ -30,7 +35,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     const { profile } = get();
     if (!profile) return;
     const updated = await profileService.update(profile.id, updates);
-    set({ profile: updated });
+    set({ profile: updated, resolved: true });
 
     const notificationPreferenceChanged = [
       'notify_rest_timer_enabled',
@@ -47,5 +52,5 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     }
   },
 
-  setProfile: (profile) => set({ profile }),
+  setProfile: (profile) => set({ profile, resolved: profile !== null }),
 }));

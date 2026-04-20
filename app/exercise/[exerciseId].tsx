@@ -7,12 +7,17 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Image,
+  TouchableOpacity,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useProfileStore } from '../../src/stores/profile.store';
 import {
   exerciseDetailService,
+  exerciseMediaService,
   ExerciseDetailData,
 } from '../../src/services';
 import { updateCustomExercise } from '../../src/services/exerciseMutation.service';
@@ -24,7 +29,7 @@ import {
   formatVolume,
 } from '../../src/components/charts';
 import type { BarDataItem } from '../../src/components/charts';
-import { BottomSheetModal, Button, ChipPicker, Input, MultiChipPicker, OverflowMenu } from '../../src/components/ui';
+import { BottomSheetModal, Button, ChipPicker, FieldDropdown, Input, MultiChipPicker, OverflowMenu } from '../../src/components/ui';
 import type { OverflowMenuItem } from '../../src/components/ui';
 import { getExerciseTypeConfig } from '../../src/utils/exerciseType';
 import { EXERCISE_TYPE_ITEMS } from '../../src/utils/exerciseType';
@@ -65,15 +70,55 @@ const EXERCISE_DETAIL_ACCENT_COLORS = [
 
 const MUSCLE_GROUP_CHIPS = Object.values(MuscleGroup).map((mg) => ({
   key: mg,
-  label: mg.replace(/_/g, ' '),
+  label: mg.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
   value: mg,
 })).sort((a, b) => a.label.localeCompare(b.label));
 
 const EQUIPMENT_CHIPS = Object.values(Equipment).map((eq) => ({
   key: eq,
-  label: eq.replace(/_/g, ' '),
+  label: eq.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
   value: eq,
 }));
+
+const EXERCISE_TYPE_DROPDOWN_ITEMS = EXERCISE_TYPE_ITEMS.map((item) => ({
+  key: item.key,
+  label: item.label,
+  value: item.value as ExerciseType,
+  description: item.description,
+}));
+
+const UPLOAD_ICON_MAX_DIMENSION = 480;
+const UPLOAD_ICON_COMPRESSION_QUALITY = 0.72;
+
+async function optimizeExercisePhotoForUpload(
+  asset: ImagePicker.ImagePickerAsset,
+): Promise<{ uri: string; contentType: string }> {
+  const width = asset.width ?? 0;
+  const height = asset.height ?? 0;
+  const actions: Array<{ resize: { width?: number; height?: number } }> = [];
+
+  if (width > 0 && height > 0) {
+    if (width >= height && width > UPLOAD_ICON_MAX_DIMENSION) {
+      actions.push({ resize: { width: UPLOAD_ICON_MAX_DIMENSION } });
+    } else if (height > width && height > UPLOAD_ICON_MAX_DIMENSION) {
+      actions.push({ resize: { height: UPLOAD_ICON_MAX_DIMENSION } });
+    }
+  }
+
+  const optimized = await ImageManipulator.manipulateAsync(
+    asset.uri,
+    actions,
+    {
+      compress: UPLOAD_ICON_COMPRESSION_QUALITY,
+      format: ImageManipulator.SaveFormat.JPEG,
+    },
+  );
+
+  return {
+    uri: optimized.uri,
+    contentType: 'image/jpeg',
+  };
+}
 
 function getMetricOptions(exerciseType: string): MetricOption[] {
   switch (exerciseType) {
@@ -178,6 +223,9 @@ function ExerciseDetailContent() {
   const [editExerciseMuscle, setEditExerciseMuscle] = useState<MuscleGroup>(MuscleGroup.Chest);
   const [editExerciseEquipment, setEditExerciseEquipment] = useState<Equipment>(Equipment.Barbell);
   const [editSecondaryMuscles, setEditSecondaryMuscles] = useState<string[]>([]);
+  const [editExerciseNewMediaUri, setEditExerciseNewMediaUri] = useState<string | null>(null);
+  const [editExerciseNewMediaMimeType, setEditExerciseNewMediaMimeType] = useState<string>('image/jpeg');
+  const [editExerciseRemoveMedia, setEditExerciseRemoveMedia] = useState(false);
   const [savingEditExercise, setSavingEditExercise] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -222,8 +270,51 @@ function ExerciseDetailContent() {
     setEditExerciseMuscle(data.exercise.muscle_group);
     setEditExerciseEquipment(data.exercise.equipment);
     setEditSecondaryMuscles(data.exercise.secondary_muscles ?? []);
+    setEditExerciseNewMediaUri(null);
+    setEditExerciseNewMediaMimeType('image/jpeg');
+    setEditExerciseRemoveMedia(false);
     setShowEditExercise(true);
   }, [data]);
+
+  const editMediaPreviewUri = useMemo(() => {
+    if (editExerciseRemoveMedia) return null;
+    if (editExerciseNewMediaUri) return editExerciseNewMediaUri;
+    return data?.exercise.thumbnail_url ?? data?.exercise.media_url ?? null;
+  }, [
+    data?.exercise.media_url,
+    data?.exercise.thumbnail_url,
+    editExerciseNewMediaUri,
+    editExerciseRemoveMedia,
+  ]);
+
+  const handlePickEditExerciseImage = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Please allow photo library access to attach an exercise image.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.85,
+      selectionLimit: 1,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+
+    try {
+      const optimized = await optimizeExercisePhotoForUpload(asset);
+      setEditExerciseNewMediaUri(optimized.uri);
+      setEditExerciseNewMediaMimeType(optimized.contentType);
+      setEditExerciseRemoveMedia(false);
+    } catch {
+      setEditExerciseNewMediaUri(asset.uri);
+      setEditExerciseNewMediaMimeType(asset.mimeType ?? 'image/jpeg');
+      setEditExerciseRemoveMedia(false);
+    }
+  }, []);
 
   const handleSaveEditedExercise = useCallback(async () => {
     if (!data || !isCustomExercise) return;
@@ -234,12 +325,45 @@ function ExerciseDetailContent() {
     }
     try {
       setSavingEditExercise(true);
+      let mediaUpdates: {
+        media_type?: 'none' | 'image' | 'gif' | 'video';
+        media_url?: string | null;
+        thumbnail_url?: string | null;
+      } = {};
+
+      if (editExerciseRemoveMedia) {
+        mediaUpdates = {
+          media_type: 'none',
+          media_url: null,
+          thumbnail_url: null,
+        };
+      } else if (editExerciseNewMediaUri) {
+        const uploadTarget = await exerciseMediaService.createUploadUrl({
+          exerciseId: data.exercise.id,
+          slot: 'media',
+          contentType: editExerciseNewMediaMimeType,
+        });
+
+        await exerciseMediaService.uploadFileToSignedUrl({
+          fileUri: editExerciseNewMediaUri,
+          uploadUrl: uploadTarget.uploadUrl,
+          contentType: editExerciseNewMediaMimeType,
+        });
+
+        mediaUpdates = {
+          media_type: 'image',
+          media_url: uploadTarget.publicUrl,
+          thumbnail_url: uploadTarget.publicUrl,
+        };
+      }
+
       const updated = await updateCustomExercise(data.exercise.id, {
         name: nextName,
         exercise_type: editExerciseType,
         muscle_group: editExerciseMuscle,
         equipment: editExerciseEquipment,
         secondary_muscles: editSecondaryMuscles,
+        ...mediaUpdates,
       });
       setData((prev) => (prev ? { ...prev, exercise: updated } : prev));
       setShowEditExercise(false);
@@ -254,6 +378,9 @@ function ExerciseDetailContent() {
     editExerciseEquipment,
     editExerciseMuscle,
     editExerciseName,
+    editExerciseNewMediaMimeType,
+    editExerciseNewMediaUri,
+    editExerciseRemoveMedia,
     editExerciseType,
     editSecondaryMuscles,
     isCustomExercise,
@@ -362,6 +489,13 @@ function ExerciseDetailContent() {
   }
 
   const hasChartData = points.length > 0;
+  const mediaUrl = data.exercise.media_url ?? null;
+  const thumbnailUrl = data.exercise.thumbnail_url ?? mediaUrl;
+  const isVideoMedia = data.exercise.media_type === 'video';
+  const hasMedia = Boolean(mediaUrl || thumbnailUrl);
+  const lastPerformedLabel = data.lastPerformedAt
+    ? new Date(data.lastPerformedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'Never';
 
   return (
     <ScrollView
@@ -375,6 +509,35 @@ function ExerciseDetailContent() {
     >
       {/* Header */}
       <View style={styles.header}>
+        {hasMedia && (
+          <View style={styles.mediaSummaryRow}>
+            <View style={styles.mediaPreviewPane}>
+              <View style={styles.mediaSquare}>
+                <Image
+                  source={{ uri: mediaUrl ?? thumbnailUrl ?? '' }}
+                  style={styles.mediaSquareImage}
+                  resizeMode={isVideoMedia ? 'cover' : 'contain'}
+                />
+                {isVideoMedia ? (
+                  <View style={styles.videoBadge}>
+                    <Text style={styles.videoBadgeText}>VIDEO</Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={styles.mediaStatsColumn}>
+              <View style={styles.mediaStatCard}>
+                <Text style={styles.mediaStatLabel}>Sets completed</Text>
+                <Text style={styles.mediaStatValue}>{data.totalCompletedSets}</Text>
+              </View>
+              <View style={styles.mediaStatCard}>
+                <Text style={styles.mediaStatLabel}>Last performed</Text>
+                <Text style={styles.mediaStatValueSmall}>{lastPerformedLabel}</Text>
+              </View>
+            </View>
+          </View>
+        )}
         <View style={styles.headerTitleRow}>
           <Text style={styles.exerciseName}>{data.exercise.name}</Text>
           {isCustomExercise && (
@@ -393,6 +556,18 @@ function ExerciseDetailContent() {
           <Text style={styles.secondaryText}>
             Also targets: {secondaryMuscles.join(', ')}
           </Text>
+        )}
+        {!hasMedia && (
+          <View style={styles.noMediaStatsRow}>
+            <View style={styles.mediaStatCard}>
+              <Text style={styles.mediaStatLabel}>Sets completed</Text>
+              <Text style={styles.mediaStatValue}>{data.totalCompletedSets}</Text>
+            </View>
+            <View style={styles.mediaStatCard}>
+              <Text style={styles.mediaStatLabel}>Last performed</Text>
+              <Text style={styles.mediaStatValueSmall}>{lastPerformedLabel}</Text>
+            </View>
+          </View>
         )}
       </View>
 
@@ -455,33 +630,33 @@ function ExerciseDetailContent() {
       <BottomSheetModal
         visible={showEditExercise}
         title="Edit Exercise"
+        scrollable
         fullHeight
+        contentPaddingHorizontal={10}
         onClose={() => setShowEditExercise(false)}
       >
         <View style={styles.formBody}>
+          <Text style={styles.formFieldLabel}>Exercise Name</Text>
           <Input
-            label="Exercise Name"
             value={editExerciseName}
             onChangeText={setEditExerciseName}
             placeholder="e.g. Bench Press"
           />
 
           <Text style={styles.formFieldLabel}>Exercise Type</Text>
-          <ChipPicker
-            items={EXERCISE_TYPE_ITEMS}
+          <FieldDropdown
             selected={editExerciseType}
-            onChange={(value) => setEditExerciseType((value as ExerciseType) ?? ExerciseType.WeightReps)}
-            allowDeselect={false}
+            options={EXERCISE_TYPE_DROPDOWN_ITEMS}
+            onChange={setEditExerciseType}
+            placeholder="Select exercise type"
           />
 
           <Text style={styles.formFieldLabel}>Primary Muscle Group</Text>
-          <ChipPicker
-            items={MUSCLE_GROUP_CHIPS}
+          <FieldDropdown
             selected={editExerciseMuscle}
-            onChange={(value) => setEditExerciseMuscle(value as MuscleGroup)}
-            allowDeselect={false}
-            horizontal={false}
-            maxHeight={170}
+            options={MUSCLE_GROUP_CHIPS}
+            onChange={setEditExerciseMuscle}
+            placeholder="Select primary muscle"
           />
 
           <Text style={styles.formFieldLabel}>Secondary Muscles (optional)</Text>
@@ -494,16 +669,51 @@ function ExerciseDetailContent() {
           />
 
           <Text style={styles.formFieldLabel}>Equipment</Text>
-          <ChipPicker
-            items={EQUIPMENT_CHIPS}
+          <FieldDropdown
             selected={editExerciseEquipment}
-            onChange={(value) => setEditExerciseEquipment(value as Equipment)}
-            allowDeselect={false}
+            options={EQUIPMENT_CHIPS}
+            onChange={setEditExerciseEquipment}
+            placeholder="Select equipment"
           />
+
+          <Text style={styles.formFieldLabel}>Exercise Photo (optional)</Text>
+          <TouchableOpacity
+            style={styles.mediaPickerButton}
+            onPress={() => { void handlePickEditExerciseImage(); }}
+            activeOpacity={0.8}
+          >
+            {editMediaPreviewUri ? (
+              <Image source={{ uri: editMediaPreviewUri }} style={styles.selectedMediaPreview} resizeMode="cover" />
+            ) : (
+              <View style={styles.selectedMediaPreview} />
+            )}
+            <View style={styles.mediaPickerButtonTextWrap}>
+              <Text style={styles.mediaPickerButtonTitle}>{editMediaPreviewUri ? 'Change photo' : 'Add photo'}</Text>
+              <Text style={styles.mediaPickerButtonHint}>
+                {editExerciseNewMediaUri
+                  ? 'This image will be uploaded to your media bucket.'
+                  : editMediaPreviewUri
+                    ? 'Current photo for this exercise.'
+                    : 'Pick an image from your photo library.'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          {editMediaPreviewUri && (
+            <Button
+              title="Remove Photo"
+              variant="ghost"
+              size="sm"
+              onPress={() => {
+                setEditExerciseNewMediaUri(null);
+                setEditExerciseNewMediaMimeType('image/jpeg');
+                setEditExerciseRemoveMedia(true);
+              }}
+            />
+          )}
         </View>
 
         <View style={styles.footer}>
-          <Button title="Save Changes" onPress={handleSaveEditedExercise} loading={savingEditExercise} />
+          <Button title="Save Changes" variant="accent" onPress={handleSaveEditedExercise} loading={savingEditExercise} />
         </View>
       </BottomSheetModal>
     </ScrollView>
@@ -543,6 +753,86 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   header: {
     paddingVertical: spacing.md,
+  },
+  mediaSummaryRow: {
+    marginBottom: spacing.sm,
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'stretch',
+  },
+  mediaPreviewPane: {
+    flex: 1.25,
+  },
+  mediaSquare: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+  },
+  mediaSquareImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#FFFFFF',
+  },
+  mediaStatsColumn: {
+    flex: 1,
+    minWidth: 0,
+    gap: 10,
+  },
+  noMediaStatsRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    marginBottom: 2,
+    gap: 12,
+  },
+  mediaStatCard: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  mediaStatLabel: {
+    fontSize: 11,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  mediaStatValue: {
+    fontSize: 22,
+    fontFamily: fonts.bold,
+    color: colors.accent,
+    textAlign: 'center',
+  },
+  mediaStatValueSmall: {
+    fontSize: 16,
+    fontFamily: fonts.semiBold,
+    color: colors.accent,
+    textAlign: 'center',
+  },
+  videoBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  videoBadgeText: {
+    fontSize: 10,
+    fontFamily: fonts.bold,
+    color: '#FFFFFF',
+    letterSpacing: 0.7,
   },
   headerTitleRow: {
     flexDirection: 'row',
@@ -645,13 +935,47 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flex: 1,
   },
   formFieldLabel: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontFamily: fonts.regular,
+    color: colors.accent,
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
     marginBottom: 8,
-    marginTop: 12,
+    marginTop: 0,
+  },
+  mediaPickerButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceLight,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  mediaPickerButtonTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  mediaPickerButtonTitle: {
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+  },
+  mediaPickerButtonHint: {
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+  },
+  selectedMediaPreview: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   footer: {
+    marginTop: 16,
     paddingBottom: 16,
   },
 });

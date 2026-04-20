@@ -4,10 +4,14 @@ import { useProfileStore } from '../src/stores/profile.store';
 
 export default function Index() {
   const { session } = useAuthStore();
-  const { profile } = useProfileStore();
+  const { profile, loading: profileLoading, resolved: profileResolved } = useProfileStore();
 
   if (!session) {
     return <Redirect href="/(auth)/login" />;
+  }
+
+  if (profileLoading || !profileResolved) {
+    return null;
   }
 
   if (!profile || !profile.onboarding_complete) {
