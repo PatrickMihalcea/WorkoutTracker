@@ -327,9 +327,10 @@ export default function HomeScreen() {
       return;
     }
 
-    const sessionDay = activeRoutine?.days.find((day) => day.id === activeSession.routine_day_id) ?? null;
-    setChosenDay(sessionDay);
-  }, [activeSession?.id, activeSession?.routine_day_id, activeRoutine?.days]);
+    const sessionDayFromActive = activeRoutine?.days.find((day) => day.id === activeSession.routine_day_id) ?? null;
+    const sessionDayFromChosen = chosenRoutine?.days.find((day) => day.id === activeSession.routine_day_id) ?? null;
+    setChosenDay(sessionDayFromActive ?? sessionDayFromChosen ?? null);
+  }, [activeSession?.id, activeSession?.routine_day_id, activeRoutine?.days, chosenRoutine?.days]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -463,6 +464,8 @@ export default function HomeScreen() {
     );
   }
 
+  const heroRoutine = chosenDay && chosenRoutine ? chosenRoutine : activeRoutine;
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -476,12 +479,12 @@ export default function HomeScreen() {
           />
         }
       >
-      <TouchableOpacity activeOpacity={0.8} onPress={() => router.push(`/(tabs)/routines/${activeRoutine.id}`)}>
+      <TouchableOpacity activeOpacity={0.8} onPress={() => router.push(`/(tabs)/routines/${heroRoutine.id}`)}>
         <Card style={styles.heroCard} gradientColors={gradients.accent}>
           <View style={styles.heroTopRow}>
             <Text style={styles.greeting}>{DAY_LABELS[currentDay as DayOfWeek]}</Text>
           </View>
-          <Text style={styles.routineName}>{activeRoutine.name}</Text>
+          <Text style={styles.routineName}>{heroRoutine.name}</Text>
           <Text style={styles.heroSubtext}>
             {chosenDay && !chosenDayIsScheduledToday
               ? `Custom: Week ${chosenDay.week_index} · ${chosenDay.label}`

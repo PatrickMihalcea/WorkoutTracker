@@ -81,7 +81,7 @@ export default function AccountScreen() {
   const confirmDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
-      'This will permanently delete your profile and workout data. This action cannot be undone.',
+      'This will permanently delete your profile, workout data, and uploaded media files. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

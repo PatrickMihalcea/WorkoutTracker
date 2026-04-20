@@ -195,6 +195,7 @@ export function AddExerciseModal({
         <View style={styles.actionButtons}>
           <Button
             title={editingEntry ? 'Save' : 'Add'}
+            variant="accent"
             onPress={handleConfirm}
             disabled={!selectedExercise}
           />

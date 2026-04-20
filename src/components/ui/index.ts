@@ -19,3 +19,5 @@ export { SupersetBracket } from './SupersetBracket';
 export { DurationPickerModal } from './DurationPickerModal';
 export { HeaderDropdown } from './HeaderDropdown';
 export type { HeaderDropdownOption } from './HeaderDropdown';
+export { FieldDropdown } from './FieldDropdown';
+export type { FieldDropdownOption } from './FieldDropdown';

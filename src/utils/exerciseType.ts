@@ -124,8 +124,20 @@ const EXERCISE_TYPE_KEYS = [
   'duration', 'duration_weight', 'distance_duration', 'weight_distance',
 ];
 
+const EXERCISE_TYPE_EXAMPLES: Record<string, string> = {
+  weight_reps: 'Bench Press, Back Squat',
+  bodyweight_reps: 'Push-up, Pull-up',
+  weighted_bodyweight: 'Weighted Pull-up, Weighted Dip',
+  assisted_bodyweight: 'Assisted Pull-up, Assisted Dip',
+  duration: 'Plank, Wall Sit',
+  duration_weight: 'Farmer Carry, Static Hold',
+  distance_duration: 'Run, Row',
+  weight_distance: 'Sled Push, Prowler Drag',
+};
+
 export const EXERCISE_TYPE_ITEMS = EXERCISE_TYPE_KEYS.map((et) => ({
   key: et,
   label: CONFIGS[et].label,
   value: et,
+  description: `Examples: ${EXERCISE_TYPE_EXAMPLES[et]}`,
 }));

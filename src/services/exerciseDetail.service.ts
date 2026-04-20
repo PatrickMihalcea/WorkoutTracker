@@ -28,6 +28,8 @@ export interface DistanceRecord {
 
 export interface ExerciseDetailData {
   exercise: Exercise;
+  totalCompletedSets: number;
+  lastPerformedAt: string | null;
   timeSeries: Record<string, TimeSeriesPoint[]>;
   personalRecords: PersonalRecord[];
   setRecords: SetRecord[];
@@ -480,9 +482,14 @@ export const exerciseDetailService = {
     const exerciseType = exercise.exercise_type ?? 'weight_reps';
 
     const setRecordMode: 'max' | 'min' = exerciseType === 'assisted_bodyweight' ? 'min' : 'max';
+    const lastPerformedAt = sets.length > 0
+      ? sets[sets.length - 1]?.session.started_at ?? null
+      : null;
 
     return {
       exercise,
+      totalCompletedSets: sets.length,
+      lastPerformedAt,
       timeSeries: computeTimeSeries(exerciseType, sessions),
       personalRecords: computePersonalRecords(exerciseType, sets, sessions, wUnit, dUnit),
       setRecords: computeSetRecords(sets, setRecordMode),

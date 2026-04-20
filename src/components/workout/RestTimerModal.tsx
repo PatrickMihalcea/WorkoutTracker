@@ -109,7 +109,7 @@ export function RestTimerModal({
           ))}
         </Picker>
       </View>
-      {!autoSave && <Button title="Save" onPress={handleSave} loading={saving} />}
+      {!autoSave && <Button title="Save" variant="accent" onPress={handleSave} loading={saving} />}
     </BottomSheetModal>
   );
 }

@@ -2,8 +2,10 @@ import { Exercise, ExerciseInsert } from '../models';
 import { useRoutineStore } from '../stores/routine.store';
 import { useWorkoutStore } from '../stores/workout.store';
 import { exerciseService } from './exercise.service';
+import { exerciseMediaService } from './exerciseMedia.service';
 
 export async function deleteCustomExercise(exercise: Exercise): Promise<void> {
+  await exerciseMediaService.deleteExerciseMedia(exercise.id);
   await exerciseService.delete(exercise.id);
   useWorkoutStore.getState().removeExerciseByExerciseId(exercise.id);
   useRoutineStore.getState().removeExerciseReferences(exercise.id);

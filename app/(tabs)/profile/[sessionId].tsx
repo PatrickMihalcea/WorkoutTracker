@@ -41,11 +41,14 @@ import {
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 
+const EXERCISE_THUMB_PLACEHOLDER = require('../../../assets/Setora-black-and-white.png');
+
 interface ExerciseGroup {
   key: string;
   exerciseId: string;
   exerciseName: string;
   muscleGroup: string;
+  thumbnailUrl: string | null;
   exerciseType?: string;
   exerciseOrder: number;
   supersetGroup: string | null;
@@ -79,6 +82,15 @@ function formatMuscleGroupLabel(muscleGroup: string): string {
     .join(' ');
 }
 
+function getExerciseThumbnailUrl(exercise: SetLogWithExercise['exercise']): string | null {
+  if (!exercise) return null;
+  if (exercise.thumbnail_url) return exercise.thumbnail_url;
+  if (exercise.media_type === 'image' || exercise.media_type === 'gif') {
+    return exercise.media_url;
+  }
+  return null;
+}
+
 function groupSetsByExercise(sets: SetLogWithExercise[]): ExerciseGroup[] {
   const groups: ExerciseGroup[] = [];
   const map = new Map<string, ExerciseGroup>();
@@ -89,12 +101,16 @@ function groupSetsByExercise(sets: SetLogWithExercise[]): ExerciseGroup[] {
     const existing = map.get(key);
     if (existing) {
       existing.sets.push(set);
+      if (!existing.thumbnailUrl) {
+        existing.thumbnailUrl = getExerciseThumbnailUrl(set.exercise);
+      }
     } else {
       const group: ExerciseGroup = {
         key,
         exerciseId: set.exercise_id,
         exerciseName: set.exercise?.name ?? 'Unknown',
         muscleGroup: set.exercise?.muscle_group ?? '',
+        thumbnailUrl: getExerciseThumbnailUrl(set.exercise),
         exerciseType: set.exercise?.exercise_type,
         exerciseOrder: set.exercise_order ?? groups.length,
         supersetGroup: set.superset_group ?? null,
@@ -1062,15 +1078,22 @@ export default function SessionDetailScreen() {
             <SupersetBracket key={group.key} position={position} contentRadius={16} style={position === 'last' ? { marginBottom: 6 } : undefined}>
               <Card style={[styles.exerciseCard, position !== null && styles.exerciseCardNoMargin]}>
                 <View style={styles.exerciseHeader}>
-                  <View style={styles.exerciseHeaderText}>
-                    <Text
-                      onPress={() => openExerciseDetail(group.exerciseId)}
-                      suppressHighlighting
-                      style={[styles.exerciseName, styles.exerciseNameLink]}
-                    >
-                      {group.exerciseName}
-                    </Text>
-                    <Text style={styles.muscleGroup}>{formatMuscleGroupLabel(group.muscleGroup)}</Text>
+                  <View style={styles.exerciseHeaderIdentity}>
+                    <Image
+                      source={group.thumbnailUrl ? { uri: group.thumbnailUrl } : EXERCISE_THUMB_PLACEHOLDER}
+                      style={styles.exerciseThumb}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.exerciseHeaderText}>
+                      <Text
+                        onPress={() => openExerciseDetail(group.exerciseId)}
+                        suppressHighlighting
+                        style={[styles.exerciseName, styles.exerciseNameLink]}
+                      >
+                        {group.exerciseName}
+                      </Text>
+                      <Text style={styles.muscleGroup}>{formatMuscleGroupLabel(group.muscleGroup)}</Text>
+                    </View>
                   </View>
                   <OverflowMenu items={menuItems} />
                 </View>
@@ -1254,7 +1277,7 @@ export default function SessionDetailScreen() {
                 variant="ghost"
                 onPress={() => { setShowDurationWheels(false); setShowEdit(false); }}
               />
-              <Button title="Save" onPress={handleSaveEdit} />
+              <Button title="Save" variant="accent" onPress={handleSaveEdit} />
             </View>
       </BottomSheetModal>
 
@@ -1332,6 +1355,7 @@ export default function SessionDetailScreen() {
               />
               <Button
                 title="Save"
+                variant="accent"
                 onPress={saveExerciseSets}
                 loading={savingExerciseSets}
               />
@@ -1526,6 +1550,19 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  exerciseHeaderIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  exerciseThumb: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.surfaceLight,
   },
   exerciseHeaderText: {
     flex: 1,

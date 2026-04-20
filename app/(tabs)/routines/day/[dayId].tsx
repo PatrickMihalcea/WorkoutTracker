@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, usePathname, useRouter, Stack } from 'expo-router';
@@ -50,6 +51,8 @@ import { DayViewHeaderDropdown } from '../../../../src/components/routine/DayVie
 import { useTheme } from '../../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../../src/constants/themes';
 
+const EXERCISE_THUMB_PLACEHOLDER = require('../../../../assets/Setora-black-and-white.png');
+
 function SwipeableExerciseRow({
   ex,
   isExpanded,
@@ -76,6 +79,11 @@ function SwipeableExerciseRow({
     ex.sets && ex.sets.length > 0
       ? `${setsCount} sets`
       : `${ex.target_sets}×${ex.target_reps}`;
+  const thumbnailUrl = ex.exercise?.thumbnail_url
+    ?? ((ex.exercise?.media_type === 'image' || ex.exercise?.media_type === 'gif')
+      ? ex.exercise.media_url
+      : null);
+  const thumbnailSource = thumbnailUrl ? { uri: thumbnailUrl } : EXERCISE_THUMB_PLACEHOLDER;
 
   const handleDetailsPress = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
@@ -91,32 +99,37 @@ function SwipeableExerciseRow({
         delayLongPress={400}
         activeOpacity={0.7}
       >
-        <View style={styles.exerciseInfo}>
-          <View style={styles.nameRow}>
-            {onDetails ? (
-              <>
-                <Text onPress={handleDetailsPress} style={[styles.exerciseName, styles.exerciseNameLink]}>
-                  {ex.exercise?.name ?? 'Exercise'}
-                </Text>
-                <Ionicons
-                  style={styles.expandArrow}
-                  name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-                />
-              </>
-            ) : (
-              <>
-                <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
-                <Ionicons
-                  style={styles.expandArrow}
-                  name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-                />
-              </>
-            )}
+        <View style={styles.exerciseIdentity}>
+          <Image source={thumbnailSource} style={styles.exerciseThumb} resizeMode="cover" />
+          <View style={styles.exerciseInfo}>
+            <View style={styles.nameRow}>
+              {onDetails ? (
+                <>
+                  <Text onPress={handleDetailsPress} style={[styles.exerciseName, styles.exerciseNameLink]}>
+                    {ex.exercise?.name ?? 'Exercise'}
+                  </Text>
+                  <Ionicons
+                    style={styles.expandArrow}
+                    name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                  />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+                  <Ionicons
+                    style={styles.expandArrow}
+                    name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                  />
+                </>
+              )}
+            </View>
+            <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
           </View>
-          <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
         </View>
-        <Text style={styles.exerciseTarget}>{setsLabel}</Text>
-        {menuItems && <View style={styles.menuWrap}><OverflowMenu items={menuItems} /></View>}
+        <View style={styles.exerciseActions}>
+          <Text style={styles.exerciseTarget}>{setsLabel}</Text>
+          {menuItems && <View style={styles.menuWrap}><OverflowMenu items={menuItems} /></View>}
+        </View>
       </TouchableOpacity>
       {isExpanded && children}
     </SwipeToDeleteRow>
@@ -644,7 +657,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   exerciseRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 4,
@@ -652,10 +664,23 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
   },
+  exerciseIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  exerciseThumb: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.surfaceLight,
+  },
   exerciseInfo: {
     flex: 1,
     minWidth: 0,
-    paddingRight: 14,
+    paddingRight: 10,
   },
   nameRow: {
     flexDirection: 'row',
@@ -693,14 +718,17 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.bold,
     color: colors.textSecondary,
-    marginLeft: 14,
     minWidth: 58,
     textAlign: 'right',
-    marginRight: 8,
     flexShrink: 0,
   },
+  exerciseActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
   menuWrap: {
-    marginLeft: 4,
+    marginLeft: 8,
     alignSelf: 'center',
   },
   setsEditorContainer: {

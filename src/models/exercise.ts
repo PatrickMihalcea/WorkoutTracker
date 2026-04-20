@@ -50,6 +50,8 @@ export enum Equipment {
   Other = 'other',
 }
 
+export type ExerciseMediaType = 'none' | 'image' | 'gif' | 'video';
+
 export interface Exercise {
   id: string;
   user_id: string | null;
@@ -58,8 +60,14 @@ export interface Exercise {
   equipment: Equipment;
   exercise_type: ExerciseType;
   secondary_muscles: string[];
-  asset_url: string | null;
+  media_type: ExerciseMediaType;
+  media_url: string | null;
+  thumbnail_url: string | null;
   created_at: string;
 }
 
-export type ExerciseInsert = Omit<Exercise, 'id' | 'created_at' | 'asset_url'> & { asset_url?: string | null };
+export type ExerciseInsert = Omit<Exercise, 'id' | 'created_at' | 'media_type' | 'media_url' | 'thumbnail_url'> & {
+  media_type?: ExerciseMediaType;
+  media_url?: string | null;
+  thumbnail_url?: string | null;
+};

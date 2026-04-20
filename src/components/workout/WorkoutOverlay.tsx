@@ -200,7 +200,7 @@ export function WorkoutOverlay() {
     setShowSwapPicker(false);
     setShowAddExercise(false);
     setShowDirectAddPicker(false);
-    setTimeout(() => openExerciseDetail(exerciseId), 280);
+    setTimeout(() => openExerciseDetail(exerciseId), 0);
   }, [openExerciseDetail]);
 
   useEffect(() => {
@@ -1142,7 +1142,9 @@ export function WorkoutOverlay() {
       equipment: 'dumbbell',
       exercise_type: 'weight_reps',
       secondary_muscles: [],
-      asset_url: null,
+      media_type: 'none',
+      media_url: null,
+      thumbnail_url: null,
       created_at: '2024-01-01T00:00:00.000Z',
     } as Exercise,
     sets: [],
