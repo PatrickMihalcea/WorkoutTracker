@@ -84,6 +84,7 @@ export const EARLIEST_DATE = '2016-01-01';
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
   [MuscleGroup.Chest]: '#FF6B6B',
+  [MuscleGroup.UpperChest]: '#FF8787',
   [MuscleGroup.Back]: '#4ECDC4',
   [MuscleGroup.UpperBack]: '#58B9B0',
   [MuscleGroup.LowerBack]: '#3E9D95',

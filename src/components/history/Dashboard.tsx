@@ -54,7 +54,7 @@ export type { GranularityMode, ChartMode } from '../charts';
 
 const RADAR_GROUPS: { label: string; keys: string[] }[] = [
   { label: 'Back',      keys: ['back', 'upper_back', 'lower_back', 'traps', 'trapezius'] },
-  { label: 'Chest',     keys: ['chest'] },
+  { label: 'Chest',     keys: ['chest', 'upper_chest'] },
   { label: 'Core',      keys: ['abs', 'obliques'] },
   { label: 'Shoulders', keys: ['shoulders', 'deltoids'] },
   { label: 'Arms',      keys: ['biceps', 'triceps', 'forearms', 'forearm'] },
