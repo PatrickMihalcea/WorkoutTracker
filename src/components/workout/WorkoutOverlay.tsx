@@ -51,6 +51,7 @@ const TAB_BAR_HEIGHT = 60;
 const SLIDE_IN_MS = 500;
 const SLIDE_OUT_MS = 300;
 const SESSION_ID_PATH_REGEX = /^\/profile\/[0-9a-fA-F-]{36}$/;
+const PROFILE_SESSION_PATH_REGEX = /^\/profile\/[^/]+$/;
 type TooltipWarningVariant = 'empty-finish' | 'first-entry-walkthrough';
 type WorkoutTooltipKey = 'setToggleDemo' | 'setSwipeActions' | 'supersetMenu' | 'reorderLongPress';
 
@@ -194,6 +195,10 @@ export function WorkoutOverlay() {
     }
     router.push(href);
   }, [pathname, router]);
+
+  const hasBottomTabs = /^\/(today|routines|history|profile)(\/|$)/.test(pathname)
+    && !PROFILE_SESSION_PATH_REGEX.test(pathname);
+  const pillBottomOffset = (hasBottomTabs ? TAB_BAR_HEIGHT : 0) + Math.max(insets.bottom, 8);
 
   const navigateToExerciseDetail = useCallback((exerciseId: string, source: 'swap' | 'add') => {
     pendingPickerReopenRef.current = source;
@@ -1198,7 +1203,7 @@ export function WorkoutOverlay() {
   return (
     <>
       {!expanded && (
-        <View style={[styles.pillContainer, { bottom: TAB_BAR_HEIGHT + Math.max(insets.bottom, 8) }]}>
+        <View style={[styles.pillContainer, { bottom: pillBottomOffset }]}>
           <WorkoutPill />
         </View>
       )}

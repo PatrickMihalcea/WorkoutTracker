@@ -38,6 +38,34 @@ export interface ExerciseDetailData {
   repProgressionRecords: TimeSeriesPoint[];
 }
 
+export interface ExerciseHistorySession {
+  sessionId: string;
+  startedAt: string;
+  completedAt: string | null;
+  setCount: number;
+  totalReps: number;
+  totalVolume: number;
+  totalDuration: number;
+  totalDistance: number;
+  topWeight: number;
+  bestSetReps: number;
+  setRows: ExerciseHistorySetRow[];
+}
+
+export interface ExerciseHistorySetRow {
+  setNumber: number;
+  weight: number;
+  repsPerformed: number;
+  rir: number | null;
+  duration: number;
+  distance: number;
+}
+
+export interface ExerciseHistoryData {
+  exercise: Exercise;
+  sessions: ExerciseHistorySession[];
+}
+
 interface RawSet {
   weight: number;
   reps_performed: number;
@@ -48,6 +76,20 @@ interface RawSet {
   session: {
     id: string;
     started_at: string;
+  };
+}
+
+interface RawHistorySet {
+  set_number: number;
+  weight: number;
+  reps_performed: number;
+  rir: number | null;
+  duration: number;
+  distance: number;
+  session: {
+    id: string;
+    started_at: string;
+    completed_at: string | null;
   };
 }
 
@@ -444,6 +486,53 @@ function computeRepProgression(sessions: Map<string, { startedAt: string; sets: 
     .sort((a, b) => a.date - b.date);
 }
 
+function computeHistorySessions(sets: RawHistorySet[]): ExerciseHistorySession[] {
+  const sessions = new Map<string, ExerciseHistorySession>();
+
+  for (const set of sets) {
+    const sessionId = set.session.id;
+    const existing = sessions.get(sessionId) ?? {
+      sessionId,
+      startedAt: set.session.started_at,
+      completedAt: set.session.completed_at,
+      setCount: 0,
+      totalReps: 0,
+      totalVolume: 0,
+      totalDuration: 0,
+      totalDistance: 0,
+      topWeight: 0,
+      bestSetReps: 0,
+      setRows: [],
+    };
+
+    existing.setCount += 1;
+    existing.totalReps += Math.max(0, set.reps_performed);
+    existing.totalVolume += Math.max(0, set.weight) * Math.max(0, set.reps_performed);
+    existing.totalDuration += Math.max(0, set.duration);
+    existing.totalDistance += Math.max(0, set.distance);
+    existing.topWeight = Math.max(existing.topWeight, Math.max(0, set.weight));
+    existing.bestSetReps = Math.max(existing.bestSetReps, Math.max(0, set.reps_performed));
+    existing.setRows.push({
+      setNumber: Math.max(1, set.set_number ?? existing.setRows.length + 1),
+      weight: Math.max(0, set.weight),
+      repsPerformed: Math.max(0, set.reps_performed),
+      rir: set.rir,
+      duration: Math.max(0, set.duration),
+      distance: Math.max(0, set.distance),
+    });
+    sessions.set(sessionId, existing);
+  }
+
+  return [...sessions.values()]
+    .map((session) => ({
+      ...session,
+      setRows: [...session.setRows].sort((a, b) => a.setNumber - b.setNumber),
+    }))
+    .sort((a, b) => {
+      return new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime();
+    });
+}
+
 export const exerciseDetailService = {
   async getData(userId: string, exerciseId: string, wUnit: WeightUnit = 'kg', dUnit: DistanceUnit = 'km'): Promise<ExerciseDetailData> {
     const { data: exercise, error: exErr } = await supabase
@@ -496,6 +585,49 @@ export const exerciseDetailService = {
       weightDurationRecords: computeWeightDurationRecords(sets),
       distanceRecords: computeDistanceRecords(sets),
       repProgressionRecords: computeRepProgression(sessions),
+    };
+  },
+  async getHistoryData(
+    userId: string,
+    exerciseId: string,
+    wUnit: WeightUnit = 'kg',
+    dUnit: DistanceUnit = 'km',
+  ): Promise<ExerciseHistoryData> {
+    const { data: exercise, error: exErr } = await supabase
+      .from('exercises')
+      .select('*')
+      .eq('id', exerciseId)
+      .single();
+    if (exErr) throw exErr;
+
+    const { data: rawSets, error: setsErr } = await supabase
+      .from('set_logs')
+      .select('set_number, weight, reps_performed, rir, duration, distance, session:workout_sessions!inner(id, started_at, completed_at)')
+      .eq('exercise_id', exerciseId)
+      .eq('session.user_id', userId)
+      .eq('session.status', 'completed')
+      .eq('is_warmup', false)
+      .order('session(started_at)', { ascending: false });
+
+    if (setsErr) throw setsErr;
+
+    const sets: RawHistorySet[] = (rawSets ?? []).map((row: Record<string, unknown>) => {
+      const rawWeight = (row.weight as number) ?? 0;
+      const rawDistance = (row.distance as number) ?? 0;
+      return {
+        set_number: (row.set_number as number) ?? 1,
+        weight: wUnit === 'lbs' ? Math.round(kgToLbs(rawWeight) * 10) / 10 : rawWeight,
+        reps_performed: (row.reps_performed as number) ?? 0,
+        rir: row.rir as number | null,
+        duration: (row.duration as number) ?? 0,
+        distance: dUnit === 'miles' ? Math.round(kmToMiles(rawDistance) * 100) / 100 : rawDistance,
+        session: row.session as { id: string; started_at: string; completed_at: string | null },
+      };
+    });
+
+    return {
+      exercise,
+      sessions: computeHistorySessions(sets),
     };
   },
 };

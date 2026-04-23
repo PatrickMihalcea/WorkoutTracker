@@ -13,33 +13,33 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
-import { useAuthStore } from '../../src/stores/auth.store';
-import { useProfileStore } from '../../src/stores/profile.store';
+import { useAuthStore } from '../../../src/stores/auth.store';
+import { useProfileStore } from '../../../src/stores/profile.store';
 import {
   exerciseDetailService,
   exerciseMediaService,
   ExerciseDetailData,
-} from '../../src/services';
-import { updateCustomExercise } from '../../src/services/exerciseMutation.service';
-import { fonts, spacing } from '../../src/constants';
+} from '../../../src/services';
+import { updateCustomExercise } from '../../../src/services/exerciseMutation.service';
+import { fonts, spacing } from '../../../src/constants';
 import {
   SimpleLineChart,
   MetricChips,
   RecordsBarChart,
   formatVolume,
-} from '../../src/components/charts';
-import type { BarDataItem } from '../../src/components/charts';
-import { BottomSheetModal, Button, ChipPicker, FieldDropdown, Input, MultiChipPicker, OverflowMenu } from '../../src/components/ui';
-import type { OverflowMenuItem } from '../../src/components/ui';
-import { getExerciseTypeConfig } from '../../src/utils/exerciseType';
-import { EXERCISE_TYPE_ITEMS } from '../../src/utils/exerciseType';
-import { formatDurationValue } from '../../src/utils/duration';
-import { distanceUnitLabel } from '../../src/utils/units';
-import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
-import { confirmDeleteExercise } from '../../src/utils/confirmDeleteExercise';
-import { Equipment, ExerciseType, MuscleGroup } from '../../src/models';
-import { useTheme } from '../../src/contexts/ThemeContext';
-import type { ThemeColors } from '../../src/constants/themes';
+} from '../../../src/components/charts';
+import type { BarDataItem } from '../../../src/components/charts';
+import { BottomSheetModal, Button, ChipPicker, FieldDropdown, Input, MultiChipPicker, OverflowMenu } from '../../../src/components/ui';
+import type { OverflowMenuItem } from '../../../src/components/ui';
+import { getExerciseTypeConfig } from '../../../src/utils/exerciseType';
+import { EXERCISE_TYPE_ITEMS } from '../../../src/utils/exerciseType';
+import { formatDurationValue } from '../../../src/utils/duration';
+import { distanceUnitLabel } from '../../../src/utils/units';
+import { ChartInteractionProvider, useChartInteraction } from '../../../src/components/charts';
+import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
+import { Equipment, ExerciseType, MuscleGroup } from '../../../src/models';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
 
 type MetricKey = string;
 
@@ -395,6 +395,14 @@ function ExerciseDetailContent() {
     });
   }, [data, isCustomExercise, router, user?.id]);
 
+  const handleOpenExerciseHistory = useCallback(() => {
+    if (!exerciseId) return;
+    router.push({
+      pathname: '/exercise/[exerciseId]/history',
+      params: { exerciseId },
+    });
+  }, [exerciseId, router]);
+
   const points = data?.timeSeries?.[selectedMetric] ?? [];
   const secondaryMuscles = (data?.exercise.secondary_muscles ?? [])
     .map((m) => m.replace(/_/g, ' '))
@@ -496,6 +504,20 @@ function ExerciseDetailContent() {
   const lastPerformedLabel = data.lastPerformedAt
     ? new Date(data.lastPerformedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : 'Never';
+  const lastPerformedCard = (
+    <TouchableOpacity
+      style={[styles.mediaStatCard, styles.mediaStatCardInteractive]}
+      activeOpacity={0.82}
+      onPress={handleOpenExerciseHistory}
+    >
+      <Text style={styles.mediaStatLabel}>Last performed</Text>
+      <Text style={styles.mediaStatValueSmall}>{lastPerformedLabel}</Text>
+      <View style={styles.mediaStatHintRow}>
+        <Text style={styles.mediaStatHint}>View history</Text>
+        <Text style={styles.mediaStatChevron}>›</Text>
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <ScrollView
@@ -531,10 +553,7 @@ function ExerciseDetailContent() {
                 <Text style={styles.mediaStatLabel}>Sets completed</Text>
                 <Text style={styles.mediaStatValue}>{data.totalCompletedSets}</Text>
               </View>
-              <View style={styles.mediaStatCard}>
-                <Text style={styles.mediaStatLabel}>Last performed</Text>
-                <Text style={styles.mediaStatValueSmall}>{lastPerformedLabel}</Text>
-              </View>
+              {lastPerformedCard}
             </View>
           </View>
         )}
@@ -563,10 +582,7 @@ function ExerciseDetailContent() {
               <Text style={styles.mediaStatLabel}>Sets completed</Text>
               <Text style={styles.mediaStatValue}>{data.totalCompletedSets}</Text>
             </View>
-            <View style={styles.mediaStatCard}>
-              <Text style={styles.mediaStatLabel}>Last performed</Text>
-              <Text style={styles.mediaStatValueSmall}>{lastPerformedLabel}</Text>
-            </View>
+            {lastPerformedCard}
           </View>
         )}
       </View>
@@ -721,9 +737,20 @@ function ExerciseDetailContent() {
 }
 
 export default function ExerciseDetailScreen() {
+  const { colors } = useTheme();
   return (
     <>
-      <Stack.Screen options={{ title: 'Exercise Details' }} />
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: colors.background },
+          headerTintColor: colors.text,
+          headerTitle: 'Exercise Details',
+          headerTitleStyle: { fontFamily: 'Monospaceland-Bold' },
+          headerBackButtonDisplayMode: 'minimal',
+          headerBackTitle: '',
+        }}
+      />
       <ChartInteractionProvider>
         <ExerciseDetailContent />
       </ChartInteractionProvider>
@@ -798,6 +825,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 10,
     justifyContent: 'center',
   },
+  mediaStatCardInteractive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
+  },
   mediaStatLabel: {
     fontSize: 11,
     fontFamily: fonts.semiBold,
@@ -818,6 +849,25 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontFamily: fonts.semiBold,
     color: colors.accent,
     textAlign: 'center',
+  },
+  mediaStatHintRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  mediaStatHint: {
+    fontSize: 10,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+    letterSpacing: 0.2,
+  },
+  mediaStatChevron: {
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    lineHeight: 12,
   },
   videoBadge: {
     position: 'absolute',

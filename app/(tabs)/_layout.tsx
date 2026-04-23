@@ -7,7 +7,7 @@ import { fonts } from '../../src/constants';
 import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
 import { useProfileStore } from '../../src/stores/profile.store';
 import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
-import { WorkoutOverlay, WorkoutOverlayProvider, useWorkoutOverlay } from '../../src/components/workout';
+import { useWorkoutOverlay } from '../../src/components/workout';
 import { useAuthStore } from '../../src/stores/auth.store';
 import { useWorkoutStore } from '../../src/stores/workout.store';
 import { useSessionStore } from '../../src/stores/session.store';
@@ -29,9 +29,27 @@ const TAB_LABELS: Record<string, string> = {
   profile: 'Profile',
 };
 
+function getFocusedLeafRouteName(route: { state?: unknown; name?: string }): string | null {
+  let current: any = route;
+  while (current?.state?.routes && Array.isArray(current.state.routes)) {
+    const nestedState = current.state;
+    const idx = typeof nestedState.index === 'number'
+      ? nestedState.index
+      : nestedState.routes.length - 1;
+    current = nestedState.routes[idx];
+  }
+  return typeof current?.name === 'string' ? current.name : null;
+}
+
 function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const focusedTab = state.routes[state.index];
+  const focusedLeafRoute = getFocusedLeafRouteName(focusedTab as any);
+  const hideOnWorkoutDetails = focusedTab?.name === 'profile' && focusedLeafRoute === '[sessionId]';
+  if (hideOnWorkoutDetails) {
+    return null;
+  }
 
   return (
     <View
@@ -158,20 +176,17 @@ function TabLayoutInner() {
         options={{ title: 'Profile' }}
       />
       </SwipeableTabs>
-      <WorkoutOverlay />
     </SafeAreaView>
   );
 }
 
 export default function TabLayout() {
   return (
-    <WorkoutOverlayProvider>
-      <ChartInteractionProvider>
-        <HistoryViewProvider>
-          <TabLayoutInner />
-        </HistoryViewProvider>
-      </ChartInteractionProvider>
-    </WorkoutOverlayProvider>
+    <ChartInteractionProvider>
+      <HistoryViewProvider>
+        <TabLayoutInner />
+      </HistoryViewProvider>
+    </ChartInteractionProvider>
   );
 }
 

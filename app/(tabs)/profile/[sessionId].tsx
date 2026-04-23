@@ -13,6 +13,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import { useLocalSearchParams, usePathname, useRouter, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import { HeaderBackButton } from '@react-navigation/elements';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { routineService, sessionService } from '../../../src/services';
 import type { SessionRecordAchieved, SessionRecordMetric } from '../../../src/services';
@@ -291,7 +292,17 @@ export default function SessionDetailScreen() {
   const { colors } = useTheme();
   const androidPickerPopupTextColor = '#111111';
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { sessionId, justCompleted } = useLocalSearchParams<{ sessionId: string; justCompleted?: string }>();
+  const {
+    sessionId,
+    justCompleted,
+    from,
+    exerciseId: returnExerciseId,
+  } = useLocalSearchParams<{
+    sessionId: string;
+    justCompleted?: string;
+    from?: string;
+    exerciseId?: string;
+  }>();
   const { profile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
   const distUnit = profile?.distance_unit ?? 'km';
@@ -855,7 +866,26 @@ export default function SessionDetailScreen() {
     return items;
   };
 
+  const handleHeaderBack = useCallback(() => {
+    if (from === 'exercise-history' && returnExerciseId) {
+      router.replace(`/exercise/${returnExerciseId}/history`);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/(tabs)/profile');
+  }, [from, returnExerciseId, router]);
+
   const stackScreenOptions = {
+    headerLeft: () => (
+      <HeaderBackButton
+        onPress={handleHeaderBack}
+        tintColor={colors.text}
+        displayMode="minimal"
+      />
+    ),
     headerRight: () => (
       <TouchableOpacity
         onPress={handleStartWorkout}
