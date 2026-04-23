@@ -157,11 +157,36 @@ function SwipeableExerciseRow({
       ? ex.exercise.media_url
       : null);
   const thumbnailSource = thumbnailUrl ? { uri: thumbnailUrl } : EXERCISE_THUMB_PLACEHOLDER;
+  const [nameBlockWidth, setNameBlockWidth] = useState<number | null>(null);
+  const [nameMaxWidth, setNameMaxWidth] = useState<number | null>(null);
 
   const handleDetailsPress = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
     onDetails?.();
   };
+
+  useEffect(() => {
+    setNameBlockWidth(null);
+  }, [ex.exercise?.name]);
+
+  const handleNameLayout = useCallback((event: { nativeEvent: { lines: Array<{ width: number }> } }) => {
+    const lines = event.nativeEvent.lines;
+    if (!lines || lines.length === 0) return;
+    const widest = Math.ceil(Math.max(...lines.map((line) => line.width)));
+    setNameBlockWidth((prev) => (prev != null && Math.abs(prev - widest) < 1 ? prev : widest));
+  }, []);
+
+  const handleNameContainerLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
+    const nextWidth = Math.floor(event.nativeEvent.layout.width);
+    if (!Number.isFinite(nextWidth) || nextWidth <= 0) return;
+    setNameMaxWidth((prev) => (prev != null && Math.abs(prev - nextWidth) < 1 ? prev : nextWidth));
+  }, []);
+
+  const resolvedNameWidth = useMemo(() => {
+    if (nameBlockWidth == null) return null;
+    if (nameMaxWidth == null) return nameBlockWidth;
+    return Math.min(nameBlockWidth, nameMaxWidth);
+  }, [nameBlockWidth, nameMaxWidth]);
 
   return (
     <SwipeToDeleteRow onDelete={onDelete} expandedHeight={500}>
@@ -180,27 +205,21 @@ function SwipeableExerciseRow({
           ) : (
             <Image source={thumbnailSource} style={styles.exerciseThumb} resizeMode="cover" />
           )}
-          <View style={styles.exerciseInfo}>
+          <View style={styles.exerciseInfo} onLayout={handleNameContainerLayout}>
             <View style={styles.nameRow}>
-              {onDetails ? (
-                <>
-                  <Text onPress={handleDetailsPress} style={[styles.exerciseName, styles.exerciseNameLink]}>
+              <View style={[styles.nameTextBlock, resolvedNameWidth ? { width: resolvedNameWidth } : null]}>
+                {onDetails ? (
+                  <Text onPress={handleDetailsPress} onTextLayout={handleNameLayout} style={[styles.exerciseName, styles.exerciseNameLink]}>
                     {ex.exercise?.name ?? 'Exercise'}
                   </Text>
-                  <Ionicons
-                    style={styles.expandArrow}
-                    name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-                  />
-                </>
-              ) : (
-                <>
-                  <Text style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
-                  <Ionicons
-                    style={styles.expandArrow}
-                    name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-                  />
-                </>
-              )}
+                ) : (
+                  <Text onTextLayout={handleNameLayout} style={styles.exerciseName}>{ex.exercise?.name ?? 'Exercise'}</Text>
+                )}
+              </View>
+              <Ionicons
+                style={styles.expandArrow}
+                name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+              />
             </View>
             <Text style={styles.exerciseMeta}>{ex.exercise?.muscle_group?.replace(/_/g, ' ')} · {ex.exercise?.equipment?.replace(/_/g, ' ')}</Text>
           </View>
@@ -1580,13 +1599,20 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  nameTextBlock: {
+    alignSelf: 'flex-start',
+    flexShrink: 1,
+    maxWidth: '100%',
   },
   expandArrow: {
     fontSize: 12,
     color: colors.textMuted,
     marginLeft: 2,
     flexShrink: 0,
+    alignSelf: 'center',
   },
   setsEditorContainer: {
     paddingHorizontal: 8,
