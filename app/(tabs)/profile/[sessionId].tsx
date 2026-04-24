@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import type { SessionRecordAchieved, SessionRecordMetric } from '../../../src/se
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useAuthStore } from '../../../src/stores/auth.store';
-import { Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle, ExerciseIconPreview } from '../../../src/components/ui';
+import { Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle, ExerciseIconPreview, SetValueEditorModal } from '../../../src/components/ui';
 import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { SetRow } from '../../../src/components/workout/SetRow';
@@ -42,6 +42,7 @@ import {
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../../src/utils/exerciseMedia';
+import { EditableFieldKind, allowsDecimalForField } from '../../../src/components/set-editor/types';
 
 const EXERCISE_THUMB_PLACEHOLDER = require('../../../assets/Setora-black-and-white.png');
 
@@ -66,6 +67,16 @@ interface ExerciseEditorState {
   supersetGroup: string | null;
   originalSetIds: string[];
   rows: WorkoutRow[];
+}
+
+interface ExerciseEditorCell {
+  rowId: string;
+  field: EditableFieldKind;
+}
+
+interface ExerciseEditableRow {
+  rowId: string;
+  fields: EditableFieldKind[];
 }
 
 const TEMP_SET_PREFIX = 'temp-set-';
@@ -314,6 +325,13 @@ export default function SessionDetailScreen() {
   const [exerciseEditor, setExerciseEditor] = useState<ExerciseEditorState | null>(null);
   const [savingExerciseSets, setSavingExerciseSets] = useState(false);
   const [tempSetCounter, setTempSetCounter] = useState(0);
+  const [valueEditorVisible, setValueEditorVisible] = useState(false);
+  const [valueEditorCell, setValueEditorCell] = useState<ExerciseEditorCell | null>(null);
+  const [valueEditorNumeric, setValueEditorNumeric] = useState('');
+  const [valueEditorDuration, setValueEditorDuration] = useState(0);
+  const [valueEditorRir, setValueEditorRir] = useState<number | null>(null);
+  const [editorRowLayoutY, setEditorRowLayoutY] = useState<Record<string, number>>({});
+  const editorRowsScrollRef = useRef<ScrollView | null>(null);
   const [swapGroupKey, setSwapGroupKey] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
@@ -476,6 +494,9 @@ export default function SessionDetailScreen() {
 
   const openExerciseEditor = (group: ExerciseGroup) => {
     const rows = toWorkoutRows(group.sets, weightUnit, distUnit);
+    setValueEditorVisible(false);
+    setValueEditorCell(null);
+    setEditorRowLayoutY({});
     setExerciseEditor({
       sessionId: group.sets[0]?.session_id ?? session?.id ?? '',
       exerciseId: group.exerciseId,
@@ -556,6 +577,130 @@ export default function SessionDetailScreen() {
       return { ...prev, rows: renumberRows([...warmups, ...working]) };
     });
   };
+
+  const editableRowsForExercise = useMemo<ExerciseEditableRow[]>(() => {
+    if (!exerciseEditor) return [];
+    const config = getExerciseTypeConfig(exerciseEditor.exerciseType);
+    const fields: EditableFieldKind[] = config.fields.map((field) => field.key as EditableFieldKind);
+    if (config.showRir) fields.push('rir');
+    return exerciseEditor.rows.map((row) => ({ rowId: row.id, fields }));
+  }, [exerciseEditor]);
+
+  const scrollExerciseCellIntoView = useCallback((cell: ExerciseEditorCell, animated = true) => {
+    const targetY = editorRowLayoutY[cell.rowId];
+    if (typeof targetY !== 'number') return;
+    requestAnimationFrame(() => {
+      editorRowsScrollRef.current?.scrollTo({ y: Math.max(0, targetY - 110), animated });
+    });
+  }, [editorRowLayoutY]);
+
+  const openValueEditorForExerciseCell = useCallback((cell: ExerciseEditorCell) => {
+    const row = exerciseEditor?.rows.find((item) => item.id === cell.rowId);
+    if (!row) return;
+    scrollExerciseCellIntoView(cell);
+    setValueEditorCell(cell);
+    if (cell.field === 'rir') {
+      setValueEditorRir(row.rir ? parseFloat(row.rir) : null);
+    } else if (cell.field === 'duration') {
+      setValueEditorDuration(row.duration ? parseFloat(row.duration) || 0 : 0);
+    } else if (cell.field === 'weight') {
+      setValueEditorNumeric(row.weight ?? '');
+    } else if (cell.field === 'reps') {
+      setValueEditorNumeric(row.reps ?? '');
+    } else if (cell.field === 'distance') {
+      setValueEditorNumeric(row.distance ?? '');
+    } else {
+      setValueEditorNumeric('');
+    }
+    setValueEditorVisible(true);
+  }, [exerciseEditor, scrollExerciseCellIntoView]);
+
+  const handleExerciseValueChange = useCallback((cell: ExerciseEditorCell, value: string | number | null) => {
+    if (cell.field === 'rir') {
+      updateExerciseRow(cell.rowId, { rir: value == null ? '' : String(value) });
+      return;
+    }
+    if (cell.field === 'duration') {
+      updateExerciseRow(cell.rowId, { duration: String(value ?? 0) });
+      return;
+    }
+    const asString = String(value ?? '');
+    if (cell.field === 'weight') {
+      updateExerciseRow(cell.rowId, { weight: asString });
+      return;
+    }
+    if (cell.field === 'reps') {
+      updateExerciseRow(cell.rowId, { reps: asString });
+      return;
+    }
+    if (cell.field === 'distance') {
+      updateExerciseRow(cell.rowId, { distance: asString });
+    }
+  }, []);
+
+  const findAdjacentExerciseCell = useCallback((current: ExerciseEditorCell, direction: 'up' | 'down' | 'left' | 'right'): ExerciseEditorCell | null => {
+    const rowIndex = editableRowsForExercise.findIndex((row) => row.rowId === current.rowId);
+    if (rowIndex < 0) return null;
+    const row = editableRowsForExercise[rowIndex];
+    const fieldIndex = row.fields.indexOf(current.field);
+    if (fieldIndex < 0) return null;
+
+    if (direction === 'left') {
+      if (fieldIndex > 0) return { rowId: row.rowId, field: row.fields[fieldIndex - 1] };
+      const prevRow = editableRowsForExercise[rowIndex - 1];
+      if (!prevRow) return null;
+      return { rowId: prevRow.rowId, field: prevRow.fields[prevRow.fields.length - 1] };
+    }
+
+    if (direction === 'right') {
+      if (fieldIndex < row.fields.length - 1) return { rowId: row.rowId, field: row.fields[fieldIndex + 1] };
+      const nextRow = editableRowsForExercise[rowIndex + 1];
+      if (!nextRow) return null;
+      return { rowId: nextRow.rowId, field: nextRow.fields[0] };
+    }
+
+    if (direction === 'up') {
+      const prevRow = editableRowsForExercise[rowIndex - 1];
+      if (!prevRow) return null;
+      return { rowId: prevRow.rowId, field: prevRow.fields[Math.min(fieldIndex, prevRow.fields.length - 1)] };
+    }
+
+    const nextRow = editableRowsForExercise[rowIndex + 1];
+    if (!nextRow) return null;
+    return { rowId: nextRow.rowId, field: nextRow.fields[Math.min(fieldIndex, nextRow.fields.length - 1)] };
+  }, [editableRowsForExercise]);
+
+  const valueEditorCanNavigate = useMemo(() => {
+    if (!valueEditorCell) return { up: false, down: false, left: false, right: false };
+    return {
+      up: !!findAdjacentExerciseCell(valueEditorCell, 'up'),
+      down: !!findAdjacentExerciseCell(valueEditorCell, 'down'),
+      left: !!findAdjacentExerciseCell(valueEditorCell, 'left'),
+      right: !!findAdjacentExerciseCell(valueEditorCell, 'right'),
+    };
+  }, [findAdjacentExerciseCell, valueEditorCell]);
+
+  useEffect(() => {
+    if (!exerciseEditor) {
+      setValueEditorVisible(false);
+      setValueEditorCell(null);
+      return;
+    }
+    if (!valueEditorCell) return;
+    const exists = exerciseEditor.rows.some((row) => row.id === valueEditorCell.rowId);
+    if (!exists) {
+      setValueEditorVisible(false);
+      setValueEditorCell(null);
+    }
+  }, [exerciseEditor, valueEditorCell]);
+
+  useEffect(() => {
+    if (!valueEditorVisible || !valueEditorCell) return;
+    const timer = setTimeout(() => {
+      scrollExerciseCellIntoView(valueEditorCell, false);
+    }, 30);
+    return () => clearTimeout(timer);
+  }, [scrollExerciseCellIntoView, valueEditorCell, valueEditorVisible]);
 
   const saveExerciseSets = async () => {
     if (!exerciseEditor) return;
@@ -1307,7 +1452,11 @@ export default function SessionDetailScreen() {
         visible={!!exerciseEditor}
         title={exerciseEditor ? `Edit ${exerciseEditor.exerciseName}` : 'Edit Exercise'}
         scrollable
-        onClose={() => setExerciseEditor(null)}
+        onClose={() => {
+          setValueEditorVisible(false);
+          setValueEditorCell(null);
+          setExerciseEditor(null);
+        }}
       >
         {exerciseEditor && (
           <>
@@ -1329,28 +1478,48 @@ export default function SessionDetailScreen() {
               <View style={styles.editorColAction} />
             </View>
 
-            {(() => {
-              let workingSetIndex = 0;
-              return exerciseEditor.rows.map((row) => (
-                <SetRow
-                  key={row.id}
-                  row={row}
-                  displaySetNumber={row.is_warmup ? 'W' : ++workingSetIndex}
-                  weightUnit={weightUnit}
-                  distanceUnit={distUnit}
-                  exerciseType={exerciseEditor.exerciseType}
-                  onUpdateRowLocal={(updates) => updateExerciseRow(row.id, updates)}
-                  onUpdateRow={(updates) => updateExerciseRow(row.id, updates)}
-                  onToggle={() => {}}
-                  onSwipeDelete={() => removeExerciseRow(row.id)}
-                  onToggleWarmup={() => toggleExerciseWarmup(row.id)}
-                  showCompletionToggle={false}
-                  enableWarmupSwipe
-                  showInlineDelete={exerciseEditor.rows.length > 1}
-                  onInlineDelete={() => removeExerciseRow(row.id)}
-                />
-              ));
-            })()}
+            <ScrollView
+              ref={editorRowsScrollRef}
+              style={styles.editorRowsScroll}
+              contentContainerStyle={[
+                styles.editorRowsContent,
+                valueEditorVisible && styles.editorRowsContentEditorOpen,
+              ]}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
+              {(() => {
+                let workingSetIndex = 0;
+                return exerciseEditor.rows.map((row) => (
+                  <View
+                    key={row.id}
+                    onLayout={(event) => {
+                      const y = event.nativeEvent.layout.y;
+                      setEditorRowLayoutY((prev) => (prev[row.id] === y ? prev : { ...prev, [row.id]: y }));
+                    }}
+                  >
+                    <SetRow
+                      row={row}
+                      displaySetNumber={row.is_warmup ? 'W' : ++workingSetIndex}
+                      weightUnit={weightUnit}
+                      distanceUnit={distUnit}
+                      exerciseType={exerciseEditor.exerciseType}
+                      onUpdateRowLocal={(updates) => updateExerciseRow(row.id, updates)}
+                      onUpdateRow={(updates) => updateExerciseRow(row.id, updates)}
+                      onToggle={() => {}}
+                      onSwipeDelete={() => removeExerciseRow(row.id)}
+                      onToggleWarmup={() => toggleExerciseWarmup(row.id)}
+                      showCompletionToggle={false}
+                      enableWarmupSwipe
+                      showInlineDelete={exerciseEditor.rows.length > 1}
+                      onInlineDelete={() => removeExerciseRow(row.id)}
+                      activeField={valueEditorCell?.rowId === row.id ? valueEditorCell.field : null}
+                      onBeginEdit={(field) => openValueEditorForExerciseCell({ rowId: row.id, field })}
+                    />
+                  </View>
+                ));
+              })()}
+            </ScrollView>
 
             <View style={styles.addSetRow}>
               <TouchableOpacity
@@ -1373,7 +1542,11 @@ export default function SessionDetailScreen() {
               <Button
                 title="Cancel"
                 variant="ghost"
-                onPress={() => setExerciseEditor(null)}
+                onPress={() => {
+                  setValueEditorVisible(false);
+                  setValueEditorCell(null);
+                  setExerciseEditor(null);
+                }}
               />
               <Button
                 title="Save"
@@ -1385,6 +1558,51 @@ export default function SessionDetailScreen() {
           </>
         )}
       </BottomSheetModal>
+
+      <SetValueEditorModal
+        visible={valueEditorVisible}
+        field={valueEditorCell?.field ?? null}
+        syncKey={valueEditorCell ? `${valueEditorCell.rowId}:${valueEditorCell.field}` : undefined}
+        title={valueEditorCell?.field ? `Edit ${valueEditorCell.field.toUpperCase()}` : undefined}
+        numericValue={valueEditorNumeric}
+        allowDecimal={allowsDecimalForField(valueEditorCell?.field)}
+        durationValue={valueEditorDuration}
+        rirValue={valueEditorRir}
+        canNavigate={valueEditorCanNavigate}
+        onClose={() => {
+          setValueEditorVisible(false);
+          setValueEditorCell(null);
+        }}
+        onDone={() => {
+          setValueEditorVisible(false);
+          setValueEditorCell(null);
+        }}
+        onNavigate={(direction) => {
+          if (!valueEditorCell) return;
+          const nextCell = findAdjacentExerciseCell(valueEditorCell, direction);
+          if (!nextCell) return;
+          openValueEditorForExerciseCell(nextCell);
+        }}
+        onNumericValueChange={(nextValue) => {
+          setValueEditorNumeric(nextValue);
+          if (valueEditorCell) {
+            handleExerciseValueChange(valueEditorCell, nextValue);
+          }
+        }}
+        onDurationValueChange={(nextValue) => {
+          setValueEditorDuration(nextValue);
+          if (valueEditorCell) {
+            handleExerciseValueChange(valueEditorCell, nextValue);
+          }
+        }}
+        onRirValueChange={(nextValue) => {
+          setValueEditorRir(nextValue);
+          if (valueEditorCell) {
+            handleExerciseValueChange(valueEditorCell, nextValue);
+          }
+        }}
+      />
+
       <ExercisePickerModal
         visible={showSwapPicker}
         onClose={() => { setShowSwapPicker(false); setSwapGroupKey(null); }}
@@ -1654,6 +1872,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   editorColPrev: { width: 72 },
   editorColRir: { width: 40 },
   editorColAction: { width: 28 },
+  editorRowsScroll: {
+    maxHeight: 360,
+  },
+  editorRowsContent: {
+    paddingBottom: 8,
+  },
+  editorRowsContentEditorOpen: {
+    paddingBottom: 360,
+  },
   setTableHeader: {
     flexDirection: 'row',
     alignItems: 'center',

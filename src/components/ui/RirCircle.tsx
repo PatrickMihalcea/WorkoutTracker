@@ -28,11 +28,12 @@ interface RirCircleProps {
   size?: number;
   onPress?: () => void;
   style?: ViewStyle;
+  textColorOverride?: string;
 }
 
-export function RirCircle({ value, size = 32, onPress, style }: RirCircleProps) {
+export function RirCircle({ value, size = 32, onPress, style, textColorOverride }: RirCircleProps) {
   const bg = getRirColor(value);
-  const textColor = value === null ? '#666666' : '#000000';
+  const textColor = textColorOverride ?? (value === null ? '#666666' : '#000000');
 
   const circle = (
     <TouchableOpacity

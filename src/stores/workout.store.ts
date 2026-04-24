@@ -751,7 +751,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           set_number: row.set_number,
           weight: parseWeight(row.weight),
           reps_performed: parseInt(row.reps, 10) || 0,
-          rir: row.rir ? parseInt(row.rir, 10) : null,
+          rir: row.rir ? parseFloat(row.rir) : null,
           is_warmup: row.is_warmup,
           exercise_order: order,
           superset_group: supersetGroups[entry.id] ?? entry.superset_group ?? null,

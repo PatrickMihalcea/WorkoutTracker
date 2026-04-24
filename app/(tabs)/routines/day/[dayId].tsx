@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, usePathname, useRouter, Stack } from 'expo-router';
@@ -52,6 +53,9 @@ import type { ThemeColors } from '../../../../src/constants/themes';
 import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../../../src/utils/exerciseMedia';
 
 const EXERCISE_THUMB_PLACEHOLDER = require('../../../../assets/Setora-black-and-white.png');
+const ROUTINE_EDITOR_MODAL_HEIGHT = 390;
+const ROUTINE_EDITOR_MODAL_MARGIN = 24;
+const WINDOW_HEIGHT = Dimensions.get('window').height;
 
 function SwipeableExerciseRow({
   ex,
@@ -165,12 +169,16 @@ function ExerciseSetsEditor({
   wUnit,
   dUnit,
   onSave,
+  onEditorVisibilityChange,
+  onFocusRequest,
   styles,
 }: {
   entry: RoutineDayExercise;
   wUnit: WeightUnit;
   dUnit: DistanceUnit;
   onSave: () => void;
+  onEditorVisibilityChange?: (visible: boolean) => void;
+  onFocusRequest?: () => void;
   styles: Record<string, any>;
 }) {
   const initial = setsToTemplateRows(entry.sets ?? [], entry.target_reps, wUnit);
@@ -214,6 +222,8 @@ function ExerciseSetsEditor({
         wUnit={wUnit}
         dUnit={dUnit}
         exerciseType={entry.exercise?.exercise_type}
+        onEditorVisibilityChange={onEditorVisibilityChange}
+        onFocusRow={() => onFocusRequest?.()}
       />
     </View>
   );
@@ -236,6 +246,10 @@ export default function DayEditorScreen() {
   const [labelDraft, setLabelDraft] = useState('');
   const [selectedDayOfWeek, setSelectedDayOfWeek] = useState<DayOfWeek | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [setEditorVisibleEntryId, setSetEditorVisibleEntryId] = useState<string | null>(null);
+  const pageScrollRef = useRef<ScrollView | null>(null);
+  const pageScrollYRef = useRef(0);
+  const exerciseNodeRef = useRef<Record<string, View | null>>({});
 
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
@@ -244,6 +258,38 @@ export default function DayEditorScreen() {
   const [isReordering, setIsReordering] = useState(false);
   const [autoOpenPicker, setAutoOpenPicker] = useState(false);
   const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
+
+  const scrollDayExerciseIntoView = useCallback((entryId: string) => {
+    const node = exerciseNodeRef.current[entryId];
+    if (!node) return;
+    requestAnimationFrame(() => {
+      node.measureInWindow((_x, y, _w, height) => {
+        const visibleTop = 110;
+        const visibleBottom = WINDOW_HEIGHT - ROUTINE_EDITOR_MODAL_HEIGHT - ROUTINE_EDITOR_MODAL_MARGIN;
+        let delta = 0;
+        if (y < visibleTop) {
+          delta = y - visibleTop;
+        } else if (y + height > visibleBottom) {
+          delta = (y + height) - visibleBottom;
+        }
+        if (Math.abs(delta) < 2) return;
+        const nextY = Math.max(0, pageScrollYRef.current + delta + (delta > 0 ? 12 : -12));
+        pageScrollRef.current?.scrollTo({ y: nextY, animated: true });
+      });
+    });
+  }, []);
+
+  const handleSetEditorVisibilityChange = useCallback((entryId: string, visible: boolean) => {
+    setSetEditorVisibleEntryId((prev) => {
+      if (visible) return entryId;
+      return prev === entryId ? null : prev;
+    });
+    if (visible) scrollDayExerciseIntoView(entryId);
+  }, [scrollDayExerciseIntoView]);
+
+  const handleSetEditorFocusRequest = useCallback((entryId: string) => {
+    scrollDayExerciseIntoView(entryId);
+  }, [scrollDayExerciseIntoView]);
 
   useFocusEffect(useCallback(() => {
     const which = pendingPickerReopenRef.current;
@@ -522,10 +568,18 @@ export default function DayEditorScreen() {
         }}
       />
       <ScrollView
-        contentContainerStyle={styles.content}
+        ref={pageScrollRef}
+        contentContainerStyle={[
+          styles.content,
+          !!setEditorVisibleEntryId && styles.contentEditorOpen,
+        ]}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
         scrollEnabled={!isReordering}
+        onScroll={(event) => {
+          pageScrollYRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         {editingLabel ? (
           <InlineEditRow
@@ -568,36 +622,64 @@ export default function DayEditorScreen() {
           renderItem={({ item, drag }: RenderItemParams<ReorderItem>) => (
             <ScaleDecorator>
               {item.type === 'single' ? (
-                <SwipeableExerciseRow
-                  ex={item.entry}
-                  isExpanded={expandedIds.has(item.entry.id)}
-                  onToggle={() => toggleExpand(item.entry.id)}
-                  onDetails={() => navigateToExerciseDetail(item.entry.exercise_id)}
-                  onDelete={() => handleExRemove(item.entry.id)}
-                  onLongPress={drag}
-                  menuItems={buildExerciseMenuItems(item.entry, day.exercises.indexOf(item.entry))}
-                  styles={styles}
+                <View
+                  ref={(node) => {
+                    exerciseNodeRef.current[item.entry.id] = node;
+                  }}
                 >
-                  <ExerciseSetsEditor entry={item.entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} styles={styles} />
-                </SwipeableExerciseRow>
+                  <SwipeableExerciseRow
+                    ex={item.entry}
+                    isExpanded={expandedIds.has(item.entry.id)}
+                    onToggle={() => toggleExpand(item.entry.id)}
+                    onDetails={() => navigateToExerciseDetail(item.entry.exercise_id)}
+                    onDelete={() => handleExRemove(item.entry.id)}
+                    onLongPress={drag}
+                    menuItems={buildExerciseMenuItems(item.entry, day.exercises.indexOf(item.entry))}
+                    styles={styles}
+                  >
+                    <ExerciseSetsEditor
+                      entry={item.entry}
+                      wUnit={wUnit}
+                      dUnit={dUnit}
+                      onSave={refresh}
+                      onEditorVisibilityChange={(visible) => handleSetEditorVisibilityChange(item.entry.id, visible)}
+                      onFocusRequest={() => handleSetEditorFocusRequest(item.entry.id)}
+                      styles={styles}
+                    />
+                  </SwipeableExerciseRow>
+                </View>
               ) : (
                 <View>
                   {item.entries.map((entry, idx) => {
                     const pos = idx === 0 ? 'first' as const : idx === item.entries.length - 1 ? 'last' as const : 'middle' as const;
                     return (
                       <SupersetBracket key={entry.id} position={pos} contentRadius={6}>
-                        <SwipeableExerciseRow
-                          ex={entry}
-                          isExpanded={expandedIds.has(entry.id)}
-                          onToggle={() => toggleExpand(entry.id)}
-                          onDetails={() => navigateToExerciseDetail(entry.exercise_id)}
-                          onDelete={() => handleExRemove(entry.id)}
-                          onLongPress={drag}
-                          menuItems={buildExerciseMenuItems(entry, day.exercises.indexOf(entry))}
-                          styles={styles}
+                        <View
+                          ref={(node) => {
+                            exerciseNodeRef.current[entry.id] = node;
+                          }}
                         >
-                          <ExerciseSetsEditor entry={entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} styles={styles} />
-                        </SwipeableExerciseRow>
+                          <SwipeableExerciseRow
+                            ex={entry}
+                            isExpanded={expandedIds.has(entry.id)}
+                            onToggle={() => toggleExpand(entry.id)}
+                            onDetails={() => navigateToExerciseDetail(entry.exercise_id)}
+                            onDelete={() => handleExRemove(entry.id)}
+                            onLongPress={drag}
+                            menuItems={buildExerciseMenuItems(entry, day.exercises.indexOf(entry))}
+                            styles={styles}
+                          >
+                            <ExerciseSetsEditor
+                              entry={entry}
+                              wUnit={wUnit}
+                              dUnit={dUnit}
+                              onSave={refresh}
+                              onEditorVisibilityChange={(visible) => handleSetEditorVisibilityChange(entry.id, visible)}
+                              onFocusRequest={() => handleSetEditorFocusRequest(entry.id)}
+                              styles={styles}
+                            />
+                          </SwipeableExerciseRow>
+                        </View>
                       </SupersetBracket>
                     );
                   })}
@@ -658,6 +740,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: spacing.xl+50, 
+  },
+  contentEditorOpen: {
+    paddingBottom: 420,
   },
   labelRow: {
     marginBottom: 20,
