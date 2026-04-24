@@ -6,7 +6,6 @@ import {
   StyleSheet,
   LayoutAnimation,
   Animated,
-  Image,
   ImageSourcePropType,
 } from 'react-native';
 import type { LayoutAnimationConfig } from 'react-native';
@@ -15,6 +14,7 @@ import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit, DistanceUnit } from
 import { fonts } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Card } from '../ui/Card';
+import { ExerciseIconPreview } from '../ui/ExerciseIconPreview';
 import { SwipeToDeleteRow } from '../ui/SwipeToDeleteRow';
 import { OverflowMenu } from '../ui/OverflowMenu';
 import type { OverflowMenuItem } from '../ui/OverflowMenu';
@@ -22,6 +22,7 @@ import { SetRow } from './SetRow';
 import { weightUnitLabel, distanceUnitLabel, formatWeight } from '../../utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
 import { useThemeColors } from '../../hooks/useThemeColors';
+import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../utils/exerciseMedia';
 
 const ANIM_DURATION = 300;
 const EXERCISE_PLACEHOLDER = require('../../../assets/Setora-black-and-white.png');
@@ -122,12 +123,10 @@ export function ExerciseCard({
   const [thumbnailLoadFailed, setThumbnailLoadFailed] = useState(false);
 
   const thumbnailUri = useMemo(() => {
-    if (entry.exercise?.thumbnail_url) return entry.exercise.thumbnail_url;
-    if (entry.exercise?.media_type === 'image' || entry.exercise?.media_type === 'gif') {
-      return entry.exercise.media_url;
-    }
-    return null;
-  }, [entry.exercise?.media_type, entry.exercise?.media_url, entry.exercise?.thumbnail_url]);
+    return getExerciseThumbnailUrl(entry.exercise);
+  }, [entry.exercise]);
+
+  const previewUri = useMemo(() => getExercisePreviewUrl(entry.exercise), [entry.exercise]);
 
   const thumbnailSource: ImageSourcePropType = !thumbnailLoadFailed && thumbnailUri
     ? { uri: thumbnailUri }
@@ -193,8 +192,6 @@ export function ExerciseCard({
     if (!onDetails) {
       return (
         <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
           style={[styles.exerciseName, done && { color: done }]}
         >
           {exerciseName}
@@ -210,8 +207,6 @@ export function ExerciseCard({
       >
         <Text
           suppressHighlighting
-          numberOfLines={1}
-          ellipsizeMode="tail"
           style={[styles.exerciseName, styles.exerciseNameLink, done && { color: done }]}
         >
           {exerciseName}
@@ -221,31 +216,15 @@ export function ExerciseCard({
   };
 
   const renderExerciseThumb = () => {
-    if (!onDetails) {
-      return (
-        <Image
-          source={thumbnailSource}
-          style={styles.exerciseThumb}
-          resizeMode="cover"
-          onError={() => setThumbnailLoadFailed(true)}
-        />
-      );
-    }
-
     return (
-      <TouchableOpacity
-        onPress={handleDetailsPress}
-        onLongPress={handleNameLongPress}
-        activeOpacity={0.7}
-        style={styles.exerciseThumbTapTarget}
-      >
-        <Image
-          source={thumbnailSource}
-          style={styles.exerciseThumb}
-          resizeMode="cover"
-          onError={() => setThumbnailLoadFailed(true)}
-        />
-      </TouchableOpacity>
+      <ExerciseIconPreview
+        imageSource={thumbnailSource}
+        previewUri={previewUri}
+        imageStyle={styles.exerciseThumb}
+        touchableStyle={styles.exerciseThumbTapTarget}
+        onLongPress={onDetails ? handleNameLongPress : undefined}
+        onImageError={() => setThumbnailLoadFailed(true)}
+      />
     );
   };
 
@@ -299,6 +278,7 @@ export function ExerciseCard({
       fontSize: 17,
       fontFamily: fonts.bold,
       color: colors.text,
+      flexShrink: 1,
     },
     exerciseIdentity: {
       flex: 1,

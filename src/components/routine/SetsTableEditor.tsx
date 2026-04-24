@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,7 @@ export const defaultSetRow = (isWarmup = false): TemplateSetRow => ({
 });
 
 type TemplateField = 'weight' | 'repsMin' | 'repsMax' | 'rir' | 'duration' | 'distance';
+type RepInputField = 'repsMin' | 'repsMax';
 
 export function getSuggestion(
   rows: TemplateSetRow[],
@@ -46,6 +47,11 @@ export function getSuggestion(
   field: TemplateField,
 ): string {
   if (field === 'repsMax') {
+    for (let i = index - 1; i >= 0; i--) {
+      if (rows[i].editedFields.has('repsMax') && rows[i].repsMax !== '') {
+        return rows[i].repsMax;
+      }
+    }
     const row = rows[index];
     const minVal = row.editedFields.has('repsMin') ? row.repsMin : getSuggestion(rows, index, 'repsMin');
     if (minVal) {
@@ -141,13 +147,31 @@ export function setsToTemplateRows(
   return { rows, hasRepRange };
 }
 
-export function validateRepRange(rows: TemplateSetRow[]): boolean {
-  const bad = rows.find((_, i) => {
-    const min = parseInt(resolveValue(rows, i, 'repsMin'), 10) || 0;
-    const max = parseInt(resolveValue(rows, i, 'repsMax'), 10) || 0;
+interface RepRangeValidationOptions {
+  showAlert?: boolean;
+  ignoreIncomplete?: boolean;
+  rowIndex?: number;
+}
+
+export function validateRepRange(rows: TemplateSetRow[], options: RepRangeValidationOptions = {}): boolean {
+  const {
+    showAlert = true,
+    ignoreIncomplete = false,
+    rowIndex,
+  } = options;
+  const indices = rowIndex != null ? [rowIndex] : rows.map((_row, i) => i);
+  const badIndex = indices.find((i) => {
+    const minRaw = parseInt(resolveValue(rows, i, 'repsMin'), 10);
+    const maxRaw = parseInt(resolveValue(rows, i, 'repsMax'), 10);
+    const hasMin = Number.isFinite(minRaw);
+    const hasMax = Number.isFinite(maxRaw);
+    if (ignoreIncomplete && (!hasMin || !hasMax)) return false;
+    const min = hasMin ? minRaw : 0;
+    const max = hasMax ? maxRaw : 0;
     return min > max;
   });
-  if (bad !== undefined) {
+  if (badIndex !== undefined) {
+    if (!showAlert) return false;
     Alert.alert('Invalid Range', 'The minimum reps cannot be greater than the maximum reps.');
     return false;
   }
@@ -186,6 +210,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
   const { colors } = useTheme();
   const [rirPickerIndex, setRirPickerIndex] = useState<number | null>(null);
   const [durationPickerIndex, setDurationPickerIndex] = useState<number | null>(null);
+  const repInputRefs = useRef<Record<string, TextInput | null>>({});
   const config = getExerciseTypeConfig(exerciseType);
 
   const showWeight = config.fields.some((f) => f.key === 'weight');
@@ -205,6 +230,30 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
         return v ? parseFloat(v) : null;
       })()
     : null;
+
+  const repInputKey = (rowIndex: number, field: RepInputField) => `${rowIndex}:${field}`;
+
+  const setRepInputRef = (rowIndex: number, field: RepInputField) => (input: TextInput | null) => {
+    repInputRefs.current[repInputKey(rowIndex, field)] = input;
+  };
+
+  const handleRepInputBlur = (rowIndex: number, field: RepInputField) => {
+    if (!repRange) return;
+    const isInvalid = !validateRepRange(rows, { rowIndex, showAlert: false, ignoreIncomplete: true });
+    if (!isInvalid) return;
+
+    setTimeout(() => {
+      const focusedInput = TextInput.State.currentlyFocusedInput?.();
+      if (focusedInput) return;
+
+      const stillInvalid = !validateRepRange(rows, { rowIndex, showAlert: false, ignoreIncomplete: true });
+      if (!stillInvalid) return;
+
+      validateRepRange(rows, { rowIndex, ignoreIncomplete: true, showAlert: true });
+      const targetInput = repInputRefs.current[repInputKey(rowIndex, field)];
+      targetInput?.focus();
+    }, 40);
+  };
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -420,6 +469,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
                   style={[styles.input, styles.colWeight]}
                   value={row.editedFields.has('weight') ? row.weight : ''}
                   onChangeText={(v) => updateSetRow(rows, setRows, i, 'weight', v, repRange)}
+                  selectTextOnFocus
                   keyboardType="decimal-pad"
                   placeholder={weightSugg || '0'}
                   placeholderTextColor={colors.textMuted}
@@ -431,9 +481,12 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
                   {repRange ? (
                     <>
                       <TextInput
+                        ref={setRepInputRef(i, 'repsMin')}
                         style={styles.repsInner}
                         value={row.editedFields.has('repsMin') ? row.repsMin : ''}
                         onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMin', v, repRange)}
+                        onBlur={() => handleRepInputBlur(i, 'repsMin')}
+                        selectTextOnFocus
                         keyboardType="number-pad"
                         placeholder={repsMinSugg || '8'}
                         placeholderTextColor={colors.textMuted}
@@ -441,9 +494,12 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
                       />
                       <Text style={styles.repRangeTo}>to</Text>
                       <TextInput
+                        ref={setRepInputRef(i, 'repsMax')}
                         style={styles.repsInner}
                         value={row.editedFields.has('repsMax') ? row.repsMax : ''}
                         onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMax', v, repRange)}
+                        onBlur={() => handleRepInputBlur(i, 'repsMax')}
+                        selectTextOnFocus
                         keyboardType="number-pad"
                         placeholder={repsMaxSugg || '12'}
                         placeholderTextColor={colors.textMuted}
@@ -455,6 +511,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
                       style={styles.repsInner}
                       value={row.editedFields.has('repsMin') ? row.repsMin : ''}
                       onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMin', v, repRange)}
+                      selectTextOnFocus
                       keyboardType="number-pad"
                       placeholder={repsMinSugg || '10'}
                       placeholderTextColor={colors.textMuted}
@@ -486,6 +543,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
                   style={[styles.input, styles.colFlex]}
                   value={row.editedFields.has('distance') ? row.distance : ''}
                   onChangeText={(v) => updateSetRow(rows, setRows, i, 'distance', v, repRange)}
+                  selectTextOnFocus
                   keyboardType="decimal-pad"
                   placeholder={distanceSugg || '0'}
                   placeholderTextColor={colors.textMuted}

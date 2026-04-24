@@ -13,8 +13,10 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useWorkoutStore } from '../../../src/stores/workout.store';
 import {
   exerciseDetailService,
   exerciseMediaService,
@@ -40,6 +42,7 @@ import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise'
 import { Equipment, ExerciseType, MuscleGroup } from '../../../src/models';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
+import { useWorkoutOverlay } from '../../../src/components/workout';
 
 type MetricKey = string;
 
@@ -204,13 +207,20 @@ function getMinYStep(metricKey: string): number {
 function ExerciseDetailContent() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
+  const { exerciseId, fromWorkout } = useLocalSearchParams<{ exerciseId: string; fromWorkout?: string | string[] }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const { user } = useAuthStore();
+  const hasActiveWorkout = useWorkoutStore((state) => !!state.session?.id);
+  const { expand } = useWorkoutOverlay();
   const { profile } = useProfileStore();
   const { scrollEnabled } = useChartInteraction();
   const wUnit = profile?.weight_unit ?? 'kg';
   const dUnit = profile?.distance_unit ?? 'km';
+  const cameFromWorkout = useMemo(() => {
+    const flag = Array.isArray(fromWorkout) ? fromWorkout[0] : fromWorkout;
+    return flag === '1' || flag === 'true';
+  }, [fromWorkout]);
 
   const [data, setData] = useState<ExerciseDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -248,6 +258,14 @@ function ExerciseDetailContent() {
   }, [user?.id, exerciseId, wUnit, dUnit]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!cameFromWorkout || !hasActiveWorkout) return;
+    const unsub = navigation.addListener('beforeRemove', () => {
+      expand();
+    });
+    return unsub;
+  }, [cameFromWorkout, expand, hasActiveWorkout, navigation]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);

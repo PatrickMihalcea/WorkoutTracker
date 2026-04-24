@@ -6,6 +6,7 @@ import {
   Image,
   Modal,
   ScrollView,
+  SectionList,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -22,10 +23,12 @@ import { Button } from './Button';
 import { Input } from './Input';
 import { ChipPicker, MultiChipPicker } from './ChipPicker';
 import { FieldDropdown } from './FieldDropdown';
+import { ExerciseIconPreview } from './ExerciseIconPreview';
 import { useTheme } from '../../contexts/ThemeContext';
 import { fonts } from '../../constants';
 import { confirmDeleteExercise } from '../../utils/confirmDeleteExercise';
 import { EXERCISE_TYPE_ITEMS } from '../../utils/exerciseType';
+import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../utils/exerciseMedia';
 
 const chartIcon = require('../../../assets/icons/chart.png');
 const exerciseThumbPlaceholder = require('../../../assets/Setora-black-and-white.png');
@@ -52,6 +55,7 @@ const EXERCISE_TYPE_DROPDOWN_ITEMS = EXERCISE_TYPE_ITEMS.map((item) => ({
 }));
 
 const ALPHABET_INDEX = ['#', ...Array.from({ length: 26 }, (_v, i) => String.fromCharCode(65 + i))];
+type ExerciseSection = { key: string; title: string; data: Exercise[] };
 
 function getExerciseIndexLetter(name: string): string {
   const first = name.trim().charAt(0).toUpperCase();
@@ -216,7 +220,6 @@ export function ExercisePickerModal({
   const [search, setSearch] = useState('');
   const [muscleFilter, setMuscleFilter] = useState<MuscleGroup | null>(null);
   const [equipmentFilter, setEquipmentFilter] = useState<Equipment | null>(null);
-  const [indexOffsets, setIndexOffsets] = useState<Record<string, number>>({});
   const [highlightedExerciseId, setHighlightedExerciseId] = useState<string | null>(selectedExerciseId ?? null);
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
@@ -229,9 +232,13 @@ export function ExercisePickerModal({
   const [savingCreateExercise, setSavingCreateExercise] = useState(false);
   const [pendingDeletedSelection, setPendingDeletedSelection] = useState<Exercise | null>(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const [sectionWindow, setSectionWindow] = useState<{ start: number; end: number } | null>(null);
+  const sectionListRef = useRef<SectionList<Exercise>>(null);
   const railHeightRef = useRef(0);
   const lastRailLetterRef = useRef<string | null>(null);
+  const pendingRailLetterRef = useRef<string | null>(null);
+  const railScrollRetryCountRef = useRef(0);
+  const railScrollRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressCloseWarningRef = useRef(false);
 
   const styles = useMemo(() => StyleSheet.create({
@@ -380,7 +387,7 @@ export function ExercisePickerModal({
       setSearch('');
       setMuscleFilter(null);
       setEquipmentFilter(null);
-      setIndexOffsets({});
+      setSectionWindow(null);
       setHighlightedExerciseId(selectedExerciseId ?? null);
       setPendingDeletedSelection(null);
       suppressCloseWarningRef.current = false;
@@ -398,10 +405,22 @@ export function ExercisePickerModal({
       setNewExerciseMediaUri(null);
       setNewExerciseMediaMimeType('image/jpeg');
       setSavingCreateExercise(false);
+      setSectionWindow(null);
       setPendingDeletedSelection(null);
       suppressCloseWarningRef.current = false;
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setSectionWindow(null);
+    pendingRailLetterRef.current = null;
+    railScrollRetryCountRef.current = 0;
+    if (railScrollRetryTimerRef.current) {
+      clearTimeout(railScrollRetryTimerRef.current);
+      railScrollRetryTimerRef.current = null;
+    }
+  }, [equipmentFilter, muscleFilter, search, visible]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -416,6 +435,13 @@ export function ExercisePickerModal({
   useEffect(() => {
     if (!visible) setIsKeyboardVisible(false);
   }, [visible]);
+
+  useEffect(() => () => {
+    if (railScrollRetryTimerRef.current) {
+      clearTimeout(railScrollRetryTimerRef.current);
+      railScrollRetryTimerRef.current = null;
+    }
+  }, []);
 
   const loadExercises = async () => {
     try {
@@ -454,24 +480,73 @@ export function ExercisePickerModal({
     return grouped;
   }, [allExercises]);
 
-  const availableLetters = useMemo(() => new Set(Object.keys(allExercisesByLetter)), [allExercisesByLetter]);
+  const allExerciseSections = useMemo<ExerciseSection[]>(
+    () => ALPHABET_INDEX
+      .filter((letter) => allExercisesByLetter[letter]?.length)
+      .map((letter) => ({
+        key: letter,
+        title: letter,
+        data: allExercisesByLetter[letter],
+      })),
+    [allExercisesByLetter],
+  );
 
-  const handlePressIndexLetter = (letter: string) => {
-    const y = indexOffsets[letter];
-    if (typeof y !== 'number') return;
-    scrollRef.current?.scrollTo({ y: Math.max(0, y - 6), animated: true });
+  const sectionIndexByLetter = useMemo(() => {
+    const map: Record<string, number> = {};
+    allExerciseSections.forEach((section, index) => {
+      map[section.title] = index;
+    });
+    return map;
+  }, [allExerciseSections]);
+
+  const availableLetters = useMemo(
+    () => new Set(allExerciseSections.map((section) => section.title)),
+    [allExerciseSections],
+  );
+
+  const WINDOW_SECTION_RADIUS = 1;
+
+  const getSectionWindowForIndex = (sectionIndex: number) => {
+    const start = Math.max(0, sectionIndex - WINDOW_SECTION_RADIUS);
+    const end = Math.min(allExerciseSections.length - 1, sectionIndex + WINDOW_SECTION_RADIUS);
+    return { start, end };
   };
 
-  const getNearestAvailableLetter = (targetIdx: number): string | null => {
-    if (availableLetters.size === 0) return null;
-    if (availableLetters.has(ALPHABET_INDEX[targetIdx])) return ALPHABET_INDEX[targetIdx];
-    for (let offset = 1; offset < ALPHABET_INDEX.length; offset++) {
-      const next = targetIdx + offset;
-      const prev = targetIdx - offset;
-      if (next < ALPHABET_INDEX.length && availableLetters.has(ALPHABET_INDEX[next])) return ALPHABET_INDEX[next];
-      if (prev >= 0 && availableLetters.has(ALPHABET_INDEX[prev])) return ALPHABET_INDEX[prev];
+  const visibleExerciseSections = useMemo(() => {
+    if (!sectionWindow) return allExerciseSections;
+    return allExerciseSections.slice(sectionWindow.start, sectionWindow.end + 1);
+  }, [allExerciseSections, sectionWindow]);
+
+  const scheduleLetterScroll = (letter: string, delayMs: number, windowStart: number) => {
+    if (railScrollRetryTimerRef.current) {
+      clearTimeout(railScrollRetryTimerRef.current);
+      railScrollRetryTimerRef.current = null;
     }
-    return null;
+    railScrollRetryTimerRef.current = setTimeout(() => {
+      const globalSectionIndex = sectionIndexByLetter[letter];
+      railScrollRetryTimerRef.current = null;
+      if (globalSectionIndex == null) return;
+      const localSectionIndex = Math.max(0, globalSectionIndex - windowStart);
+      sectionListRef.current?.scrollToLocation({
+        sectionIndex: localSectionIndex,
+        itemIndex: 0,
+        viewOffset: 6,
+        animated: true,
+      });
+    }, delayMs);
+  };
+
+  const handlePressIndexLetter = (letter: string) => {
+    if (!availableLetters.has(letter)) return;
+    const globalSectionIndex = sectionIndexByLetter[letter];
+    if (globalSectionIndex == null) return;
+    const nextWindow = getSectionWindowForIndex(globalSectionIndex);
+    pendingRailLetterRef.current = letter;
+    setSectionWindow((prev) => {
+      if (prev && prev.start === nextWindow.start && prev.end === nextWindow.end) return prev;
+      return nextWindow;
+    });
+    scheduleLetterScroll(letter, 50, nextWindow.start);
   };
 
   const handleRailDragAt = (locationY: number) => {
@@ -479,18 +554,11 @@ export function ExercisePickerModal({
     if (railHeight <= 0) return;
     const ratio = Math.max(0, Math.min(1, locationY / railHeight));
     const idx = Math.max(0, Math.min(ALPHABET_INDEX.length - 1, Math.floor(ratio * ALPHABET_INDEX.length)));
-    const letter = getNearestAvailableLetter(idx);
+    const letter = ALPHABET_INDEX[idx];
+    if (!availableLetters.has(letter)) return;
     if (!letter || letter === lastRailLetterRef.current) return;
     lastRailLetterRef.current = letter;
     handlePressIndexLetter(letter);
-  };
-
-  const getExercisePreviewUrl = (exercise: Exercise): string | null => {
-    if (exercise.thumbnail_url) return exercise.thumbnail_url;
-    if (exercise.media_type === 'image' || exercise.media_type === 'gif') {
-      return exercise.media_url;
-    }
-    return null;
   };
 
   const handlePickExerciseImage = async () => {
@@ -534,16 +602,16 @@ export function ExercisePickerModal({
 
   const renderRow = (item: Exercise) => {
     const previewUrl = getExercisePreviewUrl(item);
+    const thumbnailUrl = getExerciseThumbnailUrl(item);
 
     return (
       <View key={item.id} style={[styles.exerciseRow, highlightedExerciseId === item.id && styles.exerciseRowSelected]}>
-        <View style={styles.exercisePreview}>
-          <Image
-            source={previewUrl ? { uri: previewUrl } : exerciseThumbPlaceholder}
-            style={styles.exercisePreviewImage}
-            resizeMode="cover"
-          />
-        </View>
+        <ExerciseIconPreview
+          imageSource={thumbnailUrl ? { uri: thumbnailUrl } : exerciseThumbPlaceholder}
+          previewUri={previewUrl}
+          touchableStyle={styles.exercisePreview}
+          imageStyle={styles.exercisePreviewImage}
+        />
 
         <TouchableOpacity
           style={styles.exerciseRowContent}
@@ -658,146 +726,172 @@ export function ExercisePickerModal({
   };
 
   return (
-    <BottomSheetModal
-      visible={visible}
-      title={showCreateExercise ? 'Create New Exercise' : 'Select Exercise'}
-      fullHeight
-      scrollable={showCreateExercise}
-      contentPaddingHorizontal={10}
-      onClose={() => {
-        if (showCreateExercise) { setShowCreateExercise(false); resetCreateForm(); return; }
-        handleRequestClose();
-      }}
-    >
-      {showCreateExercise ? (
-        <>
-          <View style={styles.formBody}>
-            <Text style={styles.formFieldLabel}>Exercise Name</Text>
-            <Input value={newExerciseName} onChangeText={setNewExerciseName} placeholder="e.g. Bench Press" />
-            <Text style={styles.formFieldLabel}>Exercise Type</Text>
-            <FieldDropdown
-              selected={newExerciseType}
-              options={EXERCISE_TYPE_DROPDOWN_ITEMS}
-              onChange={setNewExerciseType}
-              placeholder="Select exercise type"
-            />
-            <Text style={styles.formFieldLabel}>Primary Muscle Group</Text>
-            <FieldDropdown
-              selected={newExerciseMuscle}
-              options={MUSCLE_GROUP_ITEMS}
-              onChange={setNewExerciseMuscle}
-              placeholder="Select primary muscle"
-            />
-            <Text style={styles.formFieldLabel}>Secondary Muscles (optional)</Text>
-            <MultiChipPicker items={MUSCLE_GROUP_ITEMS} selected={newSecondaryMuscles} onChange={setNewSecondaryMuscles} horizontal={false} maxHeight={150} />
-            <Text style={styles.formFieldLabel}>Equipment</Text>
-            <FieldDropdown
-              selected={newExerciseEquipment}
-              options={EQUIPMENT_ITEMS}
-              onChange={setNewExerciseEquipment}
-              placeholder="Select equipment"
-            />
-            <Text style={styles.formFieldLabel}>Exercise Photo (optional)</Text>
-            <TouchableOpacity style={styles.mediaPickerButton} onPress={() => { void handlePickExerciseImage(); }} activeOpacity={0.8}>
-              {newExerciseMediaUri ? (
-                <Image source={{ uri: newExerciseMediaUri }} style={styles.selectedMediaPreview} resizeMode="cover" />
-              ) : (
-                <View style={styles.selectedMediaPreview} />
-              )}
-              <View style={styles.mediaPickerButtonTextWrap}>
-                <Text style={styles.mediaPickerButtonTitle}>{newExerciseMediaUri ? 'Change photo' : 'Add photo'}</Text>
-                <Text style={styles.mediaPickerButtonHint}>
-                  {newExerciseMediaUri ? 'Photo is optimized to a max 480px icon before upload.' : 'Pick an image from your photo library.'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-            {newExerciseMediaUri && (
-              <Button
-                title="Remove Photo"
-                variant="ghost"
-                size="sm"
-                onPress={() => { setNewExerciseMediaUri(null); setNewExerciseMediaMimeType('image/jpeg'); }}
+      <BottomSheetModal
+        visible={visible}
+        title={showCreateExercise ? 'Create New Exercise' : 'Select Exercise'}
+        fullHeight
+        scrollable={showCreateExercise}
+        contentPaddingHorizontal={10}
+        onClose={() => {
+          if (showCreateExercise) { setShowCreateExercise(false); resetCreateForm(); return; }
+          handleRequestClose();
+        }}
+      >
+        {showCreateExercise ? (
+          <>
+            <View style={styles.formBody}>
+              <Text style={styles.formFieldLabel}>Exercise Name</Text>
+              <Input value={newExerciseName} onChangeText={setNewExerciseName} placeholder="e.g. Bench Press" />
+              <Text style={styles.formFieldLabel}>Exercise Type</Text>
+              <FieldDropdown
+                selected={newExerciseType}
+                options={EXERCISE_TYPE_DROPDOWN_ITEMS}
+                onChange={setNewExerciseType}
+                placeholder="Select exercise type"
               />
-            )}
-          </View>
-          <View style={styles.footer}><Button title="Save Exercise" variant="accent" onPress={handleCreateExercise} loading={savingCreateExercise} /></View>
-        </>
-      ) : (
-        <>
-          <TextInput
-            style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search exercises..."
-            placeholderTextColor={colors.textMuted}
-            autoCorrect={false}
-          />
-          <View style={styles.filterRow}>
-            <FilterDropdown label="Target Muscle" allLabel="All Muscles" selected={muscleFilter} options={MUSCLE_GROUP_ITEMS} onChange={setMuscleFilter} />
-            <FilterDropdown label="Equipment" allLabel="All Equipment" selected={equipmentFilter} options={EQUIPMENT_ITEMS} onChange={setEquipmentFilter} />
-          </View>
-          <View style={styles.listWrap}>
-            <ScrollView
-              ref={scrollRef}
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              keyboardShouldPersistTaps="always"
-              keyboardDismissMode="none"
-              showsVerticalScrollIndicator={false}
-            >
-              {customExercises.length > 0 && (
-                <>
-                  <Text style={styles.sectionHeader}>Custom</Text>
-                  {customExercises.map(renderRow)}
-                </>
+              <Text style={styles.formFieldLabel}>Primary Muscle Group</Text>
+              <FieldDropdown
+                selected={newExerciseMuscle}
+                options={MUSCLE_GROUP_ITEMS}
+                onChange={setNewExerciseMuscle}
+                placeholder="Select primary muscle"
+              />
+              <Text style={styles.formFieldLabel}>Secondary Muscles (optional)</Text>
+              <MultiChipPicker items={MUSCLE_GROUP_ITEMS} selected={newSecondaryMuscles} onChange={setNewSecondaryMuscles} horizontal={false} maxHeight={150} />
+              <Text style={styles.formFieldLabel}>Equipment</Text>
+              <FieldDropdown
+                selected={newExerciseEquipment}
+                options={EQUIPMENT_ITEMS}
+                onChange={setNewExerciseEquipment}
+                placeholder="Select equipment"
+              />
+              <Text style={styles.formFieldLabel}>Exercise Photo (optional)</Text>
+              <TouchableOpacity style={styles.mediaPickerButton} onPress={() => { void handlePickExerciseImage(); }} activeOpacity={0.8}>
+                {newExerciseMediaUri ? (
+                  <Image source={{ uri: newExerciseMediaUri }} style={styles.selectedMediaPreview} resizeMode="cover" />
+                ) : (
+                  <View style={styles.selectedMediaPreview} />
+                )}
+                <View style={styles.mediaPickerButtonTextWrap}>
+                  <Text style={styles.mediaPickerButtonTitle}>{newExerciseMediaUri ? 'Change photo' : 'Add photo'}</Text>
+                  <Text style={styles.mediaPickerButtonHint}>
+                    {newExerciseMediaUri ? 'Photo is optimized to a max 480px icon before upload.' : 'Pick an image from your photo library.'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              {newExerciseMediaUri && (
+                <Button
+                  title="Remove Photo"
+                  variant="ghost"
+                  size="sm"
+                  onPress={() => { setNewExerciseMediaUri(null); setNewExerciseMediaMimeType('image/jpeg'); }}
+                />
               )}
-              <Text style={styles.sectionHeader}>All Exercises</Text>
-              {allExercises.length === 0 ? (
-                <Text style={styles.emptyText}>No exercises found.</Text>
-              ) : (
-                ALPHABET_INDEX.filter((letter) => allExercisesByLetter[letter]?.length).map((letter) => (
-                  <View
-                    key={letter}
-                    onLayout={(event) => {
-                      const y = event.nativeEvent.layout.y;
-                      setIndexOffsets((prev) => (prev[letter] === y ? prev : { ...prev, [letter]: y }));
-                    }}
-                  >
-                    <Text style={styles.letterHeader}>{letter}</Text>
-                    {allExercisesByLetter[letter].map(renderRow)}
-                  </View>
-                ))
+            </View>
+            <View style={styles.footer}><Button title="Save Exercise" variant="accent" onPress={handleCreateExercise} loading={savingCreateExercise} /></View>
+          </>
+        ) : (
+          <>
+            <TextInput
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search exercises..."
+              placeholderTextColor={colors.textMuted}
+              autoCorrect={false}
+            />
+            <View style={styles.filterRow}>
+              <FilterDropdown label="Target Muscle" allLabel="All Muscles" selected={muscleFilter} options={MUSCLE_GROUP_ITEMS} onChange={setMuscleFilter} />
+              <FilterDropdown label="Equipment" allLabel="All Equipment" selected={equipmentFilter} options={EQUIPMENT_ITEMS} onChange={setEquipmentFilter} />
+            </View>
+            <View style={styles.listWrap}>
+              <SectionList
+                ref={sectionListRef}
+                style={styles.list}
+                sections={visibleExerciseSections}
+                contentContainerStyle={styles.listContent}
+                keyboardShouldPersistTaps="always"
+                keyboardDismissMode="none"
+                showsVerticalScrollIndicator={false}
+                stickySectionHeadersEnabled={false}
+                initialNumToRender={24}
+                maxToRenderPerBatch={24}
+                windowSize={11}
+                removeClippedSubviews
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => renderRow(item)}
+                onScrollToIndexFailed={() => {
+                  const letter = pendingRailLetterRef.current;
+                  if (!letter) return;
+                  if (railScrollRetryTimerRef.current) {
+                    clearTimeout(railScrollRetryTimerRef.current);
+                    railScrollRetryTimerRef.current = null;
+                  }
+                  if (railScrollRetryCountRef.current >= 5) {
+                    railScrollRetryCountRef.current = 0;
+                    return;
+                  }
+                  const globalSectionIndex = sectionIndexByLetter[letter];
+                  if (globalSectionIndex != null) {
+                    const nextWindow = getSectionWindowForIndex(globalSectionIndex);
+                    setSectionWindow((prev) => {
+                      if (prev && prev.start === nextWindow.start && prev.end === nextWindow.end) return prev;
+                      return nextWindow;
+                    });
+                    scheduleLetterScroll(letter, 70, nextWindow.start);
+                  }
+                  railScrollRetryCountRef.current += 1;
+                }}
+                onMomentumScrollEnd={() => {
+                  railScrollRetryCountRef.current = 0;
+                }}
+                renderSectionHeader={({ section }) => (
+                  <Text style={styles.letterHeader}>{section.title}</Text>
+                )}
+                ListHeaderComponent={(
+                  <>
+                    {customExercises.length > 0 && (
+                      <>
+                        <Text style={styles.sectionHeader}>Custom</Text>
+                        {customExercises.map(renderRow)}
+                      </>
+                    )}
+                    <Text style={styles.sectionHeader}>All Exercises</Text>
+                    {allExerciseSections.length === 0 && (
+                      <Text style={styles.emptyText}>No exercises found.</Text>
+                    )}
+                  </>
+                )}
+              />
+              {allExercises.length > 0 && (
+                <View
+                  style={styles.alphaRail}
+                  onLayout={(event) => { railHeightRef.current = event.nativeEvent.layout.height; }}
+                  onStartShouldSetResponder={() => true}
+                  onMoveShouldSetResponder={() => true}
+                  onResponderGrant={(event) => { handleRailDragAt(event.nativeEvent.locationY); }}
+                  onResponderMove={(event) => { handleRailDragAt(event.nativeEvent.locationY); }}
+                  onResponderRelease={() => { lastRailLetterRef.current = null; }}
+                  onResponderTerminate={() => { lastRailLetterRef.current = null; }}
+                >
+                  {ALPHABET_INDEX.map((letter) => {
+                    const enabled = availableLetters.has(letter);
+                    return (
+                      <TouchableOpacity key={letter} onPress={() => handlePressIndexLetter(letter)} disabled={!enabled} activeOpacity={0.7} style={styles.alphaRailItem}>
+                        <Text style={[styles.alphaRailText, !enabled && styles.alphaRailTextDisabled]}>{letter}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               )}
-            </ScrollView>
-            {allExercises.length > 0 && (
-              <View
-                style={styles.alphaRail}
-                onLayout={(event) => { railHeightRef.current = event.nativeEvent.layout.height; }}
-                onStartShouldSetResponder={() => true}
-                onMoveShouldSetResponder={() => true}
-                onResponderGrant={(event) => { handleRailDragAt(event.nativeEvent.locationY); }}
-                onResponderMove={(event) => { handleRailDragAt(event.nativeEvent.locationY); }}
-                onResponderRelease={() => { lastRailLetterRef.current = null; }}
-                onResponderTerminate={() => { lastRailLetterRef.current = null; }}
-              >
-                {ALPHABET_INDEX.map((letter) => {
-                  const enabled = availableLetters.has(letter);
-                  return (
-                    <TouchableOpacity key={letter} onPress={() => handlePressIndexLetter(letter)} disabled={!enabled} activeOpacity={0.7} style={styles.alphaRailItem}>
-                      <Text style={[styles.alphaRailText, !enabled && styles.alphaRailTextDisabled]}>{letter}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+            </View>
+            {!(Platform.OS === 'android' && isKeyboardVisible) && (
+              <View style={styles.footer}>
+                <Button title="+ Create New Exercise" variant="secondary" onPress={() => setShowCreateExercise(true)} />
               </View>
             )}
-          </View>
-          {!(Platform.OS === 'android' && isKeyboardVisible) && (
-            <View style={styles.footer}>
-              <Button title="+ Create New Exercise" variant="secondary" onPress={() => setShowCreateExercise(true)} />
-            </View>
-          )}
-        </>
-      )}
-    </BottomSheetModal>
+          </>
+        )}
+      </BottomSheetModal>
   );
 }

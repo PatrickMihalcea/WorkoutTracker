@@ -23,7 +23,7 @@ import { useWorkoutOverlay } from '../../../src/components/workout';
 import { routineService, notificationService } from '../../../src/services';
 import { MAX_ROUTINE_WEEKS, type AddWeekMode } from '../../../src/services/routine.service';
 import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
-import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast, ExercisePickerModal, SupersetBracket, ChipPicker } from '../../../src/components/ui';
+import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast, ExercisePickerModal, SupersetBracket, ChipPicker, ExerciseIconPreview } from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
 import {
@@ -60,6 +60,7 @@ import {
 } from '../../../src/utils/superset';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
+import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../../src/utils/exerciseMedia';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -86,7 +87,7 @@ function ExerciseSetsEditor({
   const mountedRef = useRef(false);
 
   const persist = useCallback(async (currentRows: TemplateSetRow[], repRange: boolean) => {
-    if (repRange && !validateRepRange(currentRows)) return;
+    if (repRange && !validateRepRange(currentRows, { showAlert: false, ignoreIncomplete: true })) return;
     const payload = buildSetsPayload(currentRows, wUnit, repRange);
     try {
       await routineService.updateExerciseSets(entry.id, payload);
@@ -152,10 +153,8 @@ function SwipeableExerciseRow({
     ex.sets && ex.sets.length > 0
       ? `${setsCount} sets`
       : `${ex.target_sets}×${ex.target_reps}`;
-  const thumbnailUrl = ex.exercise?.thumbnail_url
-    ?? ((ex.exercise?.media_type === 'image' || ex.exercise?.media_type === 'gif')
-      ? ex.exercise.media_url
-      : null);
+  const thumbnailUrl = getExerciseThumbnailUrl(ex.exercise);
+  const previewUrl = getExercisePreviewUrl(ex.exercise);
   const thumbnailSource = thumbnailUrl ? { uri: thumbnailUrl } : EXERCISE_THUMB_PLACEHOLDER;
   const [nameBlockWidth, setNameBlockWidth] = useState<number | null>(null);
   const [nameMaxWidth, setNameMaxWidth] = useState<number | null>(null);
@@ -198,13 +197,14 @@ function SwipeableExerciseRow({
         activeOpacity={0.7}
       >
         <View style={styles.exerciseIdentity}>
-          {onDetails ? (
-            <TouchableOpacity onPress={handleDetailsPress} activeOpacity={0.7}>
-              <Image source={thumbnailSource} style={styles.exerciseThumb} resizeMode="cover" />
-            </TouchableOpacity>
-          ) : (
-            <Image source={thumbnailSource} style={styles.exerciseThumb} resizeMode="cover" />
-          )}
+          <ExerciseIconPreview
+            imageSource={thumbnailSource}
+            previewUri={previewUrl}
+            imageStyle={styles.exerciseThumb}
+            onPress={(event) => {
+              event.stopPropagation();
+            }}
+          />
           <View style={styles.exerciseInfo} onLayout={handleNameContainerLayout}>
             <View style={styles.nameRow}>
               <View style={[styles.nameTextBlock, resolvedNameWidth ? { width: resolvedNameWidth } : null]}>

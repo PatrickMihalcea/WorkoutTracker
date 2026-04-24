@@ -178,7 +178,7 @@ export function WorkoutOverlay() {
   }, []));
 
   const openExerciseDetail = useCallback((exerciseId: string) => {
-    const href = `/exercise/${exerciseId}` as const;
+    const href = `/exercise/${exerciseId}?fromWorkout=1` as const;
     if (pathname.startsWith('/exercise/')) {
       router.replace(href);
       return;
@@ -200,13 +200,22 @@ export function WorkoutOverlay() {
     && !PROFILE_SESSION_PATH_REGEX.test(pathname);
   const pillBottomOffset = (hasBottomTabs ? TAB_BAR_HEIGHT : 0) + Math.max(insets.bottom, 8);
 
-  const navigateToExerciseDetail = useCallback((exerciseId: string, source: 'swap' | 'add') => {
-    pendingPickerReopenRef.current = source;
+  const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
+    if (source) {
+      pendingPickerReopenRef.current = source;
+    }
     setShowSwapPicker(false);
     setShowAddExercise(false);
     setShowDirectAddPicker(false);
-    setTimeout(() => openExerciseDetail(exerciseId), 0);
-  }, [openExerciseDetail]);
+
+    if (expanded) {
+      minimize();
+      setTimeout(() => openExerciseDetail(exerciseId), SLIDE_OUT_MS);
+      return;
+    }
+
+    openExerciseDetail(exerciseId);
+  }, [expanded, minimize, openExerciseDetail]);
 
   useEffect(() => {
     if (expanded && session) {
@@ -1499,7 +1508,7 @@ export function WorkoutOverlay() {
                         onSeparate={() => handleSeparate(item.id)}
                         onSwap={() => handleSwap(item.id)}
                         onDuplicate={() => handleDuplicate(item.id)}
-                        onDetails={() => openExerciseDetail(item.exercise_id)}
+                        onDetails={() => navigateToExerciseDetail(item.exercise_id)}
                         noBottomMargin={needsNoMargin}
                       />
                     );
