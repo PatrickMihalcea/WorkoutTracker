@@ -14,7 +14,8 @@ import { weightUnitLabel, distanceUnitLabel, parseWeightToKg } from '../../utils
 import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
 import { formatDurationValue } from '../../utils/duration';
 import { RirCircle, SetValueEditorModal } from '../ui';
-import { EditableFieldKind, allowsDecimalForField } from '../set-editor/types';
+import { EditableFieldKind, allowsDecimalForField, EditorDirection } from '../set-editor/types';
+import { Portal } from '../ui/PortalHost';
 
 export interface TemplateSetRow {
   weight: string;
@@ -205,9 +206,17 @@ interface SetsTableEditorProps {
   exerciseType?: ExerciseType | string;
   onEditorVisibilityChange?: (visible: boolean) => void;
   onFocusRow?: (rowIndex: number) => void;
+  onFocusCell?: (cell: TableEditorCell) => void;
+  onNavigateBeyondBoundary?: (direction: EditorDirection, fromField: EditableFieldKind, fromFieldIndex: number) => boolean;
+  canNavigateBeyondBoundary?: (direction: EditorDirection, fromField: EditableFieldKind) => boolean;
+  externalNavigationRequest?: ExternalSetEditorNavigationRequest;
+  forceDismissToken?: number;
+  onForceDismissHandled?: () => void;
+  renderValueEditorInPortal?: boolean;
+  valueEditorAnimated?: boolean;
 }
 
-interface TableEditorCell {
+export interface TableEditorCell {
   rowIndex: number;
   field: EditableFieldKind;
 }
@@ -215,6 +224,15 @@ interface TableEditorCell {
 interface TableEditorRow {
   rowIndex: number;
   fields: EditableFieldKind[];
+}
+
+export interface ExternalSetEditorNavigationRequest {
+  token: number;
+  direction: EditorDirection;
+  preferredField?: EditableFieldKind;
+  preferredFieldIndex?: number;
+  /** When set, navigate to this specific row index instead of first/last. */
+  targetRowIndex?: number;
 }
 
 export function SetsTableEditor({
@@ -227,6 +245,14 @@ export function SetsTableEditor({
   exerciseType,
   onEditorVisibilityChange,
   onFocusRow,
+  onFocusCell,
+  onNavigateBeyondBoundary,
+  canNavigateBeyondBoundary,
+  externalNavigationRequest,
+  forceDismissToken,
+  onForceDismissHandled,
+  renderValueEditorInPortal = false,
+  valueEditorAnimated = true,
 }: SetsTableEditorProps) {
   const { colors } = useTheme();
   const [valueEditorVisible, setValueEditorVisible] = useState(false);
@@ -242,6 +268,8 @@ export function SetsTableEditor({
   const showReps = config.fields.some((f) => f.key === 'reps');
   const showDuration = config.fields.some((f) => f.key === 'duration');
   const showDistance = config.fields.some((f) => f.key === 'distance');
+  const appliedExternalNavTokenRef = React.useRef<number | null>(null);
+  const appliedForceDismissTokenRef = React.useRef<number | undefined>(undefined);
 
   const tableEditorRows = useMemo<TableEditorRow[]>(() => {
     const fields: EditableFieldKind[] = [];
@@ -264,15 +292,18 @@ export function SetsTableEditor({
     const targetY = rowLayoutY[cell.rowIndex];
     if (typeof targetY !== 'number') return;
     requestAnimationFrame(() => {
-      rowsScrollRef.current?.scrollTo({ y: Math.max(0, targetY - 110), animated });
+      // Tiny offset so the active row is always near the top of the inner scroll —
+      // keeps it at a consistent on-screen height regardless of which row is selected.
+      rowsScrollRef.current?.scrollTo({ y: Math.max(0, targetY - 6), animated });
     });
   }, [rowLayoutY]);
 
-  const openValueEditorForCell = (cell: TableEditorCell) => {
+  const openValueEditorForCell = (cell: TableEditorCell, animated = true) => {
     const row = rows[cell.rowIndex];
     if (!row) return;
-    scrollCellIntoView(cell);
+    scrollCellIntoView(cell, animated);
     onFocusRow?.(cell.rowIndex);
+    onFocusCell?.(cell);
 
     setValueEditorCell(cell);
     if (cell.field === 'rir') {
@@ -361,13 +392,109 @@ export function SetsTableEditor({
 
   const valueEditorCanNavigate = useMemo(() => {
     if (!valueEditorCell) return { up: false, down: false, left: false, right: false };
+    const canBoundary = (direction: EditorDirection) =>
+      !!canNavigateBeyondBoundary?.(direction, valueEditorCell.field);
     return {
-      up: !!findAdjacentCell(valueEditorCell, 'up'),
-      down: !!findAdjacentCell(valueEditorCell, 'down'),
-      left: !!findAdjacentCell(valueEditorCell, 'left'),
-      right: !!findAdjacentCell(valueEditorCell, 'right'),
+      up: !!findAdjacentCell(valueEditorCell, 'up') || canBoundary('up'),
+      down: !!findAdjacentCell(valueEditorCell, 'down') || canBoundary('down'),
+      left: !!findAdjacentCell(valueEditorCell, 'left') || canBoundary('left'),
+      right: !!findAdjacentCell(valueEditorCell, 'right') || canBoundary('right'),
     };
-  }, [tableEditorRows, valueEditorCell]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canNavigateBeyondBoundary, tableEditorRows, valueEditorCell]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toTemplateField = (field: EditableFieldKind): TemplateField => {
+    if (field === 'weight') return 'weight';
+    if (field === 'reps' || field === 'repsMin') return 'repsMin';
+    if (field === 'repsMax') return 'repsMax';
+    if (field === 'duration') return 'duration';
+    if (field === 'distance') return 'distance';
+    return 'rir';
+  };
+
+  const navigateFromCell = (cell: TableEditorCell, direction: EditorDirection) => {
+    const nextCell = findAdjacentCell(cell, direction);
+    if (!nextCell) {
+      const currentRow = tableEditorRows.find((row) => row.rowIndex === cell.rowIndex);
+      const fromFieldIndex = currentRow ? currentRow.fields.indexOf(cell.field) : -1;
+      onNavigateBeyondBoundary?.(direction, cell.field, Math.max(0, fromFieldIndex));
+      return;
+    }
+    openValueEditorForCell(nextCell, false);
+  };
+
+  const acceptCurrentCellValue = (cell: TableEditorCell) => {
+    if (cell.field === 'rir') {
+      if (valueEditorRir != null) {
+        applyCellValue(cell, valueEditorRir);
+        return;
+      }
+      const suggested = getSuggestion(rows, cell.rowIndex, 'rir');
+      if (suggested !== '') {
+        applyCellValue(cell, parseFloat(suggested));
+      }
+      return;
+    }
+
+    if (cell.field === 'duration') {
+      if (valueEditorDuration > 0) {
+        applyCellValue(cell, valueEditorDuration);
+        return;
+      }
+      const suggested = getSuggestion(rows, cell.rowIndex, 'duration');
+      if (suggested !== '') {
+        applyCellValue(cell, parseFloat(suggested) || 0);
+      }
+      return;
+    }
+
+    const templateField = toTemplateField(cell.field);
+    const typed = (valueEditorNumeric ?? '').trim();
+    if (typed.length > 0) {
+      applyCellValue(cell, typed);
+      return;
+    }
+    const suggested = getSuggestion(rows, cell.rowIndex, templateField);
+    if (suggested !== '') {
+      applyCellValue(cell, suggested);
+    }
+  };
+
+  // Validates rep range before leaving a repsMin/repsMax cell.
+  // Calls `action` only when the range is valid; otherwise alerts and re-opens the cell.
+  const withRepRangeValidation = (cell: TableEditorCell, action: () => void) => {
+    if (!repRange || (cell.field !== 'repsMin' && cell.field !== 'repsMax')) {
+      action();
+      return;
+    }
+    const minStr = resolveValue(rows, cell.rowIndex, 'repsMin');
+    const maxStr = resolveValue(rows, cell.rowIndex, 'repsMax');
+    const minVal = parseFloat(minStr);
+    const maxVal = parseFloat(maxStr);
+    if (!isNaN(minVal) && !isNaN(maxVal) && minVal > maxVal) {
+      Alert.alert('Invalid rep range', 'Min reps cannot be greater than max reps.');
+      openValueEditorForCell(cell, false);
+      return;
+    }
+    action();
+  };
+
+  const handleModalClose = () => {
+    if (!valueEditorCell) { setValueEditorVisible(false); setValueEditorCell(null); return; }
+    withRepRangeValidation(valueEditorCell, () => { setValueEditorVisible(false); setValueEditorCell(null); });
+  };
+
+  const handleModalNavigate = (direction: EditorDirection) => {
+    if (!valueEditorCell) return;
+    withRepRangeValidation(valueEditorCell, () => navigateFromCell(valueEditorCell, direction));
+  };
+
+  const handleModalEnter = () => {
+    if (!valueEditorCell) return;
+    withRepRangeValidation(valueEditorCell, () => {
+      acceptCurrentCellValue(valueEditorCell);
+      navigateFromCell(valueEditorCell, 'right');
+    });
+  };
 
   useEffect(() => {
     if (!valueEditorCell) return;
@@ -379,15 +506,6 @@ export function SetsTableEditor({
   }, [tableEditorRows, valueEditorCell]);
 
   useEffect(() => {
-    if (!valueEditorVisible || !valueEditorCell) return;
-    const timer = setTimeout(() => {
-      scrollCellIntoView(valueEditorCell, false);
-      onFocusRow?.(valueEditorCell.rowIndex);
-    }, 30);
-    return () => clearTimeout(timer);
-  }, [onFocusRow, scrollCellIntoView, valueEditorCell, valueEditorVisible]);
-
-  useEffect(() => {
     onEditorVisibilityChange?.(valueEditorVisible);
   }, [onEditorVisibilityChange, valueEditorVisible]);
 
@@ -395,12 +513,56 @@ export function SetsTableEditor({
     onEditorVisibilityChange?.(false);
   }, [onEditorVisibilityChange]);
 
+  useEffect(() => {
+    if (!externalNavigationRequest) return;
+    if (appliedExternalNavTokenRef.current === externalNavigationRequest.token) return;
+    appliedExternalNavTokenRef.current = externalNavigationRequest.token;
+    if (tableEditorRows.length === 0) return;
+    const { targetRowIndex } = externalNavigationRequest;
+    const targetRow = typeof targetRowIndex === 'number'
+      ? (tableEditorRows.find((r) => r.rowIndex === targetRowIndex) ?? tableEditorRows[0])
+      : externalNavigationRequest.direction === 'up' || externalNavigationRequest.direction === 'left'
+        ? tableEditorRows[tableEditorRows.length - 1]
+        : tableEditorRows[0];
+    if (!targetRow || targetRow.fields.length === 0) return;
+    const requestedField = externalNavigationRequest.preferredField;
+    const requestedFieldIndex = externalNavigationRequest.preferredFieldIndex;
+    let targetField: EditableFieldKind | null = null;
+    if (typeof requestedFieldIndex === 'number' && Number.isFinite(requestedFieldIndex)) {
+      const clampedIndex = Math.max(0, Math.min(targetRow.fields.length - 1, requestedFieldIndex));
+      targetField = targetRow.fields[clampedIndex] ?? null;
+    } else if (requestedField && targetRow.fields.includes(requestedField)) {
+      targetField = requestedField;
+    } else if (externalNavigationRequest.direction === 'left') {
+      targetField = targetRow.fields[targetRow.fields.length - 1];
+    } else {
+      targetField = targetRow.fields[0];
+    }
+    if (!targetField) return;
+    openValueEditorForCell({ rowIndex: targetRow.rowIndex, field: targetField }, false);
+  }, [externalNavigationRequest, tableEditorRows]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (forceDismissToken == null) return;
+    if (appliedForceDismissTokenRef.current === forceDismissToken) return;
+    appliedForceDismissTokenRef.current = forceDismissToken;
+    if (valueEditorVisible) {
+      setValueEditorVisible(false);
+      setValueEditorCell(null);
+    }
+    onForceDismissHandled?.();
+  }, [forceDismissToken, onForceDismissHandled, valueEditorVisible]);
+
   const styles = useMemo(() => StyleSheet.create({
     container: {
       marginBottom: 16,
     },
     rowsScroll: {
-      maxHeight: 360,
+      maxHeight: 330,
+      flexGrow: 0,
+    },
+    rowsScrollContent: {
+      paddingBottom: 6,
     },
     header: {
       flexDirection: 'row',
@@ -462,6 +624,10 @@ export function SetsTableEditor({
       borderColor: colors.accent,
       backgroundColor: colors.accentDim,
     },
+    activeRirInput: {
+      borderColor: colors.accent,
+      borderWidth: 2,
+    },
     valueText: {
       fontSize: 14,
       fontFamily: fonts.regular,
@@ -473,6 +639,9 @@ export function SetsTableEditor({
       fontFamily: fonts.regular,
       color: colors.textMuted,
       textAlign: 'center',
+    },
+    valuePlaceholderActive: {
+      color: '#5A5A5A',
     },
     repsCol: {
       flex: 1,
@@ -551,6 +720,9 @@ export function SetsTableEditor({
       color: colors.textMuted,
       textAlign: 'center',
     },
+    durationPlaceholderActive: {
+      color: '#5A5A5A',
+    },
     warmupCircle: {
       width: 22,
       height: 22,
@@ -598,7 +770,8 @@ export function SetsTableEditor({
 
       <ScrollView
         ref={rowsScrollRef}
-        style={rows.length > 9 ? styles.rowsScroll : undefined}
+        style={styles.rowsScroll}
+        contentContainerStyle={styles.rowsScrollContent}
         nestedScrollEnabled
       >
         {rows.map((row, i) => {
@@ -637,7 +810,13 @@ export function SetsTableEditor({
                   onPress={() => openValueEditorForCell({ rowIndex: i, field: 'weight' })}
                   activeOpacity={0.7}
                 >
-                  <Text style={row.editedFields.has('weight') && row.weight ? styles.valueText : styles.valuePlaceholder}>
+                  <Text style={[
+                    row.editedFields.has('weight') && row.weight ? styles.valueText : styles.valuePlaceholder,
+                    valueEditorCell?.rowIndex === i
+                      && valueEditorCell.field === 'weight'
+                      && (!row.editedFields.has('weight') || !row.weight)
+                      && styles.valuePlaceholderActive,
+                  ]}>
                     {(row.editedFields.has('weight') ? row.weight : '') || weightSugg || '0'}
                   </Text>
                 </TouchableOpacity>
@@ -662,7 +841,13 @@ export function SetsTableEditor({
                         onPress={() => openValueEditorForCell({ rowIndex: i, field: 'repsMin' })}
                         activeOpacity={0.7}
                       >
-                        <Text style={row.editedFields.has('repsMin') && row.repsMin ? styles.valueText : styles.valuePlaceholder}>
+                        <Text style={[
+                          row.editedFields.has('repsMin') && row.repsMin ? styles.valueText : styles.valuePlaceholder,
+                          valueEditorCell?.rowIndex === i
+                            && valueEditorCell.field === 'repsMin'
+                            && (!row.editedFields.has('repsMin') || !row.repsMin)
+                            && styles.valuePlaceholderActive,
+                        ]}>
                           {(row.editedFields.has('repsMin') ? row.repsMin : '') || repsMinSugg || '8'}
                         </Text>
                       </TouchableOpacity>
@@ -675,7 +860,13 @@ export function SetsTableEditor({
                         onPress={() => openValueEditorForCell({ rowIndex: i, field: 'repsMax' })}
                         activeOpacity={0.7}
                       >
-                        <Text style={row.editedFields.has('repsMax') && row.repsMax ? styles.valueText : styles.valuePlaceholder}>
+                        <Text style={[
+                          row.editedFields.has('repsMax') && row.repsMax ? styles.valueText : styles.valuePlaceholder,
+                          valueEditorCell?.rowIndex === i
+                            && valueEditorCell.field === 'repsMax'
+                            && (!row.editedFields.has('repsMax') || !row.repsMax)
+                            && styles.valuePlaceholderActive,
+                        ]}>
                           {(row.editedFields.has('repsMax') ? row.repsMax : '') || repsMaxSugg || '12'}
                         </Text>
                       </TouchableOpacity>
@@ -686,7 +877,13 @@ export function SetsTableEditor({
                       onPress={() => openValueEditorForCell({ rowIndex: i, field: 'reps' })}
                       activeOpacity={0.7}
                     >
-                      <Text style={row.editedFields.has('repsMin') && row.repsMin ? styles.valueText : styles.valuePlaceholder}>
+                      <Text style={[
+                        row.editedFields.has('repsMin') && row.repsMin ? styles.valueText : styles.valuePlaceholder,
+                        valueEditorCell?.rowIndex === i
+                          && valueEditorCell.field === 'reps'
+                          && (!row.editedFields.has('repsMin') || !row.repsMin)
+                          && styles.valuePlaceholderActive,
+                      ]}>
                         {(row.editedFields.has('repsMin') ? row.repsMin : '') || repsMinSugg || '10'}
                       </Text>
                     </TouchableOpacity>
@@ -709,7 +906,13 @@ export function SetsTableEditor({
                     onPress={() => openValueEditorForCell({ rowIndex: i, field: 'duration' })}
                     activeOpacity={0.7}
                   >
-                    <Text style={durNum > 0 ? styles.durationText : styles.durationPlaceholder}>
+                    <Text style={[
+                      durNum > 0 ? styles.durationText : styles.durationPlaceholder,
+                      valueEditorCell?.rowIndex === i
+                        && valueEditorCell.field === 'duration'
+                        && durNum <= 0
+                        && styles.durationPlaceholderActive,
+                    ]}>
                       {durNum > 0 ? formatDurationValue(durNum) : (suggNum > 0 ? formatDurationValue(suggNum) : '0:00')}
                     </Text>
                   </TouchableOpacity>
@@ -726,7 +929,13 @@ export function SetsTableEditor({
                   onPress={() => openValueEditorForCell({ rowIndex: i, field: 'distance' })}
                   activeOpacity={0.7}
                 >
-                  <Text style={row.editedFields.has('distance') && row.distance ? styles.valueText : styles.valuePlaceholder}>
+                  <Text style={[
+                    row.editedFields.has('distance') && row.distance ? styles.valueText : styles.valuePlaceholder,
+                    valueEditorCell?.rowIndex === i
+                      && valueEditorCell.field === 'distance'
+                      && (!row.editedFields.has('distance') || !row.distance)
+                      && styles.valuePlaceholderActive,
+                  ]}>
                     {(row.editedFields.has('distance') ? row.distance : '') || distanceSugg || '0'}
                   </Text>
                 </TouchableOpacity>
@@ -738,7 +947,7 @@ export function SetsTableEditor({
                     value={rirNum}
                     size={28}
                     onPress={() => openValueEditorForCell({ rowIndex: i, field: 'rir' })}
-                    style={valueEditorCell?.rowIndex === i && valueEditorCell.field === 'rir' ? styles.activeInput : undefined}
+                    style={valueEditorCell?.rowIndex === i && valueEditorCell.field === 'rir' ? styles.activeRirInput : undefined}
                   />
                 </View>
               )}
@@ -785,43 +994,73 @@ export function SetsTableEditor({
         </TouchableOpacity>
       </View>
 
-      <SetValueEditorModal
-        visible={valueEditorVisible}
-        field={valueEditorCell?.field ?? null}
-        syncKey={valueEditorCell ? `${valueEditorCell.rowIndex}:${valueEditorCell.field}` : undefined}
-        title={valueEditorCell?.field ? `Edit ${valueEditorCell.field.toUpperCase()}` : undefined}
-        numericValue={valueEditorNumeric}
-        allowDecimal={allowsDecimalForField(valueEditorCell?.field)}
-        durationValue={valueEditorDuration}
-        rirValue={valueEditorRir}
-        canNavigate={valueEditorCanNavigate}
-        onClose={() => {
-          setValueEditorVisible(false);
-          setValueEditorCell(null);
-        }}
-        onDone={() => {
-          setValueEditorVisible(false);
-          setValueEditorCell(null);
-        }}
-        onNavigate={(direction) => {
-          if (!valueEditorCell) return;
-          const nextCell = findAdjacentCell(valueEditorCell, direction);
-          if (!nextCell) return;
-          openValueEditorForCell(nextCell);
-        }}
-        onNumericValueChange={(nextValue) => {
-          setValueEditorNumeric(nextValue);
-          if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
-        }}
-        onDurationValueChange={(nextValue) => {
-          setValueEditorDuration(nextValue);
-          if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
-        }}
-        onRirValueChange={(nextValue) => {
-          setValueEditorRir(nextValue);
-          if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
-        }}
-      />
+      {renderValueEditorInPortal ? (
+        <Portal>
+          <SetValueEditorModal
+            visible={valueEditorVisible}
+            animated={valueEditorAnimated}
+            field={valueEditorCell?.field ?? null}
+            syncKey={valueEditorCell ? `${valueEditorCell.rowIndex}:${valueEditorCell.field}` : undefined}
+            title={valueEditorCell?.field ? `Edit ${valueEditorCell.field.toUpperCase()}` : undefined}
+            numericValue={valueEditorNumeric}
+            allowDecimal={allowsDecimalForField(valueEditorCell?.field)}
+            durationValue={valueEditorDuration}
+            rirValue={valueEditorRir}
+            canNavigate={valueEditorCanNavigate}
+            onClose={handleModalClose}
+            onDone={handleModalClose}
+            onNavigate={handleModalNavigate}
+            onEnter={handleModalEnter}
+            onNumericValueChange={(nextValue) => {
+              setValueEditorNumeric(nextValue);
+              if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+            }}
+            onDurationValueChange={(nextValue) => {
+              setValueEditorDuration(nextValue);
+              if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+            }}
+            onRirValueChange={(nextValue) => {
+              setValueEditorRir(nextValue);
+              if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+            }}
+          />
+        </Portal>
+      ) : (
+        <SetValueEditorModal
+          visible={valueEditorVisible}
+          animated={valueEditorAnimated}
+          field={valueEditorCell?.field ?? null}
+          syncKey={valueEditorCell ? `${valueEditorCell.rowIndex}:${valueEditorCell.field}` : undefined}
+          title={valueEditorCell?.field ? `Edit ${valueEditorCell.field.toUpperCase()}` : undefined}
+          numericValue={valueEditorNumeric}
+          allowDecimal={allowsDecimalForField(valueEditorCell?.field)}
+          durationValue={valueEditorDuration}
+          rirValue={valueEditorRir}
+          canNavigate={valueEditorCanNavigate}
+          onClose={() => {
+            setValueEditorVisible(false);
+            setValueEditorCell(null);
+          }}
+          onDone={() => {
+            setValueEditorVisible(false);
+            setValueEditorCell(null);
+          }}
+          onNavigate={handleModalNavigate}
+          onEnter={handleModalEnter}
+          onNumericValueChange={(nextValue) => {
+            setValueEditorNumeric(nextValue);
+            if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+          }}
+          onDurationValueChange={(nextValue) => {
+            setValueEditorDuration(nextValue);
+            if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+          }}
+          onRirValueChange={(nextValue) => {
+            setValueEditorRir(nextValue);
+            if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+          }}
+        />
+      )}
     </View>
   );
 }

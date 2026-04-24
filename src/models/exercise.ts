@@ -20,6 +20,7 @@ export enum MuscleGroup {
   Triceps = 'triceps',
   Quads = 'quads',
   Hamstrings = 'hamstrings',
+  Legs = 'legs',
   Glutes = 'glutes',
   Calves = 'calves',
   Abs = 'abs',

@@ -271,7 +271,7 @@ export function Dashboard({
         />
         <VolumeSection data={data.volume} {...chartConfig} />
         <DurationTrendSection data={data.duration} {...chartConfig} />
-        {activeExercise && (
+        {activeExercise ? (
           <ExerciseSpotlightSection
             active={activeExercise}
             metric={spotlightMetric}
@@ -279,6 +279,21 @@ export function Dashboard({
             onPickExercise={() => setShowExercisePicker(true)}
             {...chartConfig}
           />
+        ) : (
+          <Card style={styles.card}>
+            <SectionTitle title="Exercise Spotlight" />
+            <TouchableOpacity
+              style={styles.exerciseSelectBtn}
+              onPress={() => setShowExercisePicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.exerciseSelectText}>Select exercise</Text>
+              <Text style={styles.exerciseSelectArrow}>▾</Text>
+            </TouchableOpacity>
+            <Text style={styles.chartEmptyText}>
+              No exercise data available in the selected range.
+            </Text>
+          </Card>
         )}
         <MuscleRadarSection data={data.muscleGroupSplit} />
         <MuscleHeatmap data={data.muscleGroupSplit} />
@@ -661,7 +676,14 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
     reps: active.repsPoints,
     '1rm': active.oneRMPoints,
   };
-  const points = pointsMap[metric] ?? active.weightPoints;
+
+  const rawPoints = pointsMap[metric] ?? active.weightPoints;
+
+  // Match SimpleLineChart behavior so the caller controls the empty state.
+  const points = useMemo(
+    () => rawPoints.filter((p) => p.value > 0),
+    [rawPoints],
+  );
 
   const subtitleMap: Record<SpotlightMetric, string> = {
     weight: 'Max weight per session',
@@ -702,6 +724,7 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
         <Text style={styles.exerciseSelectText}>{active.exerciseName}</Text>
         <Text style={styles.exerciseSelectArrow}>▾</Text>
       </TouchableOpacity>
+
       <MetricChips
         options={METRIC_OPTIONS}
         selected={metric}
@@ -715,7 +738,9 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
       <Card style={styles.card}>
         <SectionTitle title="Exercise Spotlight" />
         {header}
+
         <Text style={styles.chartSubtitle}>{subtitleMap[metric]}</Text>
+
         <Text style={styles.chartEmptyText}>
           No logged sessions for this exercise in the selected range.
         </Text>

@@ -27,7 +27,8 @@ export function RirPickerModal({ visible, onClose, onSelect, currentValue }: Rir
     },
     row: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 10 },
     option: { alignItems: 'center' },
-    selected: { borderWidth: 2, borderColor: colors.text },
+    selected: { opacity: 1 },
+    unselected: { opacity: 0.45 },
   }), [colors]);
 
   const handleSelect = (value: number | null) => {
@@ -44,7 +45,8 @@ export function RirPickerModal({ visible, onClose, onSelect, currentValue }: Rir
           value={val}
           size={38}
           onPress={() => handleSelect(val)}
-          style={isSelected ? styles.selected : undefined}
+          textColorOverride={val !== null ? '#000000' : undefined}
+          style={isSelected ? styles.selected : styles.unselected}
         />
       </View>
     );

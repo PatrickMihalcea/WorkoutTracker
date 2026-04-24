@@ -16,6 +16,14 @@ function generateId(): string {
   return id;
 }
 
+// Tracks in-flight addRow/addWarmupRow calls per entry to avoid duplicate set_number
+// collisions when the user taps "Add Set" rapidly before any DB response arrives.
+const pendingAddCounts: Record<string, number> = {};
+
+// Tracks in-flight deleteRow calls by row ID. A second rapid tap on the same
+// delete button is a no-op while the first is still pending.
+const pendingDeleteIds = new Set<string>();
+
 interface RowMap {
   [entryId: string]: WorkoutRow[];
 }
@@ -445,53 +453,69 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   },
 
   deleteRow: async (id, entryId, setNumber) => {
+    if (pendingDeleteIds.has(id)) return;
     const { session } = get();
     if (!session) return;
-    await workoutRowService.deleteAndRenumber(id, session.id, entryId, setNumber);
-    set((state) => ({
-      rows: {
-        ...state.rows,
-        [entryId]: (state.rows[entryId] ?? [])
-          .filter((r) => r.id !== id)
-          .map((r) =>
-            r.set_number > setNumber ? { ...r, set_number: r.set_number - 1 } : r,
-          ),
-      },
-    }));
+    pendingDeleteIds.add(id);
+    try {
+      await workoutRowService.deleteAndRenumber(id, session.id, entryId, setNumber);
+      set((state) => ({
+        rows: {
+          ...state.rows,
+          [entryId]: (state.rows[entryId] ?? [])
+            .filter((r) => r.id !== id)
+            .map((r) =>
+              r.set_number > setNumber ? { ...r, set_number: r.set_number - 1 } : r,
+            ),
+        },
+      }));
+    } finally {
+      pendingDeleteIds.delete(id);
+    }
   },
 
   addRow: async (entryId, exerciseId) => {
     const { session, rows } = get();
     if (!session) return;
     const entryRows = rows[entryId] ?? [];
-    const nextSetNumber = entryRows.length > 0
-      ? Math.max(...entryRows.map((r) => r.set_number)) + 1
-      : 1;
-    const newRow = await workoutRowService.addRow(session.id, exerciseId, entryId, nextSetNumber);
-    set((state) => ({
-      rows: {
-        ...state.rows,
-        [entryId]: [...(state.rows[entryId] ?? []), newRow],
-      },
-    }));
+    const currentMax = entryRows.length > 0 ? Math.max(...entryRows.map((r) => r.set_number)) : 0;
+    const pending = pendingAddCounts[entryId] ?? 0;
+    const nextSetNumber = currentMax + 1 + pending;
+    pendingAddCounts[entryId] = pending + 1;
+    try {
+      const newRow = await workoutRowService.addRow(session.id, exerciseId, entryId, nextSetNumber);
+      set((state) => ({
+        rows: {
+          ...state.rows,
+          [entryId]: [...(state.rows[entryId] ?? []), newRow],
+        },
+      }));
+    } finally {
+      pendingAddCounts[entryId] = Math.max(0, (pendingAddCounts[entryId] ?? 1) - 1);
+    }
   },
 
   addWarmupRow: async (entryId, exerciseId) => {
     const { session, rows } = get();
     if (!session) return;
     const entryRows = rows[entryId] ?? [];
-    const nextSetNumber = entryRows.length > 0
-      ? Math.max(...entryRows.map((r) => r.set_number)) + 1
-      : 1;
-    const newRow = await workoutRowService.addRow(
-      session.id, exerciseId, entryId, nextSetNumber, undefined, undefined, true,
-    );
-    set((state) => ({
-      rows: {
-        ...state.rows,
-        [entryId]: [...(state.rows[entryId] ?? []), newRow],
-      },
-    }));
+    const currentMax = entryRows.length > 0 ? Math.max(...entryRows.map((r) => r.set_number)) : 0;
+    const pending = pendingAddCounts[entryId] ?? 0;
+    const nextSetNumber = currentMax + 1 + pending;
+    pendingAddCounts[entryId] = pending + 1;
+    try {
+      const newRow = await workoutRowService.addRow(
+        session.id, exerciseId, entryId, nextSetNumber, undefined, undefined, true,
+      );
+      set((state) => ({
+        rows: {
+          ...state.rows,
+          [entryId]: [...(state.rows[entryId] ?? []), newRow],
+        },
+      }));
+    } finally {
+      pendingAddCounts[entryId] = Math.max(0, (pendingAddCounts[entryId] ?? 1) - 1);
+    }
   },
 
   toggleWarmup: async (id, entryId) => {

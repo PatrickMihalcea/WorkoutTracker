@@ -248,6 +248,9 @@ export function SetRow({
       fontFamily: fonts.semiBold,
       textAlign: 'center',
     },
+    durationPlaceholderActive: {
+      color: '#5A5A5A',
+    },
     valueText: {
       color: colors.text,
       fontSize: 15,
@@ -259,6 +262,9 @@ export function SetRow({
       fontSize: 15,
       fontFamily: fonts.semiBold,
       textAlign: 'center',
+    },
+    valuePlaceholderActive: {
+      color: '#5A5A5A',
     },
     activeField: {
       borderColor: colors.accent,
@@ -302,6 +308,15 @@ export function SetRow({
       borderWidth: 1.5,
       borderColor: '#000000',
     },
+    activeRir: {
+      borderWidth: 2,
+      borderColor: colors.accent,
+    },
+    activeRirDone: {
+      borderWidth: 2,
+      borderColor: '#FFFFFF',
+      backgroundColor: '#000000',
+    },
     inlineDeleteButton: {
       width: 28,
       height: 28,
@@ -331,6 +346,7 @@ export function SetRow({
       return (
         <Text style={[
           textStyle,
+          !displayVal && isActive && styles.durationPlaceholderActive,
           localCompleted && hasCompletionColor && { color: '#000000' },
           doneActiveTextOverride,
         ]}>
@@ -344,6 +360,7 @@ export function SetRow({
     return (
       <Text style={[
         textStyle,
+        !rawValue && isActive && styles.valuePlaceholderActive,
         localCompleted && hasCompletionColor && { color: '#000000' },
         doneActiveTextOverride,
       ]}>
@@ -351,6 +368,11 @@ export function SetRow({
       </Text>
     );
   };
+
+  const isActiveCompletedRir = localCompleted && hasCompletionColor && activeField === 'rir';
+  const rirStyle = localCompleted && hasCompletionColor
+    ? (activeField === 'rir' ? styles.activeRirDone : styles.rirDone)
+    : (activeField === 'rir' ? styles.activeRir : undefined);
 
   return (
     <SwipeToDeleteRow
@@ -411,14 +433,8 @@ export function SetRow({
               value={rirNum}
               size={32}
               onPress={() => onBeginEdit?.('rir')}
-              textColorOverride={localCompleted && hasCompletionColor && activeField === 'rir' ? '#FFFFFF' : undefined}
-              style={
-                localCompleted && hasCompletionColor
-                  ? (activeField === 'rir'
-                    ? { ...styles.rirDone, ...styles.activeFieldDone }
-                    : styles.rirDone)
-                  : (activeField === 'rir' ? styles.activeField : undefined)
-              }
+              textColorOverride={isActiveCompletedRir ? '#FFFFFF' : undefined}
+              style={rirStyle}
             />
           </View>
         )}

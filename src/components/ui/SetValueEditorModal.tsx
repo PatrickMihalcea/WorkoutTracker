@@ -3,9 +3,7 @@ import {
   Animated,
   Dimensions,
   Image,
-  Modal,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -18,20 +16,20 @@ import {
   EditorDirection,
   EditableFieldKind,
   RIR_STEP_VALUES,
-  getEditableFieldLabel,
   isNumericEditableField,
 } from '../set-editor/types';
 import { RirCircle } from './RirCircle';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const DURATION_PICKER_HEIGHT = Platform.OS === 'ios' ? 200 : 56;
-const FIXED_SHEET_HEIGHT = 390;
+const FIXED_SHEET_HEIGHT = 340;
 const DURATION_HOURS = Array.from({ length: 24 }, (_, i) => i);
 const DURATION_MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const DURATION_SECONDS = Array.from({ length: 60 }, (_, i) => i);
 
 interface SetValueEditorModalProps {
   visible: boolean;
+  animated?: boolean;
   field: EditableFieldKind | null;
   syncKey?: string;
   numericValue: string;
@@ -43,6 +41,7 @@ interface SetValueEditorModalProps {
   onClose: () => void;
   onDone: () => void;
   onNavigate: (direction: EditorDirection) => void;
+  onEnter?: () => void;
   onNumericValueChange: (value: string) => void;
   onDurationValueChange: (seconds: number) => void;
   onRirValueChange: (value: number | null) => void;
@@ -64,7 +63,7 @@ function ArrowButton({ direction, symbol, enabled, onPress }: ArrowButtonProps) 
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: colors.accentDim,
       backgroundColor: colors.surface,
       opacity: enabled ? 1 : 0.45,
@@ -91,6 +90,7 @@ function ArrowButton({ direction, symbol, enabled, onPress }: ArrowButtonProps) 
 
 export function SetValueEditorModal({
   visible,
+  animated = true,
   field,
   syncKey,
   numericValue,
@@ -98,10 +98,10 @@ export function SetValueEditorModal({
   durationValue,
   rirValue,
   canNavigate,
-  title,
   onClose,
   onDone,
   onNavigate,
+  onEnter,
   onNumericValueChange,
   onDurationValueChange,
   onRirValueChange,
@@ -114,8 +114,14 @@ export function SetValueEditorModal({
   const [hours, setHours] = useState(0);
   const [minutes, setMinutes] = useState(0);
   const [seconds, setSeconds] = useState(0);
+  const [numericReplaceMode, setNumericReplaceMode] = useState(false);
 
   useEffect(() => {
+    if (!animated) {
+      setModalVisible(visible);
+      return;
+    }
+
     if (visible) {
       if (modalVisible) return;
 
@@ -136,7 +142,7 @@ export function SetValueEditorModal({
       Animated.timing(overlayOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
       Animated.timing(sheetTranslateY, { toValue: SCREEN_HEIGHT, duration: 180, useNativeDriver: true }),
     ]).start(() => setModalVisible(false));
-  }, [modalVisible, visible]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animated, modalVisible, visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!visible || field !== 'duration') return;
@@ -146,6 +152,11 @@ export function SetValueEditorModal({
     setSeconds(safeDuration % 60);
   }, [field, syncKey, visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!visible || !isNumericEditableField(field)) return;
+    setNumericReplaceMode(true);
+  }, [field, syncKey, visible]);
+
   const setDurationFromParts = (nextHours: number, nextMinutes: number, nextSeconds: number) => {
     setHours(nextHours);
     setMinutes(nextMinutes);
@@ -154,6 +165,11 @@ export function SetValueEditorModal({
   };
 
   const handleDigitPress = (digit: string) => {
+    if (numericReplaceMode) {
+      onNumericValueChange(digit);
+      setNumericReplaceMode(false);
+      return;
+    }
     const current = numericValue ?? '';
     if (current === '0') {
       onNumericValueChange(digit);
@@ -164,6 +180,11 @@ export function SetValueEditorModal({
 
   const handleDotPress = () => {
     if (!allowDecimal) return;
+    if (numericReplaceMode) {
+      onNumericValueChange('0.');
+      setNumericReplaceMode(false);
+      return;
+    }
     const current = numericValue ?? '';
     if (current.includes('.')) return;
     if (!current) {
@@ -174,19 +195,32 @@ export function SetValueEditorModal({
   };
 
   const handleBackspace = () => {
+    if (numericReplaceMode) {
+      onNumericValueChange('');
+      setNumericReplaceMode(false);
+      return;
+    }
     const current = numericValue ?? '';
     if (!current) return;
     onNumericValueChange(current.slice(0, -1));
   };
 
-  const headerTitle = title ?? getEditableFieldLabel(field);
   const isNumericEditor = isNumericEditableField(field);
   const isDurationEditor = field === 'duration';
   const isRirEditor = field === 'rir';
+  const handleEnterPress = () => {
+    if (onEnter) {
+      onEnter();
+      return;
+    }
+    if (canNavigate?.right !== false) {
+      onNavigate('right');
+    }
+  };
 
   const styles = useMemo(() => StyleSheet.create({
     wrapper: {
-      flex: 1,
+      ...StyleSheet.absoluteFillObject,
       justifyContent: 'flex-end',
     },
     overlay: {
@@ -196,10 +230,10 @@ export function SetValueEditorModal({
     sheet: {
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      borderTopWidth: 1,
+      borderTopWidth: 1.5,
       borderColor: colors.accentDim,
       backgroundColor: colors.surface,
-      paddingTop: 14,
+      paddingTop: 10,
       paddingHorizontal: 14,
       paddingBottom: 10,
       height: FIXED_SHEET_HEIGHT,
@@ -208,33 +242,6 @@ export function SetValueEditorModal({
       shadowRadius: 14,
       shadowOffset: { width: 0, height: -4 },
       elevation: 12,
-    },
-    closeBtn: {
-      position: 'absolute',
-      top: 10,
-      right: 12,
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.surfaceLight,
-      borderWidth: 1,
-      borderColor: colors.border,
-      zIndex: 4,
-    },
-    closeBtnText: {
-      color: colors.textMuted,
-      fontSize: 17,
-      fontFamily: fonts.bold,
-      lineHeight: 18,
-    },
-    title: {
-      color: colors.text,
-      fontSize: 19,
-      fontFamily: fonts.bold,
-      textAlign: 'center',
-      marginBottom: 10,
     },
     body: {
       flexDirection: 'row',
@@ -249,10 +256,30 @@ export function SetValueEditorModal({
       gap: 8,
       paddingTop: 8,
     },
+    enterBtn: {
+      width: 44,
+      height: 74,
+      marginTop: 12,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: colors.accent,
+      backgroundColor: colors.accent,
+    },
+    enterBtnDisabled: {
+      opacity: 0.45,
+    },
+    enterIcon: {
+      width: 18,
+      height: 18,
+      tintColor: '#000000',
+      resizeMode: 'contain',
+    },
     center: {
       flex: 1,
       borderRadius: 16,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: colors.accentDim,
       backgroundColor: colors.surfaceLight,
       paddingHorizontal: 10,
@@ -260,7 +287,7 @@ export function SetValueEditorModal({
     },
     currentValueWrap: {
       borderRadius: 12,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: colors.accentDim,
       backgroundColor: colors.accentDim,
       paddingVertical: 8,
@@ -292,7 +319,7 @@ export function SetValueEditorModal({
       flex: 1,
       minHeight: 46,
       borderRadius: 12,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: colors.border,
       backgroundColor: colors.surface,
       alignItems: 'center',
@@ -334,7 +361,7 @@ export function SetValueEditorModal({
       borderRadius: 10,
       overflow: 'hidden',
       backgroundColor: colors.surface,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: colors.border,
     },
     durationPicker: {
@@ -363,14 +390,15 @@ export function SetValueEditorModal({
       alignItems: 'center',
     },
     rirSelected: {
-      borderWidth: 1.5,
-      borderColor: colors.accent,
-      backgroundColor: colors.accentDim,
+      opacity: 1,
+    },
+    rirUnselected: {
+      opacity: 0.45,
     },
     doneBtn: {
       marginTop: 4,
       borderRadius: 12,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: colors.accent,
       backgroundColor: colors.accent,
       minHeight: 46,
@@ -392,26 +420,26 @@ export function SetValueEditorModal({
       }
     : undefined;
 
+  if (animated && !modalVisible) return null;
+  if (!animated && !visible) return null;
+
   return (
-    <Modal visible={modalVisible} animationType="none" transparent>
-      <View style={styles.wrapper}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
-        </Pressable>
+    <View style={styles.wrapper} pointerEvents="box-none">
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Animated.View style={[styles.overlay, { opacity: animated ? overlayOpacity : 1 }]} />
+      </View>
 
-        <Animated.View style={[styles.sheet, { transform: [{ translateY: sheetTranslateY }] }]}>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
-            <Text style={styles.closeBtnText}>✕</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>{headerTitle}</Text>
+      <Animated.View
+        pointerEvents="auto"
+        style={[styles.sheet, { transform: [{ translateY: animated ? sheetTranslateY : 0 }] }]}
+      >
+        <View style={styles.body}>
+          <View style={styles.rail}>
+            <ArrowButton direction="up" symbol="↑" enabled={canNavigate?.up !== false} onPress={onNavigate} />
+            <ArrowButton direction="left" symbol="←" enabled={canNavigate?.left !== false} onPress={onNavigate} />
+          </View>
 
-          <View style={styles.body}>
-            <View style={styles.rail}>
-              <ArrowButton direction="up" symbol="↑" enabled={canNavigate?.up !== false} onPress={onNavigate} />
-              <ArrowButton direction="left" symbol="←" enabled={canNavigate?.left !== false} onPress={onNavigate} />
-            </View>
-
-            <View style={styles.center}>
+          <View style={styles.center}>
               {isNumericEditor && (
                 <>
                   <View style={styles.keypadGrid}>
@@ -529,7 +557,8 @@ export function SetValueEditorModal({
                           value={value}
                           size={42}
                           onPress={() => onRirValueChange(value)}
-                          style={value === rirValue ? styles.rirSelected : undefined}
+                          textColorOverride={value !== null ? '#000000' : undefined}
+                          style={value === rirValue ? styles.rirSelected : styles.rirUnselected}
                         />
                       ))}
                     </View>
@@ -540,7 +569,8 @@ export function SetValueEditorModal({
                           value={value}
                           size={42}
                           onPress={() => onRirValueChange(value)}
-                          style={value === rirValue ? styles.rirSelected : undefined}
+                          textColorOverride={value !== null ? '#000000' : undefined}
+                          style={value === rirValue ? styles.rirSelected : styles.rirUnselected}
                         />
                       ))}
                     </View>
@@ -551,7 +581,8 @@ export function SetValueEditorModal({
                           value={value}
                           size={42}
                           onPress={() => onRirValueChange(value)}
-                          style={value === rirValue ? styles.rirSelected : undefined}
+                          textColorOverride={value !== null ? '#000000' : undefined}
+                          style={value === rirValue ? styles.rirSelected : styles.rirUnselected}
                         />
                       ))}
                     </View>
@@ -564,18 +595,24 @@ export function SetValueEditorModal({
                   <Text style={[styles.currentValue, styles.currentValueMuted]}>Unsupported field</Text>
                 </View>
               )}
-            </View>
-
-            <View style={styles.rail}>
-              <ArrowButton direction="down" symbol="↓" enabled={canNavigate?.down !== false} onPress={onNavigate} />
-              <ArrowButton direction="right" symbol="→" enabled={canNavigate?.right !== false} onPress={onNavigate} />
-            </View>
           </View>
-          <TouchableOpacity style={styles.doneBtn} onPress={onDone} activeOpacity={0.8}>
-            <Text style={styles.doneText}>Done</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
+
+          <View style={styles.rail}>
+            <ArrowButton direction="down" symbol="↓" enabled={canNavigate?.down !== false} onPress={onNavigate} />
+            <ArrowButton direction="right" symbol="→" enabled={canNavigate?.right !== false} onPress={onNavigate} />
+            <TouchableOpacity
+              style={styles.enterBtn}
+              onPress={handleEnterPress}
+              activeOpacity={0.7}
+            >
+              <Image source={require('../../../assets/icons/enter.png')} style={styles.enterIcon} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.doneBtn} onPress={onDone} activeOpacity={0.8}>
+          <Text style={styles.doneText}>Done</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
   );
 }

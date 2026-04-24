@@ -19,6 +19,17 @@ import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import Reanimated, {
+  cancelAnimation,
+  Easing as ReanimatedEasing,
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useAuthStore } from '../../stores/auth.store';
 import { useWorkoutStore } from '../../stores/workout.store';
 import { useProfileStore } from '../../stores/profile.store';
@@ -48,6 +59,7 @@ import {
   type SupersetGroups,
 } from '../../utils/superset';
 import { SetValueEditorModal } from '../ui/SetValueEditorModal';
+import { formatWeight } from '../../utils/units';
 import {
   EditableFieldKind,
   EditableCellRef,
@@ -58,7 +70,12 @@ import {
 
 const TAB_BAR_HEIGHT = 60;
 const SLIDE_IN_MS = 500;
-const SLIDE_OUT_MS = 300;
+const SLIDE_OUT_MS = 400;
+const HEADER_DRAG_DISMISS_THRESHOLD_RATIO = 0.4;
+const HEADER_DRAG_DISMISS_THRESHOLD_MAX = 400;
+const HEADER_DRAG_VELOCITY_PROJECTION = 0.12;
+const HEADER_DRAG_SETTLE_MS_MIN = 120;
+const HEADER_DRAG_SETTLE_MS_MAX = 240;
 const SESSION_ID_PATH_REGEX = /^\/profile\/[0-9a-fA-F-]{36}$/;
 const PROFILE_SESSION_PATH_REGEX = /^\/profile\/[^/]+$/;
 type TooltipWarningVariant = 'empty-finish' | 'first-entry-walkthrough';
@@ -221,11 +238,12 @@ export function WorkoutOverlay() {
     dismissRestTimer,
   } = useWorkoutStore();
 
-  const { expanded, minimize } = useWorkoutOverlay();
+  const { expanded, chromeHidden, minimize } = useWorkoutOverlay();
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
 
-  const slideAnim = useRef(new Animated.Value(screenHeight)).current;
+  const sheetTranslateY = useSharedValue(screenHeight);
+  const headerDragBaseY = useSharedValue(0);
   const [showFullScreen, setShowFullScreen] = useState(false);
 
   const [elapsed, setElapsed] = useState('0m 00s');
@@ -321,21 +339,67 @@ export function WorkoutOverlay() {
   useEffect(() => {
     if (expanded && session) {
       setShowFullScreen(true);
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: SLIDE_IN_MS,
-        useNativeDriver: true,
-      }).start();
+      sheetTranslateY.value = withTiming(0, { duration: SLIDE_IN_MS });
     } else {
-      Animated.timing(slideAnim, {
-        toValue: screenHeight,
-        duration: SLIDE_OUT_MS,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished) setShowFullScreen(false);
+      sheetTranslateY.value = withTiming(screenHeight, { duration: SLIDE_OUT_MS }, (finished) => {
+        if (finished) {
+          runOnJS(setShowFullScreen)(false);
+        }
       });
     }
-  }, [expanded, !!session]);
+  }, [expanded, screenHeight, session?.id, sheetTranslateY]);
+
+  useEffect(() => {
+    if (!showFullScreen) {
+      sheetTranslateY.value = screenHeight;
+    }
+  }, [screenHeight, sheetTranslateY, showFullScreen]);
+
+  const headerDragGesture = useMemo(() => Gesture.Pan()
+    .enabled(expanded)
+    .activeOffsetY(8)
+    .failOffsetX([-18, 18])
+    .onBegin(() => {
+      cancelAnimation(sheetTranslateY);
+      headerDragBaseY.value = sheetTranslateY.value;
+    })
+    .onUpdate((event) => {
+      const nextValue = Math.max(0, Math.min(screenHeight, headerDragBaseY.value + event.translationY));
+      sheetTranslateY.value = nextValue;
+    })
+    .onEnd((event) => {
+      const minimizeThreshold = Math.min(HEADER_DRAG_DISMISS_THRESHOLD_MAX, screenHeight * HEADER_DRAG_DISMISS_THRESHOLD_RATIO);
+      const projected = sheetTranslateY.value + Math.max(0, event.velocityY) * HEADER_DRAG_VELOCITY_PROJECTION;
+      const shouldMinimize = projected > minimizeThreshold;
+      const target = shouldMinimize ? screenHeight : 0;
+      const speed = Math.min(Math.abs(event.velocityY), 2200);
+      const duration = Math.max(
+        HEADER_DRAG_SETTLE_MS_MIN,
+        Math.min(HEADER_DRAG_SETTLE_MS_MAX, HEADER_DRAG_SETTLE_MS_MAX - Math.round(speed / 24)),
+      );
+      sheetTranslateY.value = withTiming(target, {
+        duration,
+        easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+      }, (finished) => {
+        if (finished && shouldMinimize) {
+          runOnJS(minimize)();
+        }
+      });
+    }),
+  [expanded, headerDragBaseY, minimize, screenHeight, sheetTranslateY]);
+
+  const animatedSheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetTranslateY.value }],
+  }));
+
+  const animatedBackdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      sheetTranslateY.value,
+      [0, screenHeight],
+      [0.5, 0],
+      Extrapolation.CLAMP,
+    ),
+  }));
 
   useEffect(() => {
     if (!session) return;
@@ -727,6 +791,78 @@ export function WorkoutOverlay() {
     }
   }, [updateRowLocal]);
 
+  const persistCellValue = useCallback((cell: EditableCellRef, nextValue: string | number | null) => {
+    if (!cell.entryId) return;
+    let updates: Record<string, string> | null = null;
+
+    if (cell.field === 'rir') {
+      updates = { rir: nextValue == null ? '' : String(nextValue) };
+    } else if (cell.field === 'duration') {
+      updates = { duration: String(nextValue ?? 0) };
+    } else if (cell.field === 'weight') {
+      updates = { weight: String(nextValue ?? '') };
+    } else if (cell.field === 'reps') {
+      updates = { reps: String(nextValue ?? '') };
+    } else if (cell.field === 'distance') {
+      updates = { distance: String(nextValue ?? '') };
+    }
+
+    if (!updates) return;
+    updateRowLocal(cell.rowId, cell.entryId, updates);
+    void updateRow(cell.rowId, cell.entryId, updates).catch((error: unknown) => {
+      Alert.alert('Error', (error as Error).message);
+    });
+  }, [updateRow, updateRowLocal]);
+
+  const getSuggestedWorkoutCellValue = useCallback((cell: EditableCellRef): string | null => {
+    if (!cell.entryId) return null;
+    const entryRows = sortWorkoutRowsForEditing(rows[cell.entryId] ?? []);
+    const rowIndex = entryRows.findIndex((item) => item.id === cell.rowId);
+    if (rowIndex < 0) return null;
+    const row = entryRows[rowIndex];
+
+    const findPrevious = (selector: (item: WorkoutRow) => string) => {
+      for (let i = rowIndex - 1; i >= 0; i--) {
+        const value = selector(entryRows[i])?.trim();
+        if (value) return value;
+      }
+      return '';
+    };
+
+    if (cell.field === 'weight') {
+      const prev = findPrevious((item) => item.weight);
+      if (prev) return prev;
+      if (row.target_weight > 0) return formatWeight(row.target_weight, weightUnit);
+      return null;
+    }
+    if (cell.field === 'reps') {
+      const prev = findPrevious((item) => item.reps);
+      if (prev) return prev;
+      if (row.target_reps_min > 0 || row.target_reps_max > 0) {
+        const fallback = row.target_reps_max > 0 ? row.target_reps_max : row.target_reps_min;
+        return fallback > 0 ? String(fallback) : null;
+      }
+      return null;
+    }
+    if (cell.field === 'duration') {
+      const prev = findPrevious((item) => item.duration);
+      if (prev) return prev;
+      if (row.target_duration > 0) return String(row.target_duration);
+      return null;
+    }
+    if (cell.field === 'distance') {
+      const prev = findPrevious((item) => item.distance);
+      if (prev) return prev;
+      if (row.target_distance > 0) return String(row.target_distance);
+      return null;
+    }
+    if (cell.field === 'rir') {
+      const prev = findPrevious((item) => item.rir);
+      return prev || null;
+    }
+    return null;
+  }, [rows, weightUnit]);
+
   const openValueEditorForCell = useCallback((cell: EditableCellRef) => {
     const row = getCellRow(cell);
     if (!row) return;
@@ -818,6 +954,90 @@ export function WorkoutOverlay() {
     scrollCellIntoView(nextCell);
     openValueEditorForCell(nextCell);
   }, [collapsedCards, commitValueEditorCell, editableRows, openValueEditorForCell, scrollCellIntoView, toggleCollapse, valueEditorCell]);
+
+  const maybeAutoCompleteRirCell = useCallback((cell: EditableCellRef, nextRir: number | null) => {
+    if (nextRir == null || !cell.entryId) return;
+    const key = `${cell.entryId}:${cell.rowId}`;
+    const row = getCellRow(cell);
+    if (!row || row.is_completed || pendingRirAutoCompleteRef.current.has(key)) return;
+
+    pendingRirAutoCompleteRef.current.add(key);
+    handleStartRestTimer();
+    void toggleRow(cell.rowId, cell.entryId)
+      .catch((error: unknown) => {
+        Alert.alert('Error', (error as Error).message);
+      })
+      .finally(() => {
+        pendingRirAutoCompleteRef.current.delete(key);
+      });
+  }, [getCellRow, handleStartRestTimer, toggleRow]);
+
+  const handleValueEditorEnter = useCallback(() => {
+    if (!valueEditorCell) return;
+    const nextCell = findAdjacentWorkoutCell(editableRows, valueEditorCell, 'right');
+
+    if (valueEditorCell.field === 'rir') {
+      let acceptedRir: number | null = null;
+      if (valueEditorRir != null) {
+        acceptedRir = valueEditorRir;
+        persistCellValue(valueEditorCell, valueEditorRir);
+      } else {
+        const suggested = getSuggestedWorkoutCellValue(valueEditorCell);
+        if (suggested != null && suggested !== '') {
+          const parsed = parseFloat(suggested);
+          if (!Number.isNaN(parsed)) {
+            acceptedRir = parsed;
+            setValueEditorRir(parsed);
+            persistCellValue(valueEditorCell, parsed);
+          }
+        }
+      }
+      maybeAutoCompleteRirCell(valueEditorCell, acceptedRir);
+    } else if (valueEditorCell.field === 'duration') {
+      if (valueEditorDuration > 0) {
+        persistCellValue(valueEditorCell, valueEditorDuration);
+      } else {
+        const suggested = getSuggestedWorkoutCellValue(valueEditorCell);
+        if (suggested != null && suggested !== '') {
+          const parsed = parseFloat(suggested) || 0;
+          setValueEditorDuration(parsed);
+          persistCellValue(valueEditorCell, parsed);
+        }
+      }
+    } else if (isNumericEditableField(valueEditorCell.field)) {
+      const typed = (valueEditorNumeric ?? '').trim();
+      if (typed.length > 0) {
+        persistCellValue(valueEditorCell, typed);
+      } else {
+        const suggested = getSuggestedWorkoutCellValue(valueEditorCell);
+        if (suggested != null && suggested !== '') {
+          setValueEditorNumeric(suggested);
+          persistCellValue(valueEditorCell, suggested);
+        }
+      }
+    }
+
+    if (!nextCell) return;
+
+    if (nextCell.entryId && nextCell.entryId !== valueEditorCell.entryId && (collapsedCards[nextCell.entryId] ?? false)) {
+      toggleCollapse(nextCell.entryId);
+    }
+    scrollCellIntoView(nextCell);
+    openValueEditorForCell(nextCell);
+  }, [
+    collapsedCards,
+    editableRows,
+    getSuggestedWorkoutCellValue,
+    maybeAutoCompleteRirCell,
+    openValueEditorForCell,
+    persistCellValue,
+    scrollCellIntoView,
+    toggleCollapse,
+    valueEditorCell,
+    valueEditorDuration,
+    valueEditorNumeric,
+    valueEditorRir,
+  ]);
 
   const valueEditorCanNavigate = useMemo(() => {
     if (!valueEditorCell) {
@@ -1053,8 +1273,16 @@ export function WorkoutOverlay() {
   const styles = useMemo(() => StyleSheet.create({
     fullScreen: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: colors.background,
+      backgroundColor: 'transparent',
       zIndex: 100,
+    },
+    sheet: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    backdropTint: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: '#000000',
     },
     pillContainer: {
       position: 'absolute',
@@ -1064,13 +1292,24 @@ export function WorkoutOverlay() {
       zIndex: 99,
     },
     header: {
-      flexDirection: 'row',
-      alignItems: 'center',
       paddingHorizontal: 16,
+      paddingTop: 6,
       paddingBottom: 10,
       backgroundColor: colors.background,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+    },
+    headerGrip: {
+      alignSelf: 'center',
+      width: 44,
+      height: 5,
+      borderRadius: 99,
+      backgroundColor: colors.border,
+      marginBottom: 8,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
     },
     backBtn: {
       paddingVertical: 6,
@@ -1478,32 +1717,39 @@ export function WorkoutOverlay() {
 
   return (
     <>
-      {!expanded && (
+      {!expanded && !chromeHidden && (
         <View style={[styles.pillContainer, { bottom: pillBottomOffset }]}>
           <WorkoutPill />
         </View>
       )}
 
       {showFullScreen && (
-        <Animated.View style={[styles.fullScreen, { paddingTop: insets.top, transform: [{ translateY: slideAnim }] }]}>
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            <View style={styles.header}>
-              <TouchableOpacity onPress={minimize} activeOpacity={0.7} style={styles.backBtn}>
-                <Text style={styles.chevronDown}>&#x25BC;</Text>
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Workout</Text>
-              <TouchableOpacity
-                style={[styles.finishBtn, isCompleting && styles.finishBtnDisabled]}
-                onPress={handleComplete}
-                activeOpacity={0.7}
-                disabled={isCompleting}
-              >
-                <Text style={styles.finishText}>{isCompleting ? 'Finishing...' : 'Finish'}</Text>
-              </TouchableOpacity>
-            </View>
+        <View style={[styles.fullScreen, { paddingTop: insets.top }]}>
+          <Reanimated.View pointerEvents="none" style={[styles.backdropTint, animatedBackdropStyle]} />
+          <Reanimated.View style={[styles.sheet, animatedSheetStyle]}>
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+            <GestureDetector gesture={headerDragGesture}>
+              <View style={styles.header}>
+                <View style={styles.headerGrip} />
+                <View style={styles.headerRow}>
+                  <TouchableOpacity onPress={minimize} activeOpacity={0.7} style={styles.backBtn}>
+                    <Text style={styles.chevronDown}>&#x25BC;</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.headerTitle}>Workout</Text>
+                  <TouchableOpacity
+                    style={[styles.finishBtn, isCompleting && styles.finishBtnDisabled]}
+                    onPress={handleComplete}
+                    activeOpacity={0.7}
+                    disabled={isCompleting}
+                  >
+                    <Text style={styles.finishText}>{isCompleting ? 'Finishing...' : 'Finish'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </GestureDetector>
             <View style={styles.infoBar}>
               <Text style={styles.elapsedTimer}>{elapsed}</Text>
               <TouchableOpacity onPress={() => setShowTimerSettings(true)} activeOpacity={0.7} style={styles.timerIconBtn}>
@@ -1844,6 +2090,7 @@ export function WorkoutOverlay() {
               onClose={() => { void closeValueEditor(); }}
               onDone={() => { void closeValueEditor(); }}
               onNavigate={handleValueEditorNavigate}
+              onEnter={handleValueEditorEnter}
               onNumericValueChange={(nextValue) => {
                 setValueEditorNumeric(nextValue);
                 if (valueEditorCell && isNumericEditableField(valueEditorCell.field)) {
@@ -1860,17 +2107,7 @@ export function WorkoutOverlay() {
                 setValueEditorRir(nextValue);
                 if (valueEditorCell?.field === 'rir') {
                   applyLocalCellValue(valueEditorCell, nextValue);
-                  if (nextValue !== null && valueEditorCell.entryId) {
-                    const key = `${valueEditorCell.entryId}:${valueEditorCell.rowId}`;
-                    const row = getCellRow(valueEditorCell);
-                    if (row && !row.is_completed && !pendingRirAutoCompleteRef.current.has(key)) {
-                      pendingRirAutoCompleteRef.current.add(key);
-                      void handleToggle(valueEditorCell.rowId, valueEditorCell.entryId)
-                        .finally(() => {
-                          pendingRirAutoCompleteRef.current.delete(key);
-                        });
-                    }
-                  }
+                  maybeAutoCompleteRirCell(valueEditorCell, nextValue);
                 }
               }}
             />
@@ -1909,8 +2146,9 @@ export function WorkoutOverlay() {
               selectedExerciseId={swapEntryId ? (exercises.find((entry) => entry.id === swapEntryId)?.exercise_id ?? null) : null}
               onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
             />
-          </KeyboardAvoidingView>
-        </Animated.View>
+            </KeyboardAvoidingView>
+          </Reanimated.View>
+        </View>
       )}
     </>
   );
