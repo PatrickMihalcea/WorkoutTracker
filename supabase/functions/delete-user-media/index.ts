@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.2';
 import {
   S3Client,
   ListObjectsV2Command,
+  DeleteObjectCommand,
   DeleteObjectsCommand,
 } from 'npm:@aws-sdk/client-s3@3.908.0';
 
@@ -10,6 +11,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+interface DeleteObjectsErrorLike {
+  Code?: string;
+  Message?: string;
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -27,6 +33,22 @@ function chunk<T>(items: T[], size: number): T[][] {
     result.push(items.slice(i, i + size));
   }
   return result;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim().length > 0) return error;
+  return 'Unknown error';
+}
+
+function isNoSuchKeyError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const shaped = error as { name?: unknown; Code?: unknown; message?: unknown };
+  return (
+    shaped.name === 'NoSuchKey' ||
+    shaped.Code === 'NoSuchKey' ||
+    (typeof shaped.message === 'string' && shaped.message.includes('NoSuchKey'))
+  );
 }
 
 Deno.serve(async (request) => {
@@ -117,15 +139,51 @@ Deno.serve(async (request) => {
     return jsonResponse({ deletedCount: 0, prefix });
   }
 
+  let deletedCount = 0;
   for (const keyBatch of chunk(keys, 1000)) {
-    await s3.send(new DeleteObjectsCommand({
-      Bucket: r2Bucket,
-      Delete: {
-        Objects: keyBatch.map((key) => ({ Key: key })),
-        Quiet: true,
-      },
-    }));
+    try {
+      const result = await s3.send(new DeleteObjectsCommand({
+        Bucket: r2Bucket,
+        Delete: {
+          Objects: keyBatch.map((key) => ({ Key: key })),
+          Quiet: true,
+        },
+      }));
+
+      const blockingErrors = (result.Errors ?? [])
+        .filter((entry): entry is DeleteObjectsErrorLike => !!entry)
+        .filter((entry) => (entry.Code ?? '') !== 'NoSuchKey');
+      if (blockingErrors.length > 0) {
+        const first = blockingErrors[0];
+        const details = first.Message ? `${first.Code ?? 'Error'}: ${first.Message}` : (first.Code ?? 'DeleteObjects failed.');
+        return jsonResponse({ error: `Failed to delete one or more media objects: ${details}` }, 502);
+      }
+
+      const deletedInBatch = result.Deleted?.length ?? keyBatch.length;
+      deletedCount += deletedInBatch;
+    } catch (error: unknown) {
+      if (isNoSuchKeyError(error)) {
+        // Some R2 setups can fail the whole batch on a missing key.
+        // Retry per-object so one stale key does not block deleting the rest.
+        for (const key of keyBatch) {
+          try {
+            await s3.send(new DeleteObjectCommand({
+              Bucket: r2Bucket,
+              Key: key,
+            }));
+            deletedCount += 1;
+          } catch (singleError: unknown) {
+            if (isNoSuchKeyError(singleError)) {
+              continue;
+            }
+            return jsonResponse({ error: `Failed to delete media object "${key}": ${getErrorMessage(singleError)}` }, 500);
+          }
+        }
+        continue;
+      }
+      return jsonResponse({ error: `Failed to delete media from R2: ${getErrorMessage(error)}` }, 500);
+    }
   }
 
-  return jsonResponse({ deletedCount: keys.length, prefix });
+  return jsonResponse({ deletedCount, prefix });
 });

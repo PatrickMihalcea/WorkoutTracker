@@ -44,10 +44,11 @@ function getFocusedLeafRouteName(route: { state?: unknown; name?: string }): str
 function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const { chromeHidden } = useWorkoutOverlay();
   const focusedTab = state.routes[state.index];
   const focusedLeafRoute = getFocusedLeafRouteName(focusedTab as any);
   const hideOnWorkoutDetails = focusedTab?.name === 'profile' && focusedLeafRoute === '[sessionId]';
-  if (hideOnWorkoutDetails) {
+  if (hideOnWorkoutDetails || chromeHidden) {
     return null;
   }
 

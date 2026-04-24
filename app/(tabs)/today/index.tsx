@@ -308,6 +308,7 @@ export default function HomeScreen() {
   const wUnit = profile?.weight_unit ?? 'kg';
   const dUnit = profile?.distance_unit ?? 'km';
   const [refreshing, setRefreshing] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const [showChooseModal, setShowChooseModal] = useState(false);
@@ -348,22 +349,28 @@ export default function HomeScreen() {
 
   const handleStartWorkout = async () => {
     const target = chosenDay ?? todaysWorkout;
-    if (!user || !target) return;
+    if (!user || !target || starting) return;
+    setStarting(true);
     try {
       await startWorkout(user.id, target.id, target.exercises, target.week_index);
       expandWorkout();
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
+    } finally {
+      setStarting(false);
     }
   };
 
   const handleStartEmptyWorkout = async () => {
-    if (!user) return;
+    if (!user || starting) return;
+    setStarting(true);
     try {
       await startWorkout(user.id, null, []);
       expandWorkout();
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -543,12 +550,15 @@ export default function HomeScreen() {
                     title="Choose Other Workout"
                     variant="secondary"
                     onPress={openChooseModal}
+                    disabled={starting}
                     style={styles.chooseOtherBtn}
                   />
                   <Button
                     title="Start Empty Workout"
                     variant="secondary"
                     onPress={handleStartEmptyWorkout}
+                    loading={starting}
+                    disabled={starting}
                     style={styles.startEmptyBtn}
                   />
                 </View>
@@ -697,6 +707,8 @@ export default function HomeScreen() {
                   variant="accent"
                   onPress={handleStartWorkout}
                   size="lg"
+                  loading={starting}
+                  disabled={starting}
                   style={styles.primaryActionBtn}
                 />
                 <View style={styles.secondaryActionsRow}>
@@ -704,12 +716,15 @@ export default function HomeScreen() {
                     title="Choose Other Workout"
                     variant="secondary"
                     onPress={openChooseModal}
+                    disabled={starting}
                     style={styles.chooseOtherBtn}
                   />
                   <Button
                     title="Start Empty Workout"
                     variant="secondary"
                     onPress={handleStartEmptyWorkout}
+                    loading={starting}
+                    disabled={starting}
                     style={styles.startEmptyBtn}
                   />
                 </View>

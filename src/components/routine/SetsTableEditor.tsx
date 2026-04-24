@@ -1,8 +1,7 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -14,7 +13,9 @@ import { WeightUnit, DistanceUnit, ExerciseType } from '../../models';
 import { weightUnitLabel, distanceUnitLabel, parseWeightToKg } from '../../utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
 import { formatDurationValue } from '../../utils/duration';
-import { RirCircle, RirPickerModal, DurationPickerModal } from '../ui';
+import { RirCircle, SetValueEditorModal } from '../ui';
+import { EditableFieldKind, allowsDecimalForField, EditorDirection } from '../set-editor/types';
+import { Portal } from '../ui/PortalHost';
 
 export interface TemplateSetRow {
   weight: string;
@@ -39,7 +40,6 @@ export const defaultSetRow = (isWarmup = false): TemplateSetRow => ({
 });
 
 type TemplateField = 'weight' | 'repsMin' | 'repsMax' | 'rir' | 'duration' | 'distance';
-type RepInputField = 'repsMin' | 'repsMax';
 
 export function getSuggestion(
   rows: TemplateSetRow[],
@@ -204,63 +204,375 @@ interface SetsTableEditorProps {
   wUnit: WeightUnit;
   dUnit?: DistanceUnit;
   exerciseType?: ExerciseType | string;
+  onEditorVisibilityChange?: (visible: boolean) => void;
+  onFocusRow?: (rowIndex: number) => void;
+  onFocusCell?: (cell: TableEditorCell) => void;
+  onNavigateBeyondBoundary?: (direction: EditorDirection, fromField: EditableFieldKind, fromFieldIndex: number) => boolean;
+  canNavigateBeyondBoundary?: (direction: EditorDirection, fromField: EditableFieldKind) => boolean;
+  externalNavigationRequest?: ExternalSetEditorNavigationRequest;
+  forceDismissToken?: number;
+  onForceDismissHandled?: () => void;
+  renderValueEditorInPortal?: boolean;
+  valueEditorAnimated?: boolean;
 }
 
-export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, dUnit = 'km', exerciseType }: SetsTableEditorProps) {
+export interface TableEditorCell {
+  rowIndex: number;
+  field: EditableFieldKind;
+}
+
+interface TableEditorRow {
+  rowIndex: number;
+  fields: EditableFieldKind[];
+}
+
+export interface ExternalSetEditorNavigationRequest {
+  token: number;
+  direction: EditorDirection;
+  preferredField?: EditableFieldKind;
+  preferredFieldIndex?: number;
+  /** When set, navigate to this specific row index instead of first/last. */
+  targetRowIndex?: number;
+}
+
+export function SetsTableEditor({
+  rows,
+  setRows,
+  repRange,
+  setRepRange,
+  wUnit,
+  dUnit = 'km',
+  exerciseType,
+  onEditorVisibilityChange,
+  onFocusRow,
+  onFocusCell,
+  onNavigateBeyondBoundary,
+  canNavigateBeyondBoundary,
+  externalNavigationRequest,
+  forceDismissToken,
+  onForceDismissHandled,
+  renderValueEditorInPortal = false,
+  valueEditorAnimated = true,
+}: SetsTableEditorProps) {
   const { colors } = useTheme();
-  const [rirPickerIndex, setRirPickerIndex] = useState<number | null>(null);
-  const [durationPickerIndex, setDurationPickerIndex] = useState<number | null>(null);
-  const repInputRefs = useRef<Record<string, TextInput | null>>({});
+  const [valueEditorVisible, setValueEditorVisible] = useState(false);
+  const [valueEditorCell, setValueEditorCell] = useState<TableEditorCell | null>(null);
+  const [valueEditorNumeric, setValueEditorNumeric] = useState('');
+  const [valueEditorDuration, setValueEditorDuration] = useState(0);
+  const [valueEditorRir, setValueEditorRir] = useState<number | null>(null);
+  const [rowLayoutY, setRowLayoutY] = useState<Record<number, number>>({});
+  const rowsScrollRef = React.useRef<ScrollView | null>(null);
   const config = getExerciseTypeConfig(exerciseType);
 
   const showWeight = config.fields.some((f) => f.key === 'weight');
   const showReps = config.fields.some((f) => f.key === 'reps');
   const showDuration = config.fields.some((f) => f.key === 'duration');
   const showDistance = config.fields.some((f) => f.key === 'distance');
+  const appliedExternalNavTokenRef = React.useRef<number | null>(null);
+  const appliedForceDismissTokenRef = React.useRef<number | undefined>(undefined);
+  const lastReportedVisibilityRef = React.useRef(false);
+  const onEditorVisibilityChangeRef = React.useRef(onEditorVisibilityChange);
 
-  const handleRirSelect = (value: number | null) => {
-    if (rirPickerIndex === null) return;
-    updateSetRow(rows, setRows, rirPickerIndex, 'rir', value != null ? String(value) : '', repRange);
-    setRirPickerIndex(null);
+  useEffect(() => {
+    onEditorVisibilityChangeRef.current = onEditorVisibilityChange;
+  }, [onEditorVisibilityChange]);
+
+  const tableEditorRows = useMemo<TableEditorRow[]>(() => {
+    const fields: EditableFieldKind[] = [];
+    if (showWeight) fields.push('weight');
+    if (showReps) {
+      if (repRange) {
+        fields.push('repsMin');
+        fields.push('repsMax');
+      } else {
+        fields.push('reps');
+      }
+    }
+    if (showDuration) fields.push('duration');
+    if (showDistance) fields.push('distance');
+    if (config.showRir) fields.push('rir');
+    return rows.map((_row, rowIndex) => ({ rowIndex, fields }));
+  }, [config.showRir, repRange, rows, showDistance, showDuration, showReps, showWeight]);
+
+  const scrollCellIntoView = useCallback((cell: TableEditorCell, animated = true) => {
+    const targetY = rowLayoutY[cell.rowIndex];
+    if (typeof targetY !== 'number') return;
+    requestAnimationFrame(() => {
+      // Tiny offset so the active row is always near the top of the inner scroll —
+      // keeps it at a consistent on-screen height regardless of which row is selected.
+      rowsScrollRef.current?.scrollTo({ y: Math.max(0, targetY - 6), animated });
+    });
+  }, [rowLayoutY]);
+
+  const openValueEditorForCell = (cell: TableEditorCell, animated = true) => {
+    const row = rows[cell.rowIndex];
+    if (!row) return;
+    scrollCellIntoView(cell, animated);
+    onFocusRow?.(cell.rowIndex);
+    onFocusCell?.(cell);
+
+    setValueEditorCell(cell);
+    if (cell.field === 'rir') {
+      const rirValue = resolveValue(rows, cell.rowIndex, 'rir');
+      setValueEditorRir(rirValue ? parseFloat(rirValue) : null);
+    } else if (cell.field === 'duration') {
+      const durationValue = resolveValue(rows, cell.rowIndex, 'duration');
+      setValueEditorDuration(durationValue ? parseFloat(durationValue) || 0 : 0);
+    } else if (cell.field === 'weight') {
+      setValueEditorNumeric(resolveValue(rows, cell.rowIndex, 'weight'));
+    } else if (cell.field === 'reps') {
+      setValueEditorNumeric(resolveValue(rows, cell.rowIndex, 'repsMin'));
+    } else if (cell.field === 'repsMin') {
+      setValueEditorNumeric(resolveValue(rows, cell.rowIndex, 'repsMin'));
+    } else if (cell.field === 'repsMax') {
+      setValueEditorNumeric(resolveValue(rows, cell.rowIndex, 'repsMax'));
+    } else if (cell.field === 'distance') {
+      setValueEditorNumeric(resolveValue(rows, cell.rowIndex, 'distance'));
+    } else {
+      setValueEditorNumeric('');
+    }
+    setValueEditorVisible(true);
   };
 
-  const currentRirValue = rirPickerIndex !== null
-    ? (() => {
-        const v = resolveValue(rows, rirPickerIndex, 'rir');
-        return v ? parseFloat(v) : null;
-      })()
-    : null;
-
-  const repInputKey = (rowIndex: number, field: RepInputField) => `${rowIndex}:${field}`;
-
-  const setRepInputRef = (rowIndex: number, field: RepInputField) => (input: TextInput | null) => {
-    repInputRefs.current[repInputKey(rowIndex, field)] = input;
+  const applyCellValue = (cell: TableEditorCell, value: string | number | null) => {
+    if (cell.field === 'rir') {
+      updateSetRow(rows, setRows, cell.rowIndex, 'rir', value == null ? '' : String(value), repRange);
+      return;
+    }
+    if (cell.field === 'duration') {
+      updateSetRow(rows, setRows, cell.rowIndex, 'duration', String(value ?? 0), repRange);
+      return;
+    }
+    if (cell.field === 'weight') {
+      updateSetRow(rows, setRows, cell.rowIndex, 'weight', String(value ?? ''), repRange);
+      return;
+    }
+    if (cell.field === 'reps') {
+      updateSetRow(rows, setRows, cell.rowIndex, 'repsMin', String(value ?? ''), repRange);
+      return;
+    }
+    if (cell.field === 'repsMin') {
+      updateSetRow(rows, setRows, cell.rowIndex, 'repsMin', String(value ?? ''), repRange);
+      return;
+    }
+    if (cell.field === 'repsMax') {
+      updateSetRow(rows, setRows, cell.rowIndex, 'repsMax', String(value ?? ''), repRange);
+      return;
+    }
+    if (cell.field === 'distance') {
+      updateSetRow(rows, setRows, cell.rowIndex, 'distance', String(value ?? ''), repRange);
+    }
   };
 
-  const handleRepInputBlur = (rowIndex: number, field: RepInputField) => {
-    if (!repRange) return;
-    const isInvalid = !validateRepRange(rows, { rowIndex, showAlert: false, ignoreIncomplete: true });
-    if (!isInvalid) return;
+  const findAdjacentCell = (cell: TableEditorCell, direction: 'up' | 'down' | 'left' | 'right'): TableEditorCell | null => {
+    const rowIndex = tableEditorRows.findIndex((row) => row.rowIndex === cell.rowIndex);
+    if (rowIndex < 0) return null;
+    const row = tableEditorRows[rowIndex];
+    const fieldIndex = row.fields.indexOf(cell.field);
+    if (fieldIndex < 0) return null;
 
-    setTimeout(() => {
-      const focusedInput = TextInput.State.currentlyFocusedInput?.();
-      if (focusedInput) return;
+    if (direction === 'left') {
+      if (fieldIndex > 0) return { rowIndex: row.rowIndex, field: row.fields[fieldIndex - 1] };
+      const prev = tableEditorRows[rowIndex - 1];
+      if (!prev) return null;
+      return { rowIndex: prev.rowIndex, field: prev.fields[prev.fields.length - 1] };
+    }
 
-      const stillInvalid = !validateRepRange(rows, { rowIndex, showAlert: false, ignoreIncomplete: true });
-      if (!stillInvalid) return;
+    if (direction === 'right') {
+      if (fieldIndex < row.fields.length - 1) return { rowIndex: row.rowIndex, field: row.fields[fieldIndex + 1] };
+      const next = tableEditorRows[rowIndex + 1];
+      if (!next) return null;
+      return { rowIndex: next.rowIndex, field: next.fields[0] };
+    }
 
-      validateRepRange(rows, { rowIndex, ignoreIncomplete: true, showAlert: true });
-      const targetInput = repInputRefs.current[repInputKey(rowIndex, field)];
-      targetInput?.focus();
-    }, 40);
+    if (direction === 'up') {
+      const prev = tableEditorRows[rowIndex - 1];
+      if (!prev) return null;
+      return { rowIndex: prev.rowIndex, field: prev.fields[Math.min(fieldIndex, prev.fields.length - 1)] };
+    }
+
+    const next = tableEditorRows[rowIndex + 1];
+    if (!next) return null;
+    return { rowIndex: next.rowIndex, field: next.fields[Math.min(fieldIndex, next.fields.length - 1)] };
   };
+
+  const valueEditorCanNavigate = useMemo(() => {
+    if (!valueEditorCell) return { up: false, down: false, left: false, right: false };
+    const canBoundary = (direction: EditorDirection) =>
+      !!canNavigateBeyondBoundary?.(direction, valueEditorCell.field);
+    return {
+      up: !!findAdjacentCell(valueEditorCell, 'up') || canBoundary('up'),
+      down: !!findAdjacentCell(valueEditorCell, 'down') || canBoundary('down'),
+      left: !!findAdjacentCell(valueEditorCell, 'left') || canBoundary('left'),
+      right: !!findAdjacentCell(valueEditorCell, 'right') || canBoundary('right'),
+    };
+  }, [canNavigateBeyondBoundary, tableEditorRows, valueEditorCell]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toTemplateField = (field: EditableFieldKind): TemplateField => {
+    if (field === 'weight') return 'weight';
+    if (field === 'reps' || field === 'repsMin') return 'repsMin';
+    if (field === 'repsMax') return 'repsMax';
+    if (field === 'duration') return 'duration';
+    if (field === 'distance') return 'distance';
+    return 'rir';
+  };
+
+  const navigateFromCell = (cell: TableEditorCell, direction: EditorDirection) => {
+    const nextCell = findAdjacentCell(cell, direction);
+    if (!nextCell) {
+      const currentRow = tableEditorRows.find((row) => row.rowIndex === cell.rowIndex);
+      const fromFieldIndex = currentRow ? currentRow.fields.indexOf(cell.field) : -1;
+      onNavigateBeyondBoundary?.(direction, cell.field, Math.max(0, fromFieldIndex));
+      return;
+    }
+    openValueEditorForCell(nextCell, false);
+  };
+
+  const acceptCurrentCellValue = (cell: TableEditorCell) => {
+    if (cell.field === 'rir') {
+      if (valueEditorRir != null) {
+        applyCellValue(cell, valueEditorRir);
+        return;
+      }
+      const suggested = getSuggestion(rows, cell.rowIndex, 'rir');
+      if (suggested !== '') {
+        applyCellValue(cell, parseFloat(suggested));
+      }
+      return;
+    }
+
+    if (cell.field === 'duration') {
+      if (valueEditorDuration > 0) {
+        applyCellValue(cell, valueEditorDuration);
+        return;
+      }
+      const suggested = getSuggestion(rows, cell.rowIndex, 'duration');
+      if (suggested !== '') {
+        applyCellValue(cell, parseFloat(suggested) || 0);
+      }
+      return;
+    }
+
+    const templateField = toTemplateField(cell.field);
+    const typed = (valueEditorNumeric ?? '').trim();
+    if (typed.length > 0) {
+      applyCellValue(cell, typed);
+      return;
+    }
+    const suggested = getSuggestion(rows, cell.rowIndex, templateField);
+    if (suggested !== '') {
+      applyCellValue(cell, suggested);
+    }
+  };
+
+  // Validates rep range before leaving a repsMin/repsMax cell.
+  // Calls `action` only when the range is valid; otherwise alerts and re-opens the cell.
+  const withRepRangeValidation = (cell: TableEditorCell, action: () => void) => {
+    if (!repRange || (cell.field !== 'repsMin' && cell.field !== 'repsMax')) {
+      action();
+      return;
+    }
+    const minStr = resolveValue(rows, cell.rowIndex, 'repsMin');
+    const maxStr = resolveValue(rows, cell.rowIndex, 'repsMax');
+    const minVal = parseFloat(minStr);
+    const maxVal = parseFloat(maxStr);
+    if (!isNaN(minVal) && !isNaN(maxVal) && minVal > maxVal) {
+      Alert.alert('Invalid rep range', 'Min reps cannot be greater than max reps.');
+      openValueEditorForCell(cell, false);
+      return;
+    }
+    action();
+  };
+
+  const handleModalClose = () => {
+    if (!valueEditorCell) { setValueEditorVisible(false); setValueEditorCell(null); return; }
+    withRepRangeValidation(valueEditorCell, () => { setValueEditorVisible(false); setValueEditorCell(null); });
+  };
+
+  const handleModalNavigate = (direction: EditorDirection) => {
+    if (!valueEditorCell) return;
+    withRepRangeValidation(valueEditorCell, () => navigateFromCell(valueEditorCell, direction));
+  };
+
+  const handleModalEnter = () => {
+    if (!valueEditorCell) return;
+    withRepRangeValidation(valueEditorCell, () => {
+      acceptCurrentCellValue(valueEditorCell);
+      navigateFromCell(valueEditorCell, 'right');
+    });
+  };
+
+  useEffect(() => {
+    if (!valueEditorCell) return;
+    const row = tableEditorRows.find((item) => item.rowIndex === valueEditorCell.rowIndex);
+    if (!row || !row.fields.includes(valueEditorCell.field)) {
+      setValueEditorVisible(false);
+      setValueEditorCell(null);
+    }
+  }, [tableEditorRows, valueEditorCell]);
+
+  useEffect(() => {
+    if (lastReportedVisibilityRef.current === valueEditorVisible) return;
+    lastReportedVisibilityRef.current = valueEditorVisible;
+    onEditorVisibilityChangeRef.current?.(valueEditorVisible);
+  }, [valueEditorVisible]);
+
+  useEffect(() => () => {
+    if (!lastReportedVisibilityRef.current) return;
+    lastReportedVisibilityRef.current = false;
+    onEditorVisibilityChangeRef.current?.(false);
+  }, []);
+
+  useEffect(() => {
+    if (!externalNavigationRequest) return;
+    if (appliedExternalNavTokenRef.current === externalNavigationRequest.token) return;
+    appliedExternalNavTokenRef.current = externalNavigationRequest.token;
+    if (tableEditorRows.length === 0) return;
+    const { targetRowIndex } = externalNavigationRequest;
+    const targetRow = typeof targetRowIndex === 'number'
+      ? (tableEditorRows.find((r) => r.rowIndex === targetRowIndex) ?? tableEditorRows[0])
+      : externalNavigationRequest.direction === 'up' || externalNavigationRequest.direction === 'left'
+        ? tableEditorRows[tableEditorRows.length - 1]
+        : tableEditorRows[0];
+    if (!targetRow || targetRow.fields.length === 0) return;
+    const requestedField = externalNavigationRequest.preferredField;
+    const requestedFieldIndex = externalNavigationRequest.preferredFieldIndex;
+    let targetField: EditableFieldKind | null = null;
+    if (typeof requestedFieldIndex === 'number' && Number.isFinite(requestedFieldIndex)) {
+      const clampedIndex = Math.max(0, Math.min(targetRow.fields.length - 1, requestedFieldIndex));
+      targetField = targetRow.fields[clampedIndex] ?? null;
+    } else if (requestedField && targetRow.fields.includes(requestedField)) {
+      targetField = requestedField;
+    } else if (externalNavigationRequest.direction === 'left') {
+      targetField = targetRow.fields[targetRow.fields.length - 1];
+    } else {
+      targetField = targetRow.fields[0];
+    }
+    if (!targetField) return;
+    openValueEditorForCell({ rowIndex: targetRow.rowIndex, field: targetField }, false);
+  }, [externalNavigationRequest, tableEditorRows]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (forceDismissToken == null) return;
+    if (appliedForceDismissTokenRef.current === forceDismissToken) return;
+    appliedForceDismissTokenRef.current = forceDismissToken;
+    if (valueEditorVisible) {
+      setValueEditorVisible(false);
+      setValueEditorCell(null);
+    }
+    onForceDismissHandled?.();
+  }, [forceDismissToken, onForceDismissHandled, valueEditorVisible]);
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
       marginBottom: 16,
     },
     rowsScroll: {
-      maxHeight: 360,
+      maxHeight: 330,
+      flexGrow: 0,
+    },
+    rowsScrollContent: {
+      paddingBottom: 6,
     },
     header: {
       flexDirection: 'row',
@@ -279,7 +591,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
     colSet: { width: 36, alignItems: 'center', justifyContent: 'center' },
     colWeight: { flex: 1, textAlign: 'center', marginHorizontal: 4 },
     colFlex: { flex: 1, textAlign: 'center', marginHorizontal: 4 },
-    colRir: { width: 36, alignItems: 'center' },
+    colRir: { width: 36, alignItems: 'center', justifyContent: 'center' },
     repsHeaderBtn: {
       flex: 1,
       flexDirection: 'row',
@@ -298,7 +610,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
     tableRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 4,
+      height: 44,
     },
     colCell: {
       fontSize: 14,
@@ -311,13 +623,35 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 8,
-      paddingVertical: 8,
+      height: 36,
+      paddingVertical: 0,
       paddingHorizontal: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginHorizontal: 4,
+    },
+    activeInput: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentDim,
+    },
+    activeRirInput: {
+      borderColor: colors.accent,
+      borderWidth: 2,
+    },
+    valueText: {
       fontSize: 14,
       fontFamily: fonts.regular,
       color: colors.text,
       textAlign: 'center',
-      marginHorizontal: 4,
+    },
+    valuePlaceholder: {
+      fontSize: 14,
+      fontFamily: fonts.regular,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+    valuePlaceholderActive: {
+      color: '#5A5A5A',
     },
     repsCol: {
       flex: 1,
@@ -329,20 +663,17 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 8,
-      paddingVertical: 8,
+      height: 36,
+      paddingVertical: 0,
       paddingHorizontal: 6,
       gap: 2,
     },
-    repsInner: {
+    repsSegmentButton: {
       flex: 1,
-      fontSize: 14,
-      fontFamily: fonts.regular,
-      color: colors.text,
-      textAlign: 'center' as const,
-      padding: 0,
-      margin: 0,
-      backgroundColor: 'transparent',
-      borderWidth: 0,
+      borderRadius: 6,
+      height: 30,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     repRangeTo: {
       fontSize: 12,
@@ -385,7 +716,7 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
     durationTouchable: {
       justifyContent: 'center',
       alignItems: 'center',
-      paddingVertical: 8,
+      height: 36,
     },
     durationText: {
       fontSize: 14,
@@ -398,6 +729,9 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
       fontFamily: fonts.regular,
       color: colors.textMuted,
       textAlign: 'center',
+    },
+    durationPlaceholderActive: {
+      color: '#5A5A5A',
     },
     warmupCircle: {
       width: 22,
@@ -444,7 +778,12 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
         {rows.length > 1 && <View style={styles.headerSpacer} />}
       </View>
 
-      <ScrollView style={rows.length > 9 ? styles.rowsScroll : undefined} nestedScrollEnabled>
+      <ScrollView
+        ref={rowsScrollRef}
+        style={styles.rowsScroll}
+        contentContainerStyle={styles.rowsScrollContent}
+        nestedScrollEnabled
+      >
         {rows.map((row, i) => {
           const weightSugg = getSuggestion(rows, i, 'weight');
           const repsMinSugg = getSuggestion(rows, i, 'repsMin');
@@ -455,7 +794,14 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
           const rirNum = rirResolved ? parseFloat(rirResolved) : null;
           const workingIndex = rows.slice(0, i + 1).filter((r) => !r.isWarmup).length;
           return (
-            <View key={i} style={styles.tableRow}>
+            <View
+              key={i}
+              style={styles.tableRow}
+              onLayout={(event) => {
+                const y = event.nativeEvent.layout.y;
+                setRowLayoutY((prev) => (prev[i] === y ? prev : { ...prev, [i]: y }));
+              }}
+            >
               {row.isWarmup ? (
                 <View style={styles.colSet}>
                   <View style={styles.warmupCircle}><Text style={styles.warmupText}>W</Text></View>
@@ -465,58 +811,92 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
               )}
 
               {showWeight && (
-                <TextInput
-                  style={[styles.input, styles.colWeight]}
-                  value={row.editedFields.has('weight') ? row.weight : ''}
-                  onChangeText={(v) => updateSetRow(rows, setRows, i, 'weight', v, repRange)}
-                  selectTextOnFocus
-                  keyboardType="decimal-pad"
-                  placeholder={weightSugg || '0'}
-                  placeholderTextColor={colors.textMuted}
-                />
+                <TouchableOpacity
+                  style={[
+                    styles.input,
+                    styles.colWeight,
+                    valueEditorCell?.rowIndex === i && valueEditorCell.field === 'weight' && styles.activeInput,
+                  ]}
+                  onPress={() => openValueEditorForCell({ rowIndex: i, field: 'weight' })}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    row.editedFields.has('weight') && row.weight ? styles.valueText : styles.valuePlaceholder,
+                    valueEditorCell?.rowIndex === i
+                      && valueEditorCell.field === 'weight'
+                      && (!row.editedFields.has('weight') || !row.weight)
+                      && styles.valuePlaceholderActive,
+                  ]}>
+                    {(row.editedFields.has('weight') ? row.weight : '') || weightSugg || '0'}
+                  </Text>
+                </TouchableOpacity>
               )}
 
               {showReps && (
-                <View style={styles.repsCol}>
+                <View
+                  style={[
+                    styles.repsCol,
+                    valueEditorCell?.rowIndex === i && (valueEditorCell.field === 'reps' || valueEditorCell.field === 'repsMin' || valueEditorCell.field === 'repsMax')
+                      ? styles.activeInput
+                      : undefined,
+                  ]}
+                >
                   {repRange ? (
                     <>
-                      <TextInput
-                        ref={setRepInputRef(i, 'repsMin')}
-                        style={styles.repsInner}
-                        value={row.editedFields.has('repsMin') ? row.repsMin : ''}
-                        onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMin', v, repRange)}
-                        onBlur={() => handleRepInputBlur(i, 'repsMin')}
-                        selectTextOnFocus
-                        keyboardType="number-pad"
-                        placeholder={repsMinSugg || '8'}
-                        placeholderTextColor={colors.textMuted}
-                        underlineColorAndroid="transparent"
-                      />
+                      <TouchableOpacity
+                        style={[
+                          styles.repsSegmentButton,
+                          valueEditorCell?.rowIndex === i && valueEditorCell.field === 'repsMin' && styles.activeInput,
+                        ]}
+                        onPress={() => openValueEditorForCell({ rowIndex: i, field: 'repsMin' })}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          row.editedFields.has('repsMin') && row.repsMin ? styles.valueText : styles.valuePlaceholder,
+                          valueEditorCell?.rowIndex === i
+                            && valueEditorCell.field === 'repsMin'
+                            && (!row.editedFields.has('repsMin') || !row.repsMin)
+                            && styles.valuePlaceholderActive,
+                        ]}>
+                          {(row.editedFields.has('repsMin') ? row.repsMin : '') || repsMinSugg || '8'}
+                        </Text>
+                      </TouchableOpacity>
                       <Text style={styles.repRangeTo}>to</Text>
-                      <TextInput
-                        ref={setRepInputRef(i, 'repsMax')}
-                        style={styles.repsInner}
-                        value={row.editedFields.has('repsMax') ? row.repsMax : ''}
-                        onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMax', v, repRange)}
-                        onBlur={() => handleRepInputBlur(i, 'repsMax')}
-                        selectTextOnFocus
-                        keyboardType="number-pad"
-                        placeholder={repsMaxSugg || '12'}
-                        placeholderTextColor={colors.textMuted}
-                        underlineColorAndroid="transparent"
-                      />
+                      <TouchableOpacity
+                        style={[
+                          styles.repsSegmentButton,
+                          valueEditorCell?.rowIndex === i && valueEditorCell.field === 'repsMax' && styles.activeInput,
+                        ]}
+                        onPress={() => openValueEditorForCell({ rowIndex: i, field: 'repsMax' })}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          row.editedFields.has('repsMax') && row.repsMax ? styles.valueText : styles.valuePlaceholder,
+                          valueEditorCell?.rowIndex === i
+                            && valueEditorCell.field === 'repsMax'
+                            && (!row.editedFields.has('repsMax') || !row.repsMax)
+                            && styles.valuePlaceholderActive,
+                        ]}>
+                          {(row.editedFields.has('repsMax') ? row.repsMax : '') || repsMaxSugg || '12'}
+                        </Text>
+                      </TouchableOpacity>
                     </>
                   ) : (
-                    <TextInput
-                      style={styles.repsInner}
-                      value={row.editedFields.has('repsMin') ? row.repsMin : ''}
-                      onChangeText={(v) => updateSetRow(rows, setRows, i, 'repsMin', v, repRange)}
-                      selectTextOnFocus
-                      keyboardType="number-pad"
-                      placeholder={repsMinSugg || '10'}
-                      placeholderTextColor={colors.textMuted}
-                      underlineColorAndroid="transparent"
-                    />
+                    <TouchableOpacity
+                      style={styles.repsSegmentButton}
+                      onPress={() => openValueEditorForCell({ rowIndex: i, field: 'reps' })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        row.editedFields.has('repsMin') && row.repsMin ? styles.valueText : styles.valuePlaceholder,
+                        valueEditorCell?.rowIndex === i
+                          && valueEditorCell.field === 'reps'
+                          && (!row.editedFields.has('repsMin') || !row.repsMin)
+                          && styles.valuePlaceholderActive,
+                      ]}>
+                        {(row.editedFields.has('repsMin') ? row.repsMin : '') || repsMinSugg || '10'}
+                      </Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               )}
@@ -527,11 +907,22 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
                 const suggNum = durationSugg ? parseFloat(durationSugg) || 0 : 0;
                 return (
                   <TouchableOpacity
-                    style={[styles.input, styles.colFlex, styles.durationTouchable]}
-                    onPress={() => setDurationPickerIndex(i)}
+                    style={[
+                      styles.input,
+                      styles.colFlex,
+                      styles.durationTouchable,
+                      valueEditorCell?.rowIndex === i && valueEditorCell.field === 'duration' && styles.activeInput,
+                    ]}
+                    onPress={() => openValueEditorForCell({ rowIndex: i, field: 'duration' })}
                     activeOpacity={0.7}
                   >
-                    <Text style={durNum > 0 ? styles.durationText : styles.durationPlaceholder}>
+                    <Text style={[
+                      durNum > 0 ? styles.durationText : styles.durationPlaceholder,
+                      valueEditorCell?.rowIndex === i
+                        && valueEditorCell.field === 'duration'
+                        && durNum <= 0
+                        && styles.durationPlaceholderActive,
+                    ]}>
                       {durNum > 0 ? formatDurationValue(durNum) : (suggNum > 0 ? formatDurationValue(suggNum) : '0:00')}
                     </Text>
                   </TouchableOpacity>
@@ -539,15 +930,25 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
               })()}
 
               {showDistance && (
-                <TextInput
-                  style={[styles.input, styles.colFlex]}
-                  value={row.editedFields.has('distance') ? row.distance : ''}
-                  onChangeText={(v) => updateSetRow(rows, setRows, i, 'distance', v, repRange)}
-                  selectTextOnFocus
-                  keyboardType="decimal-pad"
-                  placeholder={distanceSugg || '0'}
-                  placeholderTextColor={colors.textMuted}
-                />
+                <TouchableOpacity
+                  style={[
+                    styles.input,
+                    styles.colFlex,
+                    valueEditorCell?.rowIndex === i && valueEditorCell.field === 'distance' && styles.activeInput,
+                  ]}
+                  onPress={() => openValueEditorForCell({ rowIndex: i, field: 'distance' })}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    row.editedFields.has('distance') && row.distance ? styles.valueText : styles.valuePlaceholder,
+                    valueEditorCell?.rowIndex === i
+                      && valueEditorCell.field === 'distance'
+                      && (!row.editedFields.has('distance') || !row.distance)
+                      && styles.valuePlaceholderActive,
+                  ]}>
+                    {(row.editedFields.has('distance') ? row.distance : '') || distanceSugg || '0'}
+                  </Text>
+                </TouchableOpacity>
               )}
 
               {config.showRir && (
@@ -555,7 +956,8 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
                   <RirCircle
                     value={rirNum}
                     size={28}
-                    onPress={() => setRirPickerIndex(i)}
+                    onPress={() => openValueEditorForCell({ rowIndex: i, field: 'rir' })}
+                    style={valueEditorCell?.rowIndex === i && valueEditorCell.field === 'rir' ? styles.activeRirInput : undefined}
                   />
                 </View>
               )}
@@ -564,6 +966,8 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
                   style={styles.removeSetBtn}
                   onPress={() => {
                     const updated = rows.filter((_, idx) => idx !== i);
+                    setValueEditorVisible(false);
+                    setValueEditorCell(null);
                     setRows(updated);
                   }}
                 >
@@ -581,6 +985,8 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
           onPress={() => {
             const warmups = rows.filter((r) => r.isWarmup);
             const working = rows.filter((r) => !r.isWarmup);
+            setValueEditorVisible(false);
+            setValueEditorCell(null);
             setRows([...warmups, defaultSetRow(true), ...working]);
           }}
         >
@@ -588,32 +994,83 @@ export function SetsTableEditor({ rows, setRows, repRange, setRepRange, wUnit, d
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.addSetBtn}
-          onPress={() => setRows([...rows, defaultSetRow()])}
+          onPress={() => {
+            setValueEditorVisible(false);
+            setValueEditorCell(null);
+            setRows([...rows, defaultSetRow()]);
+          }}
         >
           <Text style={styles.addSetText}>+ Add Set</Text>
         </TouchableOpacity>
       </View>
 
-      {config.showRir && (
-        <RirPickerModal
-          visible={rirPickerIndex !== null}
-          onClose={() => setRirPickerIndex(null)}
-          onSelect={handleRirSelect}
-          currentValue={currentRirValue}
+      {renderValueEditorInPortal ? (
+        <Portal>
+          <SetValueEditorModal
+            visible={valueEditorVisible}
+            animated={valueEditorAnimated}
+            field={valueEditorCell?.field ?? null}
+            syncKey={valueEditorCell ? `${valueEditorCell.rowIndex}:${valueEditorCell.field}` : undefined}
+            title={valueEditorCell?.field ? `Edit ${valueEditorCell.field.toUpperCase()}` : undefined}
+            numericValue={valueEditorNumeric}
+            allowDecimal={allowsDecimalForField(valueEditorCell?.field)}
+            durationValue={valueEditorDuration}
+            rirValue={valueEditorRir}
+            canNavigate={valueEditorCanNavigate}
+            onClose={handleModalClose}
+            onDone={handleModalClose}
+            onNavigate={handleModalNavigate}
+            onEnter={handleModalEnter}
+            onNumericValueChange={(nextValue) => {
+              setValueEditorNumeric(nextValue);
+              if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+            }}
+            onDurationValueChange={(nextValue) => {
+              setValueEditorDuration(nextValue);
+              if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+            }}
+            onRirValueChange={(nextValue) => {
+              setValueEditorRir(nextValue);
+              if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+            }}
+          />
+        </Portal>
+      ) : (
+        <SetValueEditorModal
+          visible={valueEditorVisible}
+          animated={valueEditorAnimated}
+          field={valueEditorCell?.field ?? null}
+          syncKey={valueEditorCell ? `${valueEditorCell.rowIndex}:${valueEditorCell.field}` : undefined}
+          title={valueEditorCell?.field ? `Edit ${valueEditorCell.field.toUpperCase()}` : undefined}
+          numericValue={valueEditorNumeric}
+          allowDecimal={allowsDecimalForField(valueEditorCell?.field)}
+          durationValue={valueEditorDuration}
+          rirValue={valueEditorRir}
+          canNavigate={valueEditorCanNavigate}
+          onClose={() => {
+            setValueEditorVisible(false);
+            setValueEditorCell(null);
+          }}
+          onDone={() => {
+            setValueEditorVisible(false);
+            setValueEditorCell(null);
+          }}
+          onNavigate={handleModalNavigate}
+          onEnter={handleModalEnter}
+          onNumericValueChange={(nextValue) => {
+            setValueEditorNumeric(nextValue);
+            if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+          }}
+          onDurationValueChange={(nextValue) => {
+            setValueEditorDuration(nextValue);
+            if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+          }}
+          onRirValueChange={(nextValue) => {
+            setValueEditorRir(nextValue);
+            if (valueEditorCell) applyCellValue(valueEditorCell, nextValue);
+          }}
         />
       )}
-
-      <DurationPickerModal
-        visible={durationPickerIndex !== null}
-        onClose={() => setDurationPickerIndex(null)}
-        onConfirm={(totalSeconds) => {
-          if (durationPickerIndex !== null) {
-            updateSetRow(rows, setRows, durationPickerIndex, 'duration', String(totalSeconds), repRange);
-          }
-          setDurationPickerIndex(null);
-        }}
-        value={durationPickerIndex !== null ? (parseFloat(resolveValue(rows, durationPickerIndex, 'duration')) || 0) : 0}
-      />
     </View>
   );
 }

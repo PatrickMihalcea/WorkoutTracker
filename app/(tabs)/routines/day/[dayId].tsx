@@ -32,6 +32,8 @@ import {
   setsToTemplateRows,
   validateRepRange,
   SetsTableEditor,
+  type ExternalSetEditorNavigationRequest,
+  type TableEditorCell,
 } from '../../../../src/components/routine/SetsTableEditor';
 import { AddExerciseModal, SetsPayloadItem } from '../../../../src/components/routine/AddExerciseModal';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
@@ -50,6 +52,9 @@ import { DayViewHeaderDropdown } from '../../../../src/components/routine/DayVie
 import { useTheme } from '../../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../../src/constants/themes';
 import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../../../src/utils/exerciseMedia';
+import { EditorDirection, EditableFieldKind } from '../../../../src/components/set-editor/types';
+import { PortalHost } from '../../../../src/components/ui/PortalHost';
+import { useWorkoutOverlay } from '../../../../src/components/workout';
 
 const EXERCISE_THUMB_PLACEHOLDER = require('../../../../assets/Setora-black-and-white.png');
 
@@ -165,18 +170,35 @@ function ExerciseSetsEditor({
   wUnit,
   dUnit,
   onSave,
+  onEditorVisibilityChange,
+  onFocusRequest,
+  onFocusCell,
+  onNavigateBeyondBoundary,
+  canNavigateBeyondBoundary,
+  externalNavigationRequest,
+  forceDismissToken,
+  onForceDismissHandled,
   styles,
 }: {
   entry: RoutineDayExercise;
   wUnit: WeightUnit;
   dUnit: DistanceUnit;
   onSave: () => void;
+  onEditorVisibilityChange?: (visible: boolean) => void;
+  onFocusRequest?: () => void;
+  onFocusCell?: (cell: TableEditorCell) => void;
+  onNavigateBeyondBoundary?: (direction: EditorDirection, fromField: EditableFieldKind, fromFieldIndex: number) => boolean;
+  canNavigateBeyondBoundary?: (direction: EditorDirection, fromField: EditableFieldKind) => boolean;
+  externalNavigationRequest?: ExternalSetEditorNavigationRequest;
+  forceDismissToken?: number;
+  onForceDismissHandled?: () => void;
   styles: Record<string, any>;
 }) {
   const initial = setsToTemplateRows(entry.sets ?? [], entry.target_reps, wUnit);
   const [useRepRange, setUseRepRange] = useState(initial.hasRepRange);
   const [rows, setRows] = useState<TemplateSetRow[]>(initial.rows);
   const mountedRef = useRef(false);
+  const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const persist = useCallback(async (currentRows: TemplateSetRow[], repRange: boolean) => {
     if (repRange && !validateRepRange(currentRows, { showAlert: false, ignoreIncomplete: true })) return;
@@ -201,8 +223,16 @@ function ExerciseSetsEditor({
       mountedRef.current = true;
       return;
     }
-    persist(rows, useRepRange);
-  }, [rows, useRepRange]);
+    // Debounce saves so rapid set additions don't fire concurrent API calls,
+    // which would cause the sets counter in the exercise header to show stale counts.
+    if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+    persistTimeoutRef.current = setTimeout(() => {
+      persist(rows, useRepRange);
+    }, 500);
+    return () => {
+      if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+    };
+  }, [rows, useRepRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <View style={styles.setsEditorContainer}>
@@ -214,6 +244,16 @@ function ExerciseSetsEditor({
         wUnit={wUnit}
         dUnit={dUnit}
         exerciseType={entry.exercise?.exercise_type}
+        onEditorVisibilityChange={onEditorVisibilityChange}
+        onFocusRow={() => onFocusRequest?.()}
+        onFocusCell={onFocusCell}
+        onNavigateBeyondBoundary={onNavigateBeyondBoundary}
+        canNavigateBeyondBoundary={canNavigateBeyondBoundary}
+        externalNavigationRequest={externalNavigationRequest}
+        forceDismissToken={forceDismissToken}
+        onForceDismissHandled={onForceDismissHandled}
+        renderValueEditorInPortal
+        valueEditorAnimated={false}
       />
     </View>
   );
@@ -228,6 +268,7 @@ export default function DayEditorScreen() {
   const { user } = useAuthStore();
   const { currentRoutine, fetchRoutineDetail } = useRoutineStore();
   const { profile } = useProfileStore();
+  const { setChromeHidden } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
   const dUnit = profile?.distance_unit ?? 'km';
 
@@ -236,6 +277,16 @@ export default function DayEditorScreen() {
   const [labelDraft, setLabelDraft] = useState('');
   const [selectedDayOfWeek, setSelectedDayOfWeek] = useState<DayOfWeek | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [setEditorVisibleEntryId, setSetEditorVisibleEntryId] = useState<string | null>(null);
+  const [editorNavRequests, setEditorNavRequests] = useState<Record<string, ExternalSetEditorNavigationRequest>>({});
+  const [editorDismissTokens, setEditorDismissTokens] = useState<Record<string, number>>({});
+  const pageScrollRef = useRef<ScrollView | null>(null);
+  const pageScrollYRef = useRef(0);
+  const exerciseNodeRef = useRef<Record<string, View | null>>({});
+  const navTokenRef = useRef(1);
+  const dismissTokenRef = useRef<Record<string, number>>({});
+  const pendingSourceDismissRef = useRef<Record<string, string>>({});
+  const currentVisibleEntryIdRef = useRef<string | null>(null);
 
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
@@ -244,6 +295,123 @@ export default function DayEditorScreen() {
   const [isReordering, setIsReordering] = useState(false);
   const [autoOpenPicker, setAutoOpenPicker] = useState(false);
   const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
+  const pendingReopenEntryIdRef = useRef<string | null>(null);
+  const lastFocusedCellRef = useRef<Record<string, TableEditorCell>>({});
+
+  const scrollDayExerciseIntoView = useCallback((entryId: string) => {
+    const node = exerciseNodeRef.current[entryId];
+    if (!node) return;
+    requestAnimationFrame(() => {
+      node.measureInWindow((_x, y) => {
+        // Always snap the exercise header to a fixed screen position so the focused
+        // cell (positioned near the top of the inner scroll) lands at the same
+        // height every time the modal opens, regardless of exercise size.
+        const targetTop = 110;
+        const delta = y - targetTop;
+        if (Math.abs(delta) < 8) return;
+        const nextY = Math.max(0, pageScrollYRef.current + delta);
+        pageScrollRef.current?.scrollTo({ y: nextY, animated: true });
+      });
+    });
+  }, []);
+
+  const requestEditorDismiss = useCallback((entryId: string) => {
+    const nextToken = (dismissTokenRef.current[entryId] ?? 0) + 1;
+    dismissTokenRef.current[entryId] = nextToken;
+    setEditorDismissTokens((prev) => ({ ...prev, [entryId]: nextToken }));
+  }, []);
+
+  const handleForceDismissHandled = useCallback((entryId: string) => {
+    setEditorDismissTokens((prev) => {
+      if (prev[entryId] == null) return prev;
+      const next = { ...prev };
+      delete next[entryId];
+      return next;
+    });
+  }, []);
+
+  const handleSetEditorVisibilityChange = useCallback((entryId: string, visible: boolean) => {
+    if (visible) {
+      // Clean up any pending boundary-nav hint for this entry (no longer needed)
+      if (pendingSourceDismissRef.current[entryId]) {
+        delete pendingSourceDismissRef.current[entryId];
+      }
+      // Dismiss whichever editor is currently open, whether opened via direct tap or boundary nav
+      const prev = currentVisibleEntryIdRef.current;
+      if (prev && prev !== entryId) {
+        requestEditorDismiss(prev);
+      }
+      currentVisibleEntryIdRef.current = entryId;
+    } else if (currentVisibleEntryIdRef.current === entryId) {
+      currentVisibleEntryIdRef.current = null;
+    }
+    setSetEditorVisibleEntryId((prev) => {
+      if (visible) return entryId;
+      return prev === entryId ? null : prev;
+    });
+  }, [requestEditorDismiss]);
+
+  const handleSetEditorFocusRequest = useCallback((entryId: string) => {
+    scrollDayExerciseIntoView(entryId);
+  }, [scrollDayExerciseIntoView]);
+
+  useEffect(() => {
+    setChromeHidden(!!setEditorVisibleEntryId);
+  }, [setChromeHidden, setEditorVisibleEntryId]);
+
+  useEffect(() => () => {
+    setChromeHidden(false);
+  }, [setChromeHidden]);
+
+  const handleDayBoundaryNavigation = useCallback((
+    sourceEntryId: string,
+    direction: EditorDirection,
+    fromField: EditableFieldKind,
+    fromFieldIndex: number,
+  ): boolean => {
+    if (!day) return false;
+    const sourceIndex = day.exercises.findIndex((entry) => entry.id === sourceEntryId);
+    if (sourceIndex < 0) return false;
+    const delta = direction === 'up' || direction === 'left' ? -1 : 1;
+    const target = day.exercises[sourceIndex + delta];
+    if (!target) return false;
+    setEditorDismissTokens((prev) => {
+      if (prev[target.id] == null) return prev;
+      const next = { ...prev };
+      delete next[target.id];
+      return next;
+    });
+    setExpandedIds((prev) => {
+      if (prev.has(target.id)) return prev;
+      const next = new Set(prev);
+      next.add(target.id);
+      return next;
+    });
+    setSetEditorVisibleEntryId(target.id);
+    setEditorNavRequests((prev) => ({
+      ...prev,
+      [target.id]: {
+        token: navTokenRef.current++,
+        direction,
+        preferredField: direction === 'up' || direction === 'down' ? fromField : undefined,
+        preferredFieldIndex: direction === 'up' || direction === 'down' ? fromFieldIndex : undefined,
+      },
+    }));
+    pendingSourceDismissRef.current[target.id] = sourceEntryId;
+    scrollDayExerciseIntoView(target.id);
+    return true;
+  }, [day, scrollDayExerciseIntoView]);
+
+  const canDayBoundaryNavigate = useCallback((
+    sourceEntryId: string,
+    direction: EditorDirection,
+  ): boolean => {
+    if (!day) return false;
+    const sourceIndex = day.exercises.findIndex((entry) => entry.id === sourceEntryId);
+    if (sourceIndex < 0) return false;
+    const delta = direction === 'up' || direction === 'left' ? -1 : 1;
+    return !!day.exercises[sourceIndex + delta];
+  }, [day]);
 
   useFocusEffect(useCallback(() => {
     const which = pendingPickerReopenRef.current;
@@ -291,6 +459,32 @@ export default function DayEditorScreen() {
 
   useEffect(() => { loadDay(); }, [currentRoutine]);
 
+  // After a superset operation, the DraggableFlatList item keys change (single → group),
+  // causing ExerciseSetsEditor to remount and close the modal. Re-open it here.
+  useEffect(() => {
+    const entryId = pendingReopenEntryIdRef.current;
+    if (!entryId || !day) return;
+    pendingReopenEntryIdRef.current = null;
+    if (!day.exercises.find((e) => e.id === entryId)) return;
+    setExpandedIds((prev) => {
+      if (prev.has(entryId)) return prev;
+      const next = new Set(prev);
+      next.add(entryId);
+      return next;
+    });
+    const lastCell = lastFocusedCellRef.current[entryId];
+    requestAnimationFrame(() => {
+      setEditorNavRequests((prev) => ({
+        ...prev,
+        [entryId]: {
+          token: ++navTokenRef.current,
+          direction: 'down' as const,
+          ...(lastCell && { targetRowIndex: lastCell.rowIndex, preferredField: lastCell.field }),
+        },
+      }));
+    });
+  }, [day]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSaveLabel = async () => {
     if (!dayId || !labelDraft.trim()) {
       Alert.alert('Error', 'Label cannot be empty');
@@ -326,6 +520,13 @@ export default function DayEditorScreen() {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+    // Clear any pending nav request so re-expanding after collapse doesn't auto-focus.
+    setEditorNavRequests((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
       return next;
     });
   };
@@ -382,6 +583,7 @@ export default function DayEditorScreen() {
     });
 
   const applySupersetChanges = async (dayExercises: RoutineDayExercise[], updated: SupersetGroups) => {
+    pendingReopenEntryIdRef.current = setEditorVisibleEntryId;
     for (const ex of dayExercises) {
       const newGroup = updated[ex.id] ?? null;
       const oldGroup = ex.superset_group ?? null;
@@ -515,17 +717,26 @@ export default function DayEditorScreen() {
 
 
   return (
-    <View style={styles.container}>
+    <PortalHost>
+      <View style={styles.container}>
       <Stack.Screen
         options={{
           headerTitle: () => <DayViewHeaderDropdown dayId={dayId ?? ''} currentView="edit" />,
         }}
       />
       <ScrollView
-        contentContainerStyle={styles.content}
+        ref={pageScrollRef}
+        contentContainerStyle={[
+          styles.content,
+          !!setEditorVisibleEntryId && styles.contentEditorOpen,
+        ]}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
         scrollEnabled={!isReordering}
+        onScroll={(event) => {
+          pageScrollYRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         {editingLabel ? (
           <InlineEditRow
@@ -568,36 +779,80 @@ export default function DayEditorScreen() {
           renderItem={({ item, drag }: RenderItemParams<ReorderItem>) => (
             <ScaleDecorator>
               {item.type === 'single' ? (
-                <SwipeableExerciseRow
-                  ex={item.entry}
-                  isExpanded={expandedIds.has(item.entry.id)}
-                  onToggle={() => toggleExpand(item.entry.id)}
-                  onDetails={() => navigateToExerciseDetail(item.entry.exercise_id)}
-                  onDelete={() => handleExRemove(item.entry.id)}
-                  onLongPress={drag}
-                  menuItems={buildExerciseMenuItems(item.entry, day.exercises.indexOf(item.entry))}
-                  styles={styles}
+                <View
+                  ref={(node) => {
+                    exerciseNodeRef.current[item.entry.id] = node;
+                  }}
                 >
-                  <ExerciseSetsEditor entry={item.entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} styles={styles} />
-                </SwipeableExerciseRow>
+                  <SwipeableExerciseRow
+                    ex={item.entry}
+                    isExpanded={expandedIds.has(item.entry.id)}
+                    onToggle={() => toggleExpand(item.entry.id)}
+                    onDetails={() => navigateToExerciseDetail(item.entry.exercise_id)}
+                    onDelete={() => handleExRemove(item.entry.id)}
+                    onLongPress={drag}
+                    menuItems={buildExerciseMenuItems(item.entry, day.exercises.indexOf(item.entry))}
+                    styles={styles}
+                  >
+                    <ExerciseSetsEditor
+                      entry={item.entry}
+                      wUnit={wUnit}
+                      dUnit={dUnit}
+                      onSave={refresh}
+                      onEditorVisibilityChange={(visible) => handleSetEditorVisibilityChange(item.entry.id, visible)}
+                      onFocusRequest={() => handleSetEditorFocusRequest(item.entry.id)}
+                      onFocusCell={(cell) => { lastFocusedCellRef.current[item.entry.id] = cell; }}
+                      onNavigateBeyondBoundary={(direction, fromField, fromFieldIndex) =>
+                        handleDayBoundaryNavigation(item.entry.id, direction, fromField, fromFieldIndex)}
+                      canNavigateBeyondBoundary={(direction) =>
+                        canDayBoundaryNavigate(item.entry.id, direction)}
+                      externalNavigationRequest={editorNavRequests[item.entry.id]}
+                      forceDismissToken={editorDismissTokens[item.entry.id]}
+                      onForceDismissHandled={() => handleForceDismissHandled(item.entry.id)}
+                      styles={styles}
+                    />
+                  </SwipeableExerciseRow>
+                </View>
               ) : (
                 <View>
                   {item.entries.map((entry, idx) => {
                     const pos = idx === 0 ? 'first' as const : idx === item.entries.length - 1 ? 'last' as const : 'middle' as const;
                     return (
                       <SupersetBracket key={entry.id} position={pos} contentRadius={6}>
-                        <SwipeableExerciseRow
-                          ex={entry}
-                          isExpanded={expandedIds.has(entry.id)}
-                          onToggle={() => toggleExpand(entry.id)}
-                          onDetails={() => navigateToExerciseDetail(entry.exercise_id)}
-                          onDelete={() => handleExRemove(entry.id)}
-                          onLongPress={drag}
-                          menuItems={buildExerciseMenuItems(entry, day.exercises.indexOf(entry))}
-                          styles={styles}
+                        <View
+                          ref={(node) => {
+                            exerciseNodeRef.current[entry.id] = node;
+                          }}
                         >
-                          <ExerciseSetsEditor entry={entry} wUnit={wUnit} dUnit={dUnit} onSave={refresh} styles={styles} />
-                        </SwipeableExerciseRow>
+                          <SwipeableExerciseRow
+                            ex={entry}
+                            isExpanded={expandedIds.has(entry.id)}
+                            onToggle={() => toggleExpand(entry.id)}
+                            onDetails={() => navigateToExerciseDetail(entry.exercise_id)}
+                            onDelete={() => handleExRemove(entry.id)}
+                            onLongPress={drag}
+                            menuItems={buildExerciseMenuItems(entry, day.exercises.indexOf(entry))}
+                            styles={styles}
+                          >
+                            <ExerciseSetsEditor
+                              entry={entry}
+                              wUnit={wUnit}
+                              dUnit={dUnit}
+                              onSave={refresh}
+                              onEditorVisibilityChange={(visible) => handleSetEditorVisibilityChange(entry.id, visible)}
+                              onFocusRequest={() => handleSetEditorFocusRequest(entry.id)}
+                              onFocusCell={(cell) => { lastFocusedCellRef.current[entry.id] = cell; }}
+                              onNavigateBeyondBoundary={(direction, fromField, fromFieldIndex) =>
+                                handleDayBoundaryNavigation(entry.id, direction, fromField, fromFieldIndex)}
+                              canNavigateBeyondBoundary={(direction) =>
+                                canDayBoundaryNavigate(entry.id, direction)}
+                              externalNavigationRequest={editorNavRequests[entry.id]}
+                              forceDismissToken={editorDismissTokens[entry.id]}
+                              onForceDismissHandled={() => handleForceDismissHandled(entry.id)}
+                              styles={styles}
+                            />
+                          </SwipeableExerciseRow>
+                        </View>
                       </SupersetBracket>
                     );
                   })}
@@ -646,7 +901,8 @@ export default function DayEditorScreen() {
         }}
         onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
       />
-    </View>
+      </View>
+    </PortalHost>
   );
 }
 
@@ -658,6 +914,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: spacing.xl+50, 
+  },
+  contentEditorOpen: {
+    paddingBottom: 420,
   },
   labelRow: {
     marginBottom: 20,

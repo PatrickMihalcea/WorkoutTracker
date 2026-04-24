@@ -13,10 +13,13 @@ Client apps should resize/compress icon images before uploading (for example max
 - `R2_BUCKET`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
-- `R2_PUBLIC_BASE_URL` (for example `https://cdn.example.com` or `https://<bucket>.<account>.r2.dev`)
+- `R2_PUBLIC_BASE_URL` (for example `https://cdn.example.com` or `https://pub-<hash>.r2.dev`)
 - `R2_S3_ENDPOINT` (optional; defaults to `https://<account>.r2.cloudflarestorage.com`)
 
-`publicUrl` is built as: `<R2_PUBLIC_BASE_URL>/<R2_BUCKET>/<objectPath>`.
+`publicUrl` is built as:
+
+- `<R2_PUBLIC_BASE_URL>/<objectPath>` when `R2_PUBLIC_BASE_URL` is already bucket-scoped (for example `*.r2.dev`)
+- `<R2_PUBLIC_BASE_URL>/<R2_BUCKET>/<objectPath>` otherwise
 
 ## Request body
 

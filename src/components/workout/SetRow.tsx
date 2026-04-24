@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Animated, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Animated, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { WorkoutRow, SetLog, WeightUnit, DistanceUnit, ExerciseType } from '../../models';
 import { fonts } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatWeight, formatDistance } from '../../utils/units';
 import { getExerciseTypeConfig } from '../../utils/exerciseType';
 import { formatDurationValue } from '../../utils/duration';
-import { SwipeToDeleteRow, RirCircle, RirPickerModal, DurationPickerModal } from '../ui';
+import { SwipeToDeleteRow, RirCircle } from '../ui';
+import { EditableFieldKind } from '../set-editor/types';
 
 interface SetRowProps {
   row: WorkoutRow;
@@ -31,6 +32,8 @@ interface SetRowProps {
   showInlineDelete?: boolean;
   onInlineDelete?: () => void;
   rowBackgroundColor?: string;
+  activeField?: EditableFieldKind | null;
+  onBeginEdit?: (field: EditableFieldKind) => void;
 }
 
 export function SetRow({
@@ -56,14 +59,14 @@ export function SetRow({
   showInlineDelete = false,
   onInlineDelete,
   rowBackgroundColor,
+  activeField,
+  onBeginEdit,
 }: SetRowProps) {
   const { colors } = useTheme();
   type RowFieldKey = 'weight' | 'reps' | 'duration' | 'distance';
   const displayStoredWeight = (kg: number) => formatWeight(kg, weightUnit);
   const config = getExerciseTypeConfig(exerciseType);
 
-  const [showRirPicker, setShowRirPicker] = useState(false);
-  const [showDurationPicker, setShowDurationPicker] = useState(false);
   const [localCompleted, setLocalCompleted] = useState(row.is_completed);
   const completedAnim = useRef(new Animated.Value(row.is_completed ? 1 : 0)).current;
 
@@ -106,30 +109,6 @@ export function SetRow({
 
   const getRowFieldValue = (key: RowFieldKey): string => {
     return row[key];
-  };
-
-  const handleFieldChange = (key: RowFieldKey, v: string) => {
-    onUpdateRowLocal({ [key]: v });
-  };
-
-  const handleFieldBlur = (key: RowFieldKey) => {
-    onUpdateRow({ [key]: getRowFieldValue(key) });
-  };
-
-  const handleRirSelect = (value: number | null) => {
-    const rirStr = value != null ? String(value) : '';
-    onUpdateRowLocal({ rir: rirStr });
-    onUpdateRow({ rir: rirStr });
-    if (rirStr && !row.is_completed) {
-      animateCompletion(true);
-      markDone(rirStr);
-    }
-  };
-
-  const handleDurationConfirm = (totalSeconds: number) => {
-    const val = String(totalSeconds);
-    onUpdateRowLocal({ duration: val });
-    onUpdateRow({ duration: val });
   };
 
   const markDone = (overrideRir?: string) => {
@@ -189,9 +168,6 @@ export function SetRow({
     return text || '-';
   };
 
-  const durationSeconds = row.duration ? parseFloat(row.duration) || 0 : 0;
-  const suggestedDurationNum = suggestedDuration ? parseFloat(suggestedDuration) || 0 : 0;
-
   const hasCompletionColor = !!completionColor && completionColor !== 'transparent';
   const baseRowBackground = rowBackgroundColor ?? 'transparent';
   const animatedRowBg = completedAnim.interpolate({
@@ -245,6 +221,9 @@ export function SetRow({
       flex: 1,
       backgroundColor: 'rgba(255,255,255,0.07)',
       borderRadius: 8,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      minHeight: 40,
       paddingVertical: 10,
       paddingHorizontal: 4,
       textAlign: 'center',
@@ -254,6 +233,8 @@ export function SetRow({
     },
     fieldInput: {
       flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     durationText: {
       color: colors.text,
@@ -266,6 +247,32 @@ export function SetRow({
       fontSize: 15,
       fontFamily: fonts.semiBold,
       textAlign: 'center',
+    },
+    durationPlaceholderActive: {
+      color: '#5A5A5A',
+    },
+    valueText: {
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+      textAlign: 'center',
+    },
+    valuePlaceholder: {
+      color: colors.textMuted,
+      fontSize: 15,
+      fontFamily: fonts.semiBold,
+      textAlign: 'center',
+    },
+    valuePlaceholderActive: {
+      color: '#5A5A5A',
+    },
+    activeField: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentDim,
+    },
+    activeFieldDone: {
+      borderColor: '#FFFFFF',
+      backgroundColor: '#0C0C0C',
     },
     rirCol: {
       width: 40,
@@ -301,6 +308,15 @@ export function SetRow({
       borderWidth: 1.5,
       borderColor: '#000000',
     },
+    activeRir: {
+      borderWidth: 2,
+      borderColor: colors.accent,
+    },
+    activeRirDone: {
+      borderWidth: 2,
+      borderColor: '#FFFFFF',
+      backgroundColor: '#000000',
+    },
     inlineDeleteButton: {
       width: 28,
       height: 28,
@@ -316,137 +332,142 @@ export function SetRow({
     },
   }), [colors]);
 
+  const renderFieldValue = (key: RowFieldKey, rawValue: string, placeholder: string, isActive: boolean) => {
+    const doneActiveTextOverride = localCompleted && hasCompletionColor && isActive
+      ? { color: '#FFFFFF' as const }
+      : undefined;
+
+    if (key === 'duration') {
+      const durNum = rawValue ? parseFloat(rawValue) || 0 : 0;
+      const placeholderNum = placeholder ? parseFloat(placeholder) || 0 : 0;
+      const displayVal = durNum > 0 ? formatDurationValue(durNum) : '';
+      const displayPlaceholder = placeholderNum > 0 ? formatDurationValue(placeholderNum) : '0:00';
+      const textStyle = displayVal ? styles.durationText : styles.durationPlaceholder;
+      return (
+        <Text style={[
+          textStyle,
+          !displayVal && isActive && styles.durationPlaceholderActive,
+          localCompleted && hasCompletionColor && { color: '#000000' },
+          doneActiveTextOverride,
+        ]}>
+          {displayVal || displayPlaceholder}
+        </Text>
+      );
+    }
+
+    const textValue = rawValue || placeholder;
+    const textStyle = rawValue ? styles.valueText : styles.valuePlaceholder;
+    return (
+      <Text style={[
+        textStyle,
+        !rawValue && isActive && styles.valuePlaceholderActive,
+        localCompleted && hasCompletionColor && { color: '#000000' },
+        doneActiveTextOverride,
+      ]}>
+        {textValue || '0'}
+      </Text>
+    );
+  };
+
+  const isActiveCompletedRir = localCompleted && hasCompletionColor && activeField === 'rir';
+  const rirStyle = localCompleted && hasCompletionColor
+    ? (activeField === 'rir' ? styles.activeRirDone : styles.rirDone)
+    : (activeField === 'rir' ? styles.activeRir : undefined);
+
   return (
-    <>
-      <SwipeToDeleteRow
-        onDelete={onSwipeDelete}
-        expandedHeight={60}
-        onSwipeRight={enableWarmupSwipe ? onToggleWarmup : undefined}
-      >
-        <Animated.View style={[styles.row, { backgroundColor: animatedRowBg }]}>
-            <View style={styles.setLabel}>
-              {isWarmup ? (
-                <View style={styles.warmupCircle}>
-                  <Text style={styles.warmupText}>W</Text>
-                </View>
-              ) : (
-                <Text style={[
-                  styles.setNumber,
-                  localCompleted && completionColor && completionColor !== 'transparent' && { color: '#000000' },
-                ]}>{displaySetNumber}</Text>
-              )}
+    <SwipeToDeleteRow
+      onDelete={onSwipeDelete}
+      expandedHeight={60}
+      onSwipeRight={enableWarmupSwipe ? onToggleWarmup : undefined}
+    >
+      <Animated.View style={[styles.row, { backgroundColor: animatedRowBg }]}>
+        <View style={styles.setLabel}>
+          {isWarmup ? (
+            <View style={styles.warmupCircle}>
+              <Text style={styles.warmupText}>W</Text>
             </View>
+          ) : (
+            <Text style={[
+              styles.setNumber,
+              localCompleted && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+            ]}>{displaySetNumber}</Text>
+          )}
+        </View>
 
-            <View style={styles.previousCol}>
-              <Text style={[
-                styles.previousText,
-                localCompleted && completionColor && completionColor !== 'transparent' && { color: '#000000' },
-              ]}>
-                {buildPreviousText()}
-              </Text>
-            </View>
+        <View style={styles.previousCol}>
+          <Text style={[
+            styles.previousText,
+            localCompleted && completionColor && completionColor !== 'transparent' && { color: '#000000' },
+          ]}>
+            {buildPreviousText()}
+          </Text>
+        </View>
 
-            {config.fields.map((field) => {
-              const key = field.key as RowFieldKey;
-              const rowVal = getRowFieldValue(key);
+        {config.fields.map((field) => {
+          const key = field.key as RowFieldKey;
+          const rowVal = getRowFieldValue(key);
+          const placeholder = getPlaceholderForField(field.key);
+          const isActive = activeField === key;
 
-              if (field.key === 'duration') {
-                const displayVal = durationSeconds > 0
-                  ? formatDurationValue(durationSeconds)
-                  : '';
-                const placeholderVal = suggestedDurationNum > 0
-                  ? formatDurationValue(suggestedDurationNum)
-                  : '0:00';
-                return (
-                  <TouchableOpacity
-                    key={field.key}
-                    style={[styles.input, styles.fieldInput, localCompleted && hasCompletionColor && styles.inputDone]}
-                    onPress={() => setShowDurationPicker(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      displayVal ? styles.durationText : styles.durationPlaceholder,
-                      localCompleted && hasCompletionColor && { color: '#000000' },
-                    ]}>
-                      {displayVal || placeholderVal}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              }
+          return (
+            <TouchableOpacity
+              key={field.key}
+              style={[
+                styles.input,
+                styles.fieldInput,
+                localCompleted && hasCompletionColor && styles.inputDone,
+                isActive && styles.activeField,
+                isActive && localCompleted && hasCompletionColor && styles.activeFieldDone,
+              ]}
+              onPress={() => onBeginEdit?.(key)}
+              activeOpacity={0.7}
+            >
+              {renderFieldValue(key, rowVal, placeholder, isActive)}
+            </TouchableOpacity>
+          );
+        })}
 
-              const placeholder = getPlaceholderForField(field.key);
-              return (
-                <TextInput
-                  key={field.key}
-                  style={[styles.input, styles.fieldInput, localCompleted && hasCompletionColor && styles.inputDone]}
-                  value={rowVal}
-                  onChangeText={(v) => handleFieldChange(key, v)}
-                  onBlur={() => handleFieldBlur(key)}
-                  placeholder={placeholder}
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType={field.keyboardType}
-                  selectTextOnFocus
-                />
-              );
-            })}
+        {config.showRir && (
+          <View style={styles.rirCol}>
+            <RirCircle
+              value={rirNum}
+              size={32}
+              onPress={() => onBeginEdit?.('rir')}
+              textColorOverride={isActiveCompletedRir ? '#FFFFFF' : undefined}
+              style={rirStyle}
+            />
+          </View>
+        )}
 
-            {config.showRir && (
-              <View style={styles.rirCol}>
-                <RirCircle
-                  value={rirNum}
-                  size={32}
-                  onPress={() => setShowRirPicker(true)}
-                  style={localCompleted && hasCompletionColor ? styles.rirDone : undefined}
-                />
-              </View>
-            )}
-
-            {showCompletionToggle && (
-              <TouchableOpacity
-                style={[
-                  styles.saveButton,
-                  localCompleted && styles.saveButtonDone,
-                  localCompleted && hasCompletionColor && { backgroundColor: completionColor, borderColor: 'rgba(0,0,0,0.25)' },
-                ]}
-                onPress={handleToggle}
-                activeOpacity={0.7}
-              >
-                <Text style={[
-                  styles.saveButtonText,
-                  localCompleted && styles.saveButtonTextDone,
-                  localCompleted && hasCompletionColor && { color: '#000000' },
-                ]}>
-                  {localCompleted ? '✓' : '+'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            {showInlineDelete && onInlineDelete && (
-              <TouchableOpacity
-                style={styles.inlineDeleteButton}
-                onPress={onInlineDelete}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.inlineDeleteText}>×</Text>
-              </TouchableOpacity>
-            )}
-          </Animated.View>
-      </SwipeToDeleteRow>
-
-      {config.showRir && (
-        <RirPickerModal
-          visible={showRirPicker}
-          onClose={() => setShowRirPicker(false)}
-          onSelect={handleRirSelect}
-          currentValue={rirNum}
-        />
-      )}
-
-      <DurationPickerModal
-        visible={showDurationPicker}
-        onClose={() => setShowDurationPicker(false)}
-        onConfirm={handleDurationConfirm}
-        value={durationSeconds || suggestedDurationNum}
-      />
-    </>
+        {showCompletionToggle && (
+          <TouchableOpacity
+            style={[
+              styles.saveButton,
+              localCompleted && styles.saveButtonDone,
+              localCompleted && hasCompletionColor && { backgroundColor: completionColor, borderColor: 'rgba(0,0,0,0.25)' },
+            ]}
+            onPress={handleToggle}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.saveButtonText,
+              localCompleted && styles.saveButtonTextDone,
+              localCompleted && hasCompletionColor && { color: '#000000' },
+            ]}>
+              {localCompleted ? '✓' : '+'}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {showInlineDelete && onInlineDelete && (
+          <TouchableOpacity
+            style={styles.inlineDeleteButton}
+            onPress={onInlineDelete}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.inlineDeleteText}>×</Text>
+          </TouchableOpacity>
+        )}
+      </Animated.View>
+    </SwipeToDeleteRow>
   );
 }

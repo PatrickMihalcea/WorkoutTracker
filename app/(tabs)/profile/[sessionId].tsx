@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   Image,
+  Dimensions,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useLocalSearchParams, usePathname, useRouter, Stack } from 'expo-router';
@@ -20,15 +21,16 @@ import type { SessionRecordAchieved, SessionRecordMetric } from '../../../src/se
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useAuthStore } from '../../../src/stores/auth.store';
+import { useWorkoutOverlay } from '../../../src/components/workout';
 import { Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle, ExerciseIconPreview } from '../../../src/components/ui';
 import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
+import { SetsTableEditor, TemplateSetRow, buildSetsPayload } from '../../../src/components/routine/SetsTableEditor';
 import type { OverflowMenuItem } from '../../../src/components/ui';
-import { SetRow } from '../../../src/components/workout/SetRow';
 import { MetricRing } from '../../../src/components/history/MetricRing';
 import { fonts, spacing } from '../../../src/constants';
-import { SessionWithSetsAndExercises, SetLogWithExercise, WorkoutRow, Exercise, RoutineDayExercise, RoutineDayWithExercises } from '../../../src/models';
+import { SessionWithSetsAndExercises, SetLogWithExercise, Exercise, RoutineDayExercise, RoutineDayWithExercises } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
-import { formatWeight, formatDistance, formatDistanceValue, parseWeightToKg, weightUnitLabel, distanceUnitLabel, milesToKm } from '../../../src/utils/units';
+import { formatWeight, formatDistance, formatDistanceValue, weightUnitLabel, distanceUnitLabel, milesToKm } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
 import { formatDurationValue } from '../../../src/utils/duration';
 import {
@@ -42,8 +44,12 @@ import {
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../../src/utils/exerciseMedia';
+import { PortalHost } from '../../../src/components/ui/PortalHost';
 
 const EXERCISE_THUMB_PLACEHOLDER = require('../../../assets/Setora-black-and-white.png');
+const SESSION_EDITOR_MODAL_HEIGHT = 390;
+const SESSION_EDITOR_MODAL_MARGIN = 24;
+const WINDOW_HEIGHT = Dimensions.get('window').height;
 
 interface ExerciseGroup {
   key: string;
@@ -58,6 +64,7 @@ interface ExerciseGroup {
 }
 
 interface ExerciseEditorState {
+  groupKey: string;
   sessionId: string;
   exerciseId: string;
   exerciseName: string;
@@ -65,10 +72,9 @@ interface ExerciseEditorState {
   exerciseOrder: number;
   supersetGroup: string | null;
   originalSetIds: string[];
-  rows: WorkoutRow[];
+  rows: TemplateSetRow[];
 }
 
-const TEMP_SET_PREFIX = 'temp-set-';
 const DURATION_PICKER_HEIGHT = Platform.OS === 'ios' ? 200 : 56;
 const DURATION_HOURS = Array.from({ length: 24 }, (_, i) => i);
 const DURATION_MINUTES = Array.from({ length: 60 }, (_, i) => i);
@@ -126,50 +132,6 @@ function computeDurationSeconds(startedAt: string, completedAt: string | null): 
   const start = new Date(startedAt).getTime();
   const end = completedAt ? new Date(completedAt).getTime() : Date.now();
   return Math.max(0, Math.floor((end - start) / 1000));
-}
-
-function toWorkoutRows(sets: SetLogWithExercise[], weightUnit: 'kg' | 'lbs', distUnit: 'km' | 'miles'): WorkoutRow[] {
-  return sets.map((set) => ({
-    id: set.id,
-    session_id: set.session_id,
-    exercise_id: set.exercise_id,
-    routine_day_exercise_id: '',
-    set_number: set.set_number,
-    weight: formatWeight(set.weight, weightUnit),
-    reps: String(set.reps_performed),
-    rir: set.rir != null ? String(set.rir) : '',
-    duration: set.duration > 0 ? String(set.duration) : '',
-    distance: set.distance > 0 ? formatDistanceValue(set.distance, distUnit) : '',
-    is_completed: true,
-    is_warmup: set.is_warmup,
-    target_weight: 0,
-    target_reps_min: 0,
-    target_reps_max: 0,
-    target_duration: 0,
-    target_distance: 0,
-    exercise_order: set.exercise_order ?? 0,
-    superset_group: set.superset_group ?? null,
-  }));
-}
-
-function parseNonNegativeFloat(value: string): number {
-  const parsed = parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return parsed;
-}
-
-function parseNonNegativeInt(value: string): number {
-  const parsed = parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return parsed;
-}
-
-function isTempSetId(id: string): boolean {
-  return id.startsWith(TEMP_SET_PREFIX);
-}
-
-function renumberRows(rows: WorkoutRow[]): WorkoutRow[] {
-  return rows.map((row, index) => ({ ...row, set_number: index + 1 }));
 }
 
 function buildSupersetEntries(groups: ExerciseGroup[]): RoutineDayExercise[] {
@@ -299,6 +261,7 @@ export default function SessionDetailScreen() {
   const weightUnit = profile?.weight_unit ?? 'kg';
   const distUnit = profile?.distance_unit ?? 'km';
   const user = useAuthStore((s) => s.user);
+  const { setChromeHidden } = useWorkoutOverlay();
   const { session: activeSession, startWorkoutFromSession } = useWorkoutStore();
   const [session, setSession] = useState<SessionWithSetsAndExercises | null>(null);
   const [loading, setLoading] = useState(true);
@@ -312,8 +275,8 @@ export default function SessionDetailScreen() {
   const [showTimePicker, setShowTimePicker] = useState(Platform.OS === 'ios');
   const [showDurationWheels, setShowDurationWheels] = useState(false);
   const [exerciseEditor, setExerciseEditor] = useState<ExerciseEditorState | null>(null);
+  const [setEditorModalVisible, setSetEditorModalVisible] = useState(false);
   const [savingExerciseSets, setSavingExerciseSets] = useState(false);
-  const [tempSetCounter, setTempSetCounter] = useState(0);
   const [swapGroupKey, setSwapGroupKey] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
@@ -321,6 +284,29 @@ export default function SessionDetailScreen() {
   const [showCompletionBanner, setShowCompletionBanner] = useState(justCompleted === '1');
   const [routineDayTemplate, setRoutineDayTemplate] = useState<RoutineDayWithExercises | null>(null);
   const [templateResolved, setTemplateResolved] = useState(false);
+  const pageScrollRef = useRef<ScrollView | null>(null);
+  const pageScrollYRef = useRef(0);
+  const exerciseNodeRef = useRef<Record<string, View | null>>({});
+
+  const scrollSessionExerciseIntoView = useCallback((groupKey: string) => {
+    const node = exerciseNodeRef.current[groupKey];
+    if (!node) return;
+    requestAnimationFrame(() => {
+      node.measureInWindow((_x, y, _w, height) => {
+        const visibleTop = 110;
+        const visibleBottom = WINDOW_HEIGHT - SESSION_EDITOR_MODAL_HEIGHT - SESSION_EDITOR_MODAL_MARGIN;
+        let delta = 0;
+        if (y < visibleTop) {
+          delta = y - visibleTop;
+        } else if (y + height > visibleBottom) {
+          delta = (y + height) - visibleBottom;
+        }
+        if (Math.abs(delta) < 2) return;
+        const nextY = Math.max(0, pageScrollYRef.current + delta + (delta > 0 ? 12 : -12));
+        pageScrollRef.current?.scrollTo({ y: nextY, animated: true });
+      });
+    });
+  }, []);
 
   const openExerciseDetail = useCallback((exerciseId: string) => {
     const href = `/exercise/${exerciseId}` as const;
@@ -334,6 +320,20 @@ export default function SessionDetailScreen() {
   useEffect(() => {
     setShowCompletionBanner(justCompleted === '1');
   }, [justCompleted, sessionId]);
+
+  useEffect(() => {
+    if (!exerciseEditor && setEditorModalVisible) {
+      setSetEditorModalVisible(false);
+    }
+  }, [exerciseEditor, setEditorModalVisible]);
+
+  useEffect(() => {
+    setChromeHidden(setEditorModalVisible);
+  }, [setChromeHidden, setEditorModalVisible]);
+
+  useEffect(() => () => {
+    setChromeHidden(false);
+  }, [setChromeHidden]);
 
   const loadSession = useCallback(async () => {
     if (!sessionId) return;
@@ -475,8 +475,37 @@ export default function SessionDetailScreen() {
   };
 
   const openExerciseEditor = (group: ExerciseGroup) => {
-    const rows = toWorkoutRows(group.sets, weightUnit, distUnit);
+    const rows: TemplateSetRow[] = group.sets.map((set) => {
+      const weight = formatWeight(set.weight, weightUnit);
+      const reps = String(set.reps_performed ?? 0);
+      const rir = set.rir != null ? String(set.rir) : '';
+      const duration = set.duration > 0 ? String(set.duration) : '';
+      const distance = set.distance > 0 ? formatDistanceValue(set.distance, distUnit) : '';
+      const editedFields = new Set<string>();
+
+      if (weight !== '') editedFields.add('weight');
+      if (reps !== '') {
+        editedFields.add('repsMin');
+        editedFields.add('repsMax');
+      }
+      if (rir !== '') editedFields.add('rir');
+      if (duration !== '') editedFields.add('duration');
+      if (distance !== '') editedFields.add('distance');
+
+      return {
+        weight,
+        repsMin: reps,
+        repsMax: reps,
+        rir,
+        duration,
+        distance,
+        isWarmup: set.is_warmup,
+        editedFields,
+      };
+    });
+
     setExerciseEditor({
+      groupKey: group.key,
       sessionId: group.sets[0]?.session_id ?? session?.id ?? '',
       exerciseId: group.exerciseId,
       exerciseName: group.exerciseName,
@@ -484,78 +513,14 @@ export default function SessionDetailScreen() {
       exerciseOrder: group.sets[0]?.exercise_order ?? 0,
       supersetGroup: group.supersetGroup ?? null,
       originalSetIds: group.sets.map((set) => set.id),
-      rows: renumberRows(rows),
+      rows,
     });
+    scrollSessionExerciseIntoView(group.key);
   };
 
-  const updateExerciseRow = (rowId: string, updates: Partial<WorkoutRow>) => {
-    setExerciseEditor((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        rows: prev.rows.map((row) => (row.id === rowId ? { ...row, ...updates } : row)),
-      };
-    });
-  };
-
-  const addExerciseSet = (warmup: boolean) => {
-    setExerciseEditor((prev) => {
-      if (!prev) return prev;
-      const nextTempId = `${TEMP_SET_PREFIX}${tempSetCounter + 1}`;
-      const base = prev.rows[0];
-      const newRow: WorkoutRow = {
-        id: nextTempId,
-        session_id: prev.sessionId,
-        exercise_id: prev.exerciseId,
-        routine_day_exercise_id: '',
-        set_number: prev.rows.length + 1,
-        weight: '',
-        reps: '',
-        rir: '',
-        duration: '',
-        distance: '',
-        is_completed: true,
-        is_warmup: warmup,
-        target_weight: 0,
-        target_reps_min: 0,
-        target_reps_max: 0,
-        target_duration: 0,
-        target_distance: 0,
-        exercise_order: prev.exerciseOrder ?? base?.exercise_order ?? 0,
-        superset_group: prev.supersetGroup,
-      };
-
-      setTempSetCounter((n) => n + 1);
-
-      if (!warmup) {
-        return { ...prev, rows: renumberRows([...prev.rows, newRow]) };
-      }
-
-      const warmups = prev.rows.filter((row) => row.is_warmup);
-      const working = prev.rows.filter((row) => !row.is_warmup);
-      return { ...prev, rows: renumberRows([...warmups, newRow, ...working]) };
-    });
-  };
-
-  const removeExerciseRow = (rowId: string) => {
-    setExerciseEditor((prev) => {
-      if (!prev) return prev;
-      const filtered = prev.rows.filter((row) => row.id !== rowId);
-      return { ...prev, rows: renumberRows(filtered) };
-    });
-  };
-
-  const toggleExerciseWarmup = (rowId: string) => {
-    setExerciseEditor((prev) => {
-      if (!prev) return prev;
-      const nextRows = prev.rows.map((row) => (
-        row.id === rowId ? { ...row, is_warmup: !row.is_warmup } : row
-      ));
-      const warmups = nextRows.filter((row) => row.is_warmup);
-      const working = nextRows.filter((row) => !row.is_warmup);
-      return { ...prev, rows: renumberRows([...warmups, ...working]) };
-    });
-  };
+  const updateExerciseEditorRows = useCallback((rows: TemplateSetRow[]) => {
+    setExerciseEditor((prev) => (prev ? { ...prev, rows } : prev));
+  }, []);
 
   const saveExerciseSets = async () => {
     if (!exerciseEditor) return;
@@ -565,52 +530,23 @@ export default function SessionDetailScreen() {
     }
     try {
       setSavingExerciseSets(true);
-      const rows = renumberRows(exerciseEditor.rows);
-      const originalIds = new Set(exerciseEditor.originalSetIds);
-      const remainingPersistedIds = new Set(
-        rows.filter((row) => !isTempSetId(row.id)).map((row) => row.id),
-      );
-      const deletedIds = exerciseEditor.originalSetIds.filter((id) => !remainingPersistedIds.has(id));
-
-      const upserts = rows.map((row) => {
-        const distanceValue = parseNonNegativeFloat(row.distance);
-        const payload = {
-          weight: parseWeightToKg(parseNonNegativeFloat(row.weight), weightUnit),
-          reps_performed: parseNonNegativeInt(row.reps),
-          rir: row.rir.trim() === '' ? null : parseNonNegativeFloat(row.rir),
-          duration: parseNonNegativeFloat(row.duration),
-          distance: distUnit === 'miles' ? milesToKm(distanceValue) : distanceValue,
-          set_number: row.set_number,
-          is_warmup: row.is_warmup,
-          exercise_order: exerciseEditor.exerciseOrder,
-          superset_group: exerciseEditor.supersetGroup,
-        };
-
-        if (isTempSetId(row.id)) {
-          return sessionService.addSet({
-            session_id: exerciseEditor.sessionId,
-            exercise_id: exerciseEditor.exerciseId,
-            set_number: row.set_number,
-            weight: payload.weight,
-            reps_performed: payload.reps_performed,
-            rir: payload.rir,
-            is_warmup: payload.is_warmup,
-            exercise_order: payload.exercise_order,
-            superset_group: payload.superset_group,
-            duration: payload.duration,
-            distance: payload.distance,
-          });
-        }
-
-        if (!originalIds.has(row.id)) {
-          return Promise.resolve(null);
-        }
-
-        return sessionService.updateSet(row.id, payload);
-      });
-
-      const deletions = deletedIds.map((id) => sessionService.deleteSet(id));
-      await Promise.all([...upserts, ...deletions]);
+      const payloadRows = buildSetsPayload(exerciseEditor.rows, weightUnit, false);
+      if (exerciseEditor.originalSetIds.length > 0) {
+        await sessionService.deleteSetsByIds(exerciseEditor.originalSetIds);
+      }
+      await Promise.all(payloadRows.map((row, index) => sessionService.addSet({
+        session_id: exerciseEditor.sessionId,
+        exercise_id: exerciseEditor.exerciseId,
+        set_number: index + 1,
+        weight: row.target_weight,
+        reps_performed: row.target_reps_min,
+        rir: row.target_rir,
+        is_warmup: row.is_warmup,
+        exercise_order: exerciseEditor.exerciseOrder,
+        superset_group: exerciseEditor.supersetGroup,
+        duration: row.target_duration,
+        distance: distUnit === 'miles' ? milesToKm(row.target_distance) : row.target_distance,
+      })));
       setExerciseEditor(null);
       await loadSession();
     } catch {
@@ -619,6 +555,17 @@ export default function SessionDetailScreen() {
       setSavingExerciseSets(false);
     }
   };
+
+  useEffect(() => {
+    if (!exerciseEditor || !session) return;
+    const exists = session.sets.some((set) => {
+      const orderKey = set.exercise_order != null ? `order_${set.exercise_order}` : `legacy_${set.exercise_id}`;
+      return `${orderKey}_${set.exercise_id}` === exerciseEditor.groupKey;
+    });
+    if (!exists) {
+      setExerciseEditor(null);
+    }
+  }, [exerciseEditor, session]);
 
   const persistGroupedSession = async (nextGroups: ExerciseGroup[]) => {
     await Promise.all(nextGroups.map((group, idx) => (
@@ -1004,8 +951,21 @@ export default function SessionDetailScreen() {
   return (
     <>
       <Stack.Screen options={stackScreenOptions} />
-    <View style={styles.flex}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} automaticallyAdjustKeyboardInsets>
+      <PortalHost>
+        <View style={styles.flex}>
+          <ScrollView
+            ref={pageScrollRef}
+            style={styles.container}
+            contentContainerStyle={[
+              styles.content,
+              setEditorModalVisible && styles.contentEditorModalOpen,
+            ]}
+            automaticallyAdjustKeyboardInsets
+            onScroll={(event) => {
+              pageScrollYRef.current = event.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
+          >
         {showCompletionBanner && (
           <Card style={styles.completionBanner}>
             <View style={styles.completionBannerHeader}>
@@ -1096,9 +1056,17 @@ export default function SessionDetailScreen() {
         {groups.map((group, idx) => {
           const position = getSupersetPosition(supersetEntries, idx, supersetMap);
           const menuItems = buildExerciseMenuItems(group, idx, groups);
+          const isEditingGroup = exerciseEditor?.groupKey === group.key;
           return (
-            <SupersetBracket key={group.key} position={position} contentRadius={16} style={position === 'last' ? { marginBottom: 6 } : undefined}>
-              <Card style={[styles.exerciseCard, position !== null && styles.exerciseCardNoMargin]}>
+            <View
+              key={group.key}
+              ref={(node) => {
+                exerciseNodeRef.current[group.key] = node;
+              }}
+              collapsable={false}
+            >
+              <SupersetBracket position={position} contentRadius={16} style={position === 'last' ? { marginBottom: 6 } : undefined}>
+                <Card style={[styles.exerciseCard, position !== null && styles.exerciseCardNoMargin]}>
                 <View style={styles.exerciseHeader}>
                   <View style={styles.exerciseHeaderIdentity}>
                     <ExerciseIconPreview
@@ -1120,7 +1088,36 @@ export default function SessionDetailScreen() {
                   <OverflowMenu items={menuItems} />
                 </View>
 
-                {(() => {
+                {isEditingGroup ? (
+                  <View style={styles.inlineEditorContainer}>
+                    <SetsTableEditor
+                      rows={exerciseEditor.rows}
+                      setRows={updateExerciseEditorRows}
+                      repRange={false}
+                      setRepRange={() => {}}
+                      wUnit={weightUnit}
+                      dUnit={distUnit}
+                      exerciseType={exerciseEditor.exerciseType}
+                      onEditorVisibilityChange={setSetEditorModalVisible}
+                      onFocusRow={() => scrollSessionExerciseIntoView(group.key)}
+                      renderValueEditorInPortal
+                      valueEditorAnimated={false}
+                    />
+                    <View style={styles.modalActions}>
+                      <Button
+                        title="Cancel"
+                        variant="ghost"
+                        onPress={() => setExerciseEditor(null)}
+                      />
+                      <Button
+                        title="Save"
+                        variant="accent"
+                        onPress={saveExerciseSets}
+                        loading={savingExerciseSets}
+                      />
+                    </View>
+                  </View>
+                ) : (() => {
                   const cfg = getExerciseTypeConfig(group.exerciseType);
                   const showWeight = cfg.fields.some((f) => f.key === 'weight');
                   const showReps = cfg.fields.some((f) => f.key === 'reps');
@@ -1154,8 +1151,9 @@ export default function SessionDetailScreen() {
                     </>
                   );
                 })()}
-              </Card>
-            </SupersetBracket>
+                </Card>
+              </SupersetBracket>
+            </View>
           );
         })}
         <Button title="+ Add Exercise" variant="dashed" onPress={() => setShowAddExercise(true)} style={{ marginTop: 8, marginBottom: 8 }} />
@@ -1303,88 +1301,6 @@ export default function SessionDetailScreen() {
             </View>
       </BottomSheetModal>
 
-      <BottomSheetModal
-        visible={!!exerciseEditor}
-        title={exerciseEditor ? `Edit ${exerciseEditor.exerciseName}` : 'Edit Exercise'}
-        scrollable
-        onClose={() => setExerciseEditor(null)}
-      >
-        {exerciseEditor && (
-          <>
-            <View style={styles.setTableHeader}>
-              <Text style={[styles.tableCol, styles.editorColSet]}>SET</Text>
-              <Text style={[styles.tableCol, styles.editorColPrev]}>PREV</Text>
-              {getExerciseTypeConfig(exerciseEditor.exerciseType).fields.map((f) => (
-                <Text key={f.key} style={[styles.tableCol, styles.colFlex]}>
-                  {f.key === 'weight'
-                    ? getWeightLabel(exerciseEditor.exerciseType, weightUnitLabel(weightUnit))
-                    : f.key === 'distance'
-                      ? distanceUnitLabel(distUnit)
-                      : f.label}
-                </Text>
-              ))}
-              {getExerciseTypeConfig(exerciseEditor.exerciseType).showRir && (
-                <Text style={[styles.tableCol, styles.editorColRir]}>RIR</Text>
-              )}
-              <View style={styles.editorColAction} />
-            </View>
-
-            {(() => {
-              let workingSetIndex = 0;
-              return exerciseEditor.rows.map((row) => (
-                <SetRow
-                  key={row.id}
-                  row={row}
-                  displaySetNumber={row.is_warmup ? 'W' : ++workingSetIndex}
-                  weightUnit={weightUnit}
-                  distanceUnit={distUnit}
-                  exerciseType={exerciseEditor.exerciseType}
-                  onUpdateRowLocal={(updates) => updateExerciseRow(row.id, updates)}
-                  onUpdateRow={(updates) => updateExerciseRow(row.id, updates)}
-                  onToggle={() => {}}
-                  onSwipeDelete={() => removeExerciseRow(row.id)}
-                  onToggleWarmup={() => toggleExerciseWarmup(row.id)}
-                  showCompletionToggle={false}
-                  enableWarmupSwipe
-                  showInlineDelete={exerciseEditor.rows.length > 1}
-                  onInlineDelete={() => removeExerciseRow(row.id)}
-                />
-              ));
-            })()}
-
-            <View style={styles.addSetRow}>
-              <TouchableOpacity
-                style={styles.addSetButton}
-                onPress={() => addExerciseSet(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.addWarmupText}>+ Warmup</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.addSetButton}
-                onPress={() => addExerciseSet(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.addSetText}>+ Add Set</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalActions}>
-              <Button
-                title="Cancel"
-                variant="ghost"
-                onPress={() => setExerciseEditor(null)}
-              />
-              <Button
-                title="Save"
-                variant="accent"
-                onPress={saveExerciseSets}
-                loading={savingExerciseSets}
-              />
-            </View>
-          </>
-        )}
-      </BottomSheetModal>
       <ExercisePickerModal
         visible={showSwapPicker}
         onClose={() => { setShowSwapPicker(false); setSwapGroupKey(null); }}
@@ -1405,7 +1321,8 @@ export default function SessionDetailScreen() {
         onDeleteExercise={() => {}}
         onExerciseDetails={openExerciseDetail}
       />
-    </View>
+        </View>
+      </PortalHost>
     </>
   );
 }
@@ -1422,6 +1339,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
     paddingBottom: spacing.xl+50,
+  },
+  contentEditorModalOpen: {
+    paddingBottom: spacing.xl + 50 + SESSION_EDITOR_MODAL_HEIGHT + SESSION_EDITOR_MODAL_MARGIN,
   },
   loadingContainer: {
     flex: 1,
@@ -1643,6 +1563,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  inlineEditorContainer: {
+    paddingTop: 2,
+  },
   colSet: { width: 28 },
   colPrev: { width: 72 },
   colWeight: { flex: 1 },
@@ -1654,6 +1577,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   editorColPrev: { width: 72 },
   editorColRir: { width: 40 },
   editorColAction: { width: 28 },
+  editorRowsScroll: {
+    maxHeight: 360,
+  },
+  editorRowsContent: {
+    paddingBottom: 8,
+  },
+  editorRowsContentEditorOpen: {
+    paddingBottom: 360,
+  },
   setTableHeader: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -31,6 +31,7 @@ const MUSCLE_TO_SLUGS: Record<string, BodySlug[]> = {
   quadriceps: ['quadriceps'],
   hamstrings: ['hamstring'],
   hamstring:  ['hamstring'],
+  legs:       ['quadriceps', 'hamstring', 'gluteal'],
   glutes:     ['gluteal'],
   gluteal:    ['gluteal'],
   calves:     ['calves'],
@@ -132,7 +133,7 @@ function HeatmapTooltip({ colors }: { colors: ReturnType<typeof useTheme>['color
             marginHorizontal: 24,
           }}>
             <Text style={{ color: colors.text, fontSize: 13, fontFamily: fonts.regular, lineHeight: 20 }}>
-              {'Each set counts 1.0 for the primary muscle and 0.33 for each secondary muscle. Cardio and full-body exercises are excluded. Colour intensity shows relative volume — the most-trained muscle is always at peak intensity.'}
+              {'Each set counts 1.0 for the primary muscle and 0.33 for each secondary muscle. Cardio exercises are excluded. Colour intensity shows relative volume — the most-trained muscle is always at peak intensity.'}
             </Text>
           </View>
         </TouchableOpacity>

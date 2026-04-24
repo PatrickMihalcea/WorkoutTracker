@@ -3,6 +3,12 @@ import { Exercise } from '../models';
 import { sessionService } from '../services';
 import { deleteCustomExercise } from '../services/exerciseMutation.service';
 
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim().length > 0) return error;
+  return 'Could not delete exercise.';
+}
+
 export async function confirmDeleteExercise(
   exercise: Exercise,
   userId: string,
@@ -29,8 +35,8 @@ export async function confirmDeleteExercise(
         try {
           await deleteCustomExercise(exercise);
           onDeleted();
-        } catch {
-          Alert.alert('Error', 'Could not delete exercise.');
+        } catch (error: unknown) {
+          Alert.alert('Error', toErrorMessage(error));
         }
       },
     },

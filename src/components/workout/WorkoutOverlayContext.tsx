@@ -5,21 +5,26 @@ let lastKnownSessionId: string | null = null;
 
 interface WorkoutOverlayContextType {
   expanded: boolean;
+  chromeHidden: boolean;
   expand: () => void;
   minimize: () => void;
   suppressNextAutoExpand: () => void;
+  setChromeHidden: (hidden: boolean) => void;
 }
 
 const WorkoutOverlayContext = createContext<WorkoutOverlayContextType>({
   expanded: false,
+  chromeHidden: false,
   expand: () => {},
   minimize: () => {},
   suppressNextAutoExpand: () => {},
+  setChromeHidden: () => {},
 });
 
 export function WorkoutOverlayProvider({ children }: { children: React.ReactNode }) {
   const session = useWorkoutStore((s) => s.session);
   const [expanded, setExpanded] = useState(false);
+  const [chromeHidden, setChromeHidden] = useState(false);
   const prevSessionRef = useRef<string | null>(lastKnownSessionId);
   const suppressRef = useRef(false);
 
@@ -44,8 +49,8 @@ export function WorkoutOverlayProvider({ children }: { children: React.ReactNode
   const suppressNextAutoExpand = useCallback(() => { suppressRef.current = true; }, []);
 
   const value = useMemo(
-    () => ({ expanded, expand, minimize, suppressNextAutoExpand }),
-    [expanded, expand, minimize, suppressNextAutoExpand],
+    () => ({ expanded, chromeHidden, expand, minimize, suppressNextAutoExpand, setChromeHidden }),
+    [expanded, chromeHidden, expand, minimize, suppressNextAutoExpand, setChromeHidden],
   );
 
   return (

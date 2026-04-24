@@ -23,6 +23,7 @@ import { weightUnitLabel, distanceUnitLabel, formatWeight } from '../../utils/un
 import { getExerciseTypeConfig, getWeightLabel } from '../../utils/exerciseType';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../utils/exerciseMedia';
+import { EditableFieldKind } from '../set-editor/types';
 
 const ANIM_DURATION = 300;
 const EXERCISE_PLACEHOLDER = require('../../../assets/Setora-black-and-white.png');
@@ -65,6 +66,9 @@ interface ExerciseCardProps {
   demoOverflowVisible?: boolean;
   demoOverflowMenuStyle?: StyleProp<ViewStyle>;
   demoOverflowTriggerStyle?: StyleProp<ViewStyle>;
+  activeCell?: { rowId: string; field: EditableFieldKind } | null;
+  onBeginEditCell?: (rowId: string, field: EditableFieldKind) => void;
+  onRowLayout?: (rowId: string, y: number) => void;
 }
 
 export function ExerciseCard({
@@ -98,6 +102,9 @@ export function ExerciseCard({
   demoOverflowVisible,
   demoOverflowMenuStyle,
   demoOverflowTriggerStyle,
+  activeCell,
+  onBeginEditCell,
+  onRowLayout,
 }: ExerciseCardProps) {
   const { colors } = useTheme();
   const { setCompletion } = useThemeColors();
@@ -536,26 +543,34 @@ export function ExerciseCard({
           }
 
           return (
-            <SetRow
+            <View
               key={row.id}
-              row={row}
-              displaySetNumber={displayNum}
-              previousSet={previousSets[origIndex]}
-              weightUnit={weightUnit}
-              distanceUnit={distanceUnit}
-              exerciseType={exType}
-              suggestedWeight={suggestedWeight}
-              suggestedReps={suggestedReps}
-              suggestedDuration={suggestedDuration}
-              suggestedDistance={suggestedDistance}
-              suggestedRir={suggestedRir}
-              completionColor={setCompletion}
-              onUpdateRowLocal={(updates) => onUpdateRowLocal?.(row.id, entry.id, updates)}
-              onUpdateRow={(updates) => onUpdateRow(row.id, entry.id, updates)}
-              onToggle={() => onToggleRow(row.id, entry.id)}
-              onSwipeDelete={() => onDeleteRow(row.id, entry.id, row.set_number)}
-              onToggleWarmup={() => onToggleWarmup(row.id, entry.id)}
-            />
+              onLayout={(event) => {
+                onRowLayout?.(row.id, event.nativeEvent.layout.y);
+              }}
+            >
+              <SetRow
+                row={row}
+                displaySetNumber={displayNum}
+                previousSet={previousSets[origIndex]}
+                weightUnit={weightUnit}
+                distanceUnit={distanceUnit}
+                exerciseType={exType}
+                suggestedWeight={suggestedWeight}
+                suggestedReps={suggestedReps}
+                suggestedDuration={suggestedDuration}
+                suggestedDistance={suggestedDistance}
+                suggestedRir={suggestedRir}
+                completionColor={setCompletion}
+                onUpdateRowLocal={(updates) => onUpdateRowLocal?.(row.id, entry.id, updates)}
+                onUpdateRow={(updates) => onUpdateRow(row.id, entry.id, updates)}
+                onToggle={() => onToggleRow(row.id, entry.id)}
+                onSwipeDelete={() => onDeleteRow(row.id, entry.id, row.set_number)}
+                onToggleWarmup={() => onToggleWarmup(row.id, entry.id)}
+                activeField={activeCell?.rowId === row.id ? activeCell.field : null}
+                onBeginEdit={(field) => onBeginEditCell?.(row.id, field)}
+              />
+            </View>
           );
         })}
 

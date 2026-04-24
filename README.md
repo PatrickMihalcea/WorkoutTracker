@@ -41,6 +41,61 @@ npx expo start
 
 Scan the QR code with **Expo Go** on your phone, or press `i` for iOS Simulator / `a` for Android Emulator.
 
+## Deploy Supabase Edge Functions
+
+Use these steps to deploy the functions in `supabase/functions` to your Supabase project.
+
+### 1. Authenticate and link the project
+
+```bash
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+```
+
+You can find your project ref in the Supabase dashboard URL, for example:
+`https://supabase.com/dashboard/project/<your-project-ref>`.
+
+### 2. Set required function secrets
+
+Set R2 secrets (required for media upload/delete functions):
+
+```bash
+npx supabase secrets set \
+  R2_ACCOUNT_ID=<r2-account-id> \
+  R2_BUCKET=<r2-bucket> \
+  R2_ACCESS_KEY_ID=<r2-access-key-id> \
+  R2_SECRET_ACCESS_KEY=<r2-secret-access-key> \
+  R2_PUBLIC_BASE_URL=<r2-public-base-url> \
+  R2_S3_ENDPOINT=<optional-r2-endpoint> \
+  --project-ref <your-project-ref>
+```
+
+Set OpenAI secrets (optional, used by `generate-onboarding-routine` AI mode):
+
+```bash
+npx supabase secrets set \
+  OPENAI_API_KEY=<openai-api-key> \
+  OPENAI_MODEL=gpt-4.1-mini \
+  --project-ref <your-project-ref>
+```
+
+Note: `SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided automatically in Supabase Edge Functions.
+
+### 3. Deploy functions
+
+```bash
+npx supabase functions deploy generate-onboarding-routine --project-ref <your-project-ref>
+npx supabase functions deploy create-exercise-media-upload-url --project-ref <your-project-ref>
+npx supabase functions deploy delete-exercise-media --project-ref <your-project-ref>
+npx supabase functions deploy delete-user-media --project-ref <your-project-ref>
+```
+
+### 4. Verify deployment
+
+```bash
+npx supabase functions list --project-ref <your-project-ref>
+```
+
 ## Project Structure
 
 ```

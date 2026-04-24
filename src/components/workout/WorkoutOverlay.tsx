@@ -19,6 +19,17 @@ import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import Reanimated, {
+  cancelAnimation,
+  Easing as ReanimatedEasing,
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useAuthStore } from '../../stores/auth.store';
 import { useWorkoutStore } from '../../stores/workout.store';
 import { useProfileStore } from '../../stores/profile.store';
@@ -35,6 +46,7 @@ import { fonts } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatElapsed } from '../../utils/date';
 import { Exercise, RoutineDayExercise, WorkoutRow } from '../../models';
+import { getExerciseTypeConfig } from '../../utils/exerciseType';
 import {
   supersetPrev,
   supersetNext,
@@ -46,10 +58,24 @@ import {
   type ReorderItem,
   type SupersetGroups,
 } from '../../utils/superset';
+import { SetValueEditorModal } from '../ui/SetValueEditorModal';
+import { formatWeight } from '../../utils/units';
+import {
+  EditableFieldKind,
+  EditableCellRef,
+  EditorDirection,
+  allowsDecimalForField,
+  isNumericEditableField,
+} from '../set-editor/types';
 
 const TAB_BAR_HEIGHT = 60;
 const SLIDE_IN_MS = 500;
-const SLIDE_OUT_MS = 300;
+const SLIDE_OUT_MS = 400;
+const HEADER_DRAG_DISMISS_THRESHOLD_RATIO = 0.4;
+const HEADER_DRAG_DISMISS_THRESHOLD_MAX = 400;
+const HEADER_DRAG_VELOCITY_PROJECTION = 0.12;
+const HEADER_DRAG_SETTLE_MS_MIN = 120;
+const HEADER_DRAG_SETTLE_MS_MAX = 240;
 const SESSION_ID_PATH_REGEX = /^\/profile\/[0-9a-fA-F-]{36}$/;
 const PROFILE_SESSION_PATH_REGEX = /^\/profile\/[^/]+$/;
 type TooltipWarningVariant = 'empty-finish' | 'first-entry-walkthrough';
@@ -87,6 +113,89 @@ const WORKOUT_TOOLTIP_COPY: Record<WorkoutTooltipKey, { title: string; message: 
     demoTitle: 'Exercise Order',
     demoHint: 'Long press and drag to reorder',
   },
+};
+
+interface WorkoutEditableRow {
+  entryId: string;
+  rowId: string;
+  fields: EditableFieldKind[];
+}
+
+const sortWorkoutRowsForEditing = (entryRows: WorkoutRow[]) => {
+  const warmups = entryRows
+    .filter((row) => row.is_warmup)
+    .sort((a, b) => a.set_number - b.set_number);
+  const working = entryRows
+    .filter((row) => !row.is_warmup)
+    .sort((a, b) => a.set_number - b.set_number);
+  return [...warmups, ...working];
+};
+
+const buildWorkoutEditableRows = (
+  entries: RoutineDayExercise[],
+  rowMap: Record<string, WorkoutRow[]>,
+): WorkoutEditableRow[] => {
+  const result: WorkoutEditableRow[] = [];
+
+  for (const entry of entries) {
+    const config = getExerciseTypeConfig(entry.exercise?.exercise_type);
+    const editableFields: EditableFieldKind[] = config.fields.map((field) => field.key as EditableFieldKind);
+    if (config.showRir) editableFields.push('rir');
+
+    const entryRows = sortWorkoutRowsForEditing(rowMap[entry.id] ?? []);
+    for (const row of entryRows) {
+      result.push({
+        entryId: entry.id,
+        rowId: row.id,
+        fields: editableFields,
+      });
+    }
+  }
+
+  return result;
+};
+
+const findAdjacentWorkoutCell = (
+  editableRows: WorkoutEditableRow[],
+  current: EditableCellRef,
+  direction: EditorDirection,
+): EditableCellRef | null => {
+  const rowIndex = editableRows.findIndex((row) => row.entryId === current.entryId && row.rowId === current.rowId);
+  if (rowIndex < 0) return null;
+
+  const row = editableRows[rowIndex];
+  const fieldIndex = row.fields.indexOf(current.field);
+  if (fieldIndex < 0) return null;
+
+  if (direction === 'left') {
+    if (fieldIndex > 0) {
+      return { entryId: row.entryId, rowId: row.rowId, field: row.fields[fieldIndex - 1] };
+    }
+    const prevRow = editableRows[rowIndex - 1];
+    if (!prevRow) return null;
+    return { entryId: prevRow.entryId, rowId: prevRow.rowId, field: prevRow.fields[prevRow.fields.length - 1] };
+  }
+
+  if (direction === 'right') {
+    if (fieldIndex < row.fields.length - 1) {
+      return { entryId: row.entryId, rowId: row.rowId, field: row.fields[fieldIndex + 1] };
+    }
+    const nextRow = editableRows[rowIndex + 1];
+    if (!nextRow) return null;
+    return { entryId: nextRow.entryId, rowId: nextRow.rowId, field: nextRow.fields[0] };
+  }
+
+  if (direction === 'up') {
+    const prevRow = editableRows[rowIndex - 1];
+    if (!prevRow) return null;
+    const nextFieldIndex = Math.min(fieldIndex, prevRow.fields.length - 1);
+    return { entryId: prevRow.entryId, rowId: prevRow.rowId, field: prevRow.fields[nextFieldIndex] };
+  }
+
+  const nextRow = editableRows[rowIndex + 1];
+  if (!nextRow) return null;
+  const nextFieldIndex = Math.min(fieldIndex, nextRow.fields.length - 1);
+  return { entryId: nextRow.entryId, rowId: nextRow.rowId, field: nextRow.fields[nextFieldIndex] };
 };
 
 export function WorkoutOverlay() {
@@ -129,11 +238,12 @@ export function WorkoutOverlay() {
     dismissRestTimer,
   } = useWorkoutStore();
 
-  const { expanded, minimize } = useWorkoutOverlay();
+  const { expanded, chromeHidden, minimize } = useWorkoutOverlay();
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
 
-  const slideAnim = useRef(new Animated.Value(screenHeight)).current;
+  const sheetTranslateY = useSharedValue(screenHeight);
+  const headerDragBaseY = useSharedValue(0);
   const [showFullScreen, setShowFullScreen] = useState(false);
 
   const [elapsed, setElapsed] = useState('0m 00s');
@@ -145,10 +255,19 @@ export function WorkoutOverlay() {
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [autoOpenPicker, setAutoOpenPicker] = useState(false);
+  const [valueEditorVisible, setValueEditorVisible] = useState(false);
+  const [valueEditorCell, setValueEditorCell] = useState<EditableCellRef | null>(null);
+  const [valueEditorNumeric, setValueEditorNumeric] = useState('');
+  const [valueEditorDuration, setValueEditorDuration] = useState(0);
+  const [valueEditorRir, setValueEditorRir] = useState<number | null>(null);
   const [tooltipWarningVariant, setTooltipWarningVariant] = useState<TooltipWarningVariant | null>(null);
   const [walkthroughStepIndex, setWalkthroughStepIndex] = useState(0);
   const [isCompleting, setIsCompleting] = useState(false);
   const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const entryLayoutYRef = useRef<Record<string, number>>({});
+  const rowLayoutYRef = useRef<Record<string, Record<string, number>>>({});
+  const pendingRirAutoCompleteRef = useRef<Set<string>>(new Set());
   const warningDemoToggle = useRef(new Animated.Value(0)).current;
   const warningDemoToggleScale = useRef(new Animated.Value(1)).current;
   const warningDemoTapOpacity = useRef(new Animated.Value(0)).current;
@@ -220,21 +339,67 @@ export function WorkoutOverlay() {
   useEffect(() => {
     if (expanded && session) {
       setShowFullScreen(true);
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: SLIDE_IN_MS,
-        useNativeDriver: true,
-      }).start();
+      sheetTranslateY.value = withTiming(0, { duration: SLIDE_IN_MS });
     } else {
-      Animated.timing(slideAnim, {
-        toValue: screenHeight,
-        duration: SLIDE_OUT_MS,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished) setShowFullScreen(false);
+      sheetTranslateY.value = withTiming(screenHeight, { duration: SLIDE_OUT_MS }, (finished) => {
+        if (finished) {
+          runOnJS(setShowFullScreen)(false);
+        }
       });
     }
-  }, [expanded, !!session]);
+  }, [expanded, screenHeight, session?.id, sheetTranslateY]);
+
+  useEffect(() => {
+    if (!showFullScreen) {
+      sheetTranslateY.value = screenHeight;
+    }
+  }, [screenHeight, sheetTranslateY, showFullScreen]);
+
+  const headerDragGesture = useMemo(() => Gesture.Pan()
+    .enabled(expanded)
+    .activeOffsetY(8)
+    .failOffsetX([-18, 18])
+    .onBegin(() => {
+      cancelAnimation(sheetTranslateY);
+      headerDragBaseY.value = sheetTranslateY.value;
+    })
+    .onUpdate((event) => {
+      const nextValue = Math.max(0, Math.min(screenHeight, headerDragBaseY.value + event.translationY));
+      sheetTranslateY.value = nextValue;
+    })
+    .onEnd((event) => {
+      const minimizeThreshold = Math.min(HEADER_DRAG_DISMISS_THRESHOLD_MAX, screenHeight * HEADER_DRAG_DISMISS_THRESHOLD_RATIO);
+      const projected = sheetTranslateY.value + Math.max(0, event.velocityY) * HEADER_DRAG_VELOCITY_PROJECTION;
+      const shouldMinimize = projected > minimizeThreshold;
+      const target = shouldMinimize ? screenHeight : 0;
+      const speed = Math.min(Math.abs(event.velocityY), 2200);
+      const duration = Math.max(
+        HEADER_DRAG_SETTLE_MS_MIN,
+        Math.min(HEADER_DRAG_SETTLE_MS_MAX, HEADER_DRAG_SETTLE_MS_MAX - Math.round(speed / 24)),
+      );
+      sheetTranslateY.value = withTiming(target, {
+        duration,
+        easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+      }, (finished) => {
+        if (finished && shouldMinimize) {
+          runOnJS(minimize)();
+        }
+      });
+    }),
+  [expanded, headerDragBaseY, minimize, screenHeight, sheetTranslateY]);
+
+  const animatedSheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetTranslateY.value }],
+  }));
+
+  const animatedBackdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      sheetTranslateY.value,
+      [0, screenHeight],
+      [0.5, 0],
+      Extrapolation.CLAMP,
+    ),
+  }));
 
   useEffect(() => {
     if (!session) return;
@@ -252,6 +417,23 @@ export function WorkoutOverlay() {
     const id = setInterval(() => tickRestTimer(), 1000);
     return () => clearInterval(id);
   }, [restTimer !== null]);
+
+  useEffect(() => {
+    if (!session || reordering) {
+      setValueEditorVisible(false);
+      setValueEditorCell(null);
+    }
+  }, [reordering, session?.id]);
+
+  useEffect(() => {
+    if (!valueEditorCell) return;
+    if (!valueEditorCell.entryId) return;
+    const rowExists = (rows[valueEditorCell.entryId] ?? []).some((row) => row.id === valueEditorCell.rowId);
+    if (!rowExists) {
+      setValueEditorVisible(false);
+      setValueEditorCell(null);
+    }
+  }, [rows, valueEditorCell]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
@@ -572,6 +754,308 @@ export function WorkoutOverlay() {
     catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
+  const editableRows = useMemo(
+    () => buildWorkoutEditableRows(exercises, rows),
+    [exercises, rows],
+  );
+
+  const getCellRow = useCallback((cell: EditableCellRef | null) => {
+    if (!cell?.entryId) return null;
+    return (rows[cell.entryId] ?? []).find((row) => row.id === cell.rowId) ?? null;
+  }, [rows]);
+
+  const applyLocalCellValue = useCallback((cell: EditableCellRef, nextValue: string | number | null) => {
+    if (!cell.entryId) return;
+
+    if (cell.field === 'rir') {
+      updateRowLocal(cell.rowId, cell.entryId, { rir: nextValue == null ? '' : String(nextValue) });
+      return;
+    }
+
+    if (cell.field === 'duration') {
+      updateRowLocal(cell.rowId, cell.entryId, { duration: String(nextValue ?? 0) });
+      return;
+    }
+
+    const value = String(nextValue ?? '');
+    if (cell.field === 'weight') {
+      updateRowLocal(cell.rowId, cell.entryId, { weight: value });
+      return;
+    }
+    if (cell.field === 'reps') {
+      updateRowLocal(cell.rowId, cell.entryId, { reps: value });
+      return;
+    }
+    if (cell.field === 'distance') {
+      updateRowLocal(cell.rowId, cell.entryId, { distance: value });
+    }
+  }, [updateRowLocal]);
+
+  const persistCellValue = useCallback((cell: EditableCellRef, nextValue: string | number | null) => {
+    if (!cell.entryId) return;
+    let updates: Record<string, string> | null = null;
+
+    if (cell.field === 'rir') {
+      updates = { rir: nextValue == null ? '' : String(nextValue) };
+    } else if (cell.field === 'duration') {
+      updates = { duration: String(nextValue ?? 0) };
+    } else if (cell.field === 'weight') {
+      updates = { weight: String(nextValue ?? '') };
+    } else if (cell.field === 'reps') {
+      updates = { reps: String(nextValue ?? '') };
+    } else if (cell.field === 'distance') {
+      updates = { distance: String(nextValue ?? '') };
+    }
+
+    if (!updates) return;
+    updateRowLocal(cell.rowId, cell.entryId, updates);
+    void updateRow(cell.rowId, cell.entryId, updates).catch((error: unknown) => {
+      Alert.alert('Error', (error as Error).message);
+    });
+  }, [updateRow, updateRowLocal]);
+
+  const getSuggestedWorkoutCellValue = useCallback((cell: EditableCellRef): string | null => {
+    if (!cell.entryId) return null;
+    const entryRows = sortWorkoutRowsForEditing(rows[cell.entryId] ?? []);
+    const rowIndex = entryRows.findIndex((item) => item.id === cell.rowId);
+    if (rowIndex < 0) return null;
+    const row = entryRows[rowIndex];
+
+    const findPrevious = (selector: (item: WorkoutRow) => string) => {
+      for (let i = rowIndex - 1; i >= 0; i--) {
+        const value = selector(entryRows[i])?.trim();
+        if (value) return value;
+      }
+      return '';
+    };
+
+    if (cell.field === 'weight') {
+      const prev = findPrevious((item) => item.weight);
+      if (prev) return prev;
+      if (row.target_weight > 0) return formatWeight(row.target_weight, weightUnit);
+      return null;
+    }
+    if (cell.field === 'reps') {
+      const prev = findPrevious((item) => item.reps);
+      if (prev) return prev;
+      if (row.target_reps_min > 0 || row.target_reps_max > 0) {
+        const fallback = row.target_reps_max > 0 ? row.target_reps_max : row.target_reps_min;
+        return fallback > 0 ? String(fallback) : null;
+      }
+      return null;
+    }
+    if (cell.field === 'duration') {
+      const prev = findPrevious((item) => item.duration);
+      if (prev) return prev;
+      if (row.target_duration > 0) return String(row.target_duration);
+      return null;
+    }
+    if (cell.field === 'distance') {
+      const prev = findPrevious((item) => item.distance);
+      if (prev) return prev;
+      if (row.target_distance > 0) return String(row.target_distance);
+      return null;
+    }
+    if (cell.field === 'rir') {
+      const prev = findPrevious((item) => item.rir);
+      return prev || null;
+    }
+    return null;
+  }, [rows, weightUnit]);
+
+  const openValueEditorForCell = useCallback((cell: EditableCellRef) => {
+    const row = getCellRow(cell);
+    if (!row) return;
+
+    setValueEditorCell(cell);
+    if (cell.field === 'rir') {
+      setValueEditorRir(row.rir ? parseFloat(row.rir) : null);
+    } else if (cell.field === 'duration') {
+      setValueEditorDuration(row.duration ? parseFloat(row.duration) || 0 : 0);
+    } else if (cell.field === 'weight') {
+      setValueEditorNumeric(row.weight ?? '');
+    } else if (cell.field === 'reps') {
+      setValueEditorNumeric(row.reps ?? '');
+    } else if (cell.field === 'distance') {
+      setValueEditorNumeric(row.distance ?? '');
+    } else {
+      setValueEditorNumeric('');
+    }
+    setValueEditorVisible(true);
+  }, [getCellRow]);
+
+  const commitValueEditorCell = useCallback(async (cellArg?: EditableCellRef | null) => {
+    const cell = cellArg ?? valueEditorCell;
+    if (!cell?.entryId) return;
+
+    const row = getCellRow(cell);
+    if (!row) return;
+
+    let updates: Record<string, string> | null = null;
+    if (cell.field === 'rir') {
+      updates = { rir: valueEditorRir == null ? '' : String(valueEditorRir) };
+    } else if (cell.field === 'duration') {
+      updates = { duration: String(valueEditorDuration) };
+    } else if (cell.field === 'weight') {
+      updates = { weight: valueEditorNumeric };
+    } else if (cell.field === 'reps') {
+      updates = { reps: valueEditorNumeric };
+    } else if (cell.field === 'distance') {
+      updates = { distance: valueEditorNumeric };
+    }
+
+    if (!updates) return;
+    void updateRow(cell.rowId, cell.entryId, updates).catch((error: unknown) => {
+      Alert.alert('Error', (error as Error).message);
+    });
+  }, [getCellRow, updateRow, valueEditorCell, valueEditorDuration, valueEditorNumeric, valueEditorRir]);
+
+  const closeValueEditor = useCallback(() => {
+    commitValueEditorCell();
+    setValueEditorVisible(false);
+    setValueEditorCell(null);
+  }, [commitValueEditorCell]);
+
+  const scrollCellIntoView = useCallback((cell: EditableCellRef) => {
+    if (!cell.entryId) return;
+    const entryY = entryLayoutYRef.current[cell.entryId] ?? 0;
+    const rowOffsetY = rowLayoutYRef.current[cell.entryId]?.[cell.rowId] ?? 0;
+    const targetY = Math.max(0, entryY + rowOffsetY - 120);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: targetY, animated: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!expanded && valueEditorVisible) {
+      void closeValueEditor();
+    }
+  }, [closeValueEditor, expanded, valueEditorVisible]);
+
+  const handleBeginEditCell = useCallback((entryId: string, rowId: string, field: EditableFieldKind) => {
+    const nextCell: EditableCellRef = { entryId, rowId, field };
+    if (valueEditorCell && (valueEditorCell.entryId !== entryId || valueEditorCell.rowId !== rowId || valueEditorCell.field !== field)) {
+      commitValueEditorCell(valueEditorCell);
+    }
+    scrollCellIntoView(nextCell);
+    openValueEditorForCell(nextCell);
+  }, [commitValueEditorCell, openValueEditorForCell, scrollCellIntoView, valueEditorCell]);
+
+  const handleValueEditorNavigate = useCallback((direction: EditorDirection) => {
+    if (!valueEditorCell) return;
+    const nextCell = findAdjacentWorkoutCell(editableRows, valueEditorCell, direction);
+    if (!nextCell) return;
+
+    commitValueEditorCell(valueEditorCell);
+
+    if (nextCell.entryId && nextCell.entryId !== valueEditorCell.entryId && (collapsedCards[nextCell.entryId] ?? false)) {
+      toggleCollapse(nextCell.entryId);
+    }
+    scrollCellIntoView(nextCell);
+    openValueEditorForCell(nextCell);
+  }, [collapsedCards, commitValueEditorCell, editableRows, openValueEditorForCell, scrollCellIntoView, toggleCollapse, valueEditorCell]);
+
+  const maybeAutoCompleteRirCell = useCallback((cell: EditableCellRef, nextRir: number | null) => {
+    if (nextRir == null || !cell.entryId) return;
+    const key = `${cell.entryId}:${cell.rowId}`;
+    const row = getCellRow(cell);
+    if (!row || row.is_completed || pendingRirAutoCompleteRef.current.has(key)) return;
+
+    pendingRirAutoCompleteRef.current.add(key);
+    handleStartRestTimer();
+    void toggleRow(cell.rowId, cell.entryId)
+      .catch((error: unknown) => {
+        Alert.alert('Error', (error as Error).message);
+      })
+      .finally(() => {
+        pendingRirAutoCompleteRef.current.delete(key);
+      });
+  }, [getCellRow, handleStartRestTimer, toggleRow]);
+
+  const handleValueEditorEnter = useCallback(() => {
+    if (!valueEditorCell) return;
+    const nextCell = findAdjacentWorkoutCell(editableRows, valueEditorCell, 'right');
+
+    if (valueEditorCell.field === 'rir') {
+      let acceptedRir: number | null = null;
+      if (valueEditorRir != null) {
+        acceptedRir = valueEditorRir;
+        persistCellValue(valueEditorCell, valueEditorRir);
+      } else {
+        const suggested = getSuggestedWorkoutCellValue(valueEditorCell);
+        if (suggested != null && suggested !== '') {
+          const parsed = parseFloat(suggested);
+          if (!Number.isNaN(parsed)) {
+            acceptedRir = parsed;
+            setValueEditorRir(parsed);
+            persistCellValue(valueEditorCell, parsed);
+          }
+        }
+      }
+      maybeAutoCompleteRirCell(valueEditorCell, acceptedRir);
+    } else if (valueEditorCell.field === 'duration') {
+      if (valueEditorDuration > 0) {
+        persistCellValue(valueEditorCell, valueEditorDuration);
+      } else {
+        const suggested = getSuggestedWorkoutCellValue(valueEditorCell);
+        if (suggested != null && suggested !== '') {
+          const parsed = parseFloat(suggested) || 0;
+          setValueEditorDuration(parsed);
+          persistCellValue(valueEditorCell, parsed);
+        }
+      }
+    } else if (isNumericEditableField(valueEditorCell.field)) {
+      const typed = (valueEditorNumeric ?? '').trim();
+      if (typed.length > 0) {
+        persistCellValue(valueEditorCell, typed);
+      } else {
+        const suggested = getSuggestedWorkoutCellValue(valueEditorCell);
+        if (suggested != null && suggested !== '') {
+          setValueEditorNumeric(suggested);
+          persistCellValue(valueEditorCell, suggested);
+        }
+      }
+    }
+
+    if (!nextCell) return;
+
+    if (nextCell.entryId && nextCell.entryId !== valueEditorCell.entryId && (collapsedCards[nextCell.entryId] ?? false)) {
+      toggleCollapse(nextCell.entryId);
+    }
+    scrollCellIntoView(nextCell);
+    openValueEditorForCell(nextCell);
+  }, [
+    collapsedCards,
+    editableRows,
+    getSuggestedWorkoutCellValue,
+    maybeAutoCompleteRirCell,
+    openValueEditorForCell,
+    persistCellValue,
+    scrollCellIntoView,
+    toggleCollapse,
+    valueEditorCell,
+    valueEditorDuration,
+    valueEditorNumeric,
+    valueEditorRir,
+  ]);
+
+  const valueEditorCanNavigate = useMemo(() => {
+    if (!valueEditorCell) {
+      return {
+        up: false,
+        down: false,
+        left: false,
+        right: false,
+      };
+    }
+    return {
+      up: !!findAdjacentWorkoutCell(editableRows, valueEditorCell, 'up'),
+      down: !!findAdjacentWorkoutCell(editableRows, valueEditorCell, 'down'),
+      left: !!findAdjacentWorkoutCell(editableRows, valueEditorCell, 'left'),
+      right: !!findAdjacentWorkoutCell(editableRows, valueEditorCell, 'right'),
+    };
+  }, [editableRows, valueEditorCell]);
+
   const handleToggle = async (id: string, entryId: string) => {
     try {
       const row = (rows[entryId] ?? []).find((r) => r.id === id);
@@ -789,8 +1273,16 @@ export function WorkoutOverlay() {
   const styles = useMemo(() => StyleSheet.create({
     fullScreen: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: colors.background,
+      backgroundColor: 'transparent',
       zIndex: 100,
+    },
+    sheet: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    backdropTint: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: '#000000',
     },
     pillContainer: {
       position: 'absolute',
@@ -800,13 +1292,24 @@ export function WorkoutOverlay() {
       zIndex: 99,
     },
     header: {
-      flexDirection: 'row',
-      alignItems: 'center',
       paddingHorizontal: 16,
+      paddingTop: 6,
       paddingBottom: 10,
       backgroundColor: colors.background,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+    },
+    headerGrip: {
+      alignSelf: 'center',
+      width: 44,
+      height: 5,
+      borderRadius: 99,
+      backgroundColor: colors.border,
+      marginBottom: 8,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
     },
     backBtn: {
       paddingVertical: 6,
@@ -876,6 +1379,9 @@ export function WorkoutOverlay() {
       paddingHorizontal: 8,
       paddingVertical: 16,
       paddingBottom: 32,
+    },
+    scrollContentEditorOpen: {
+      paddingBottom: 500,
     },
     cancelBtn: {
       alignItems: 'center',
@@ -1211,32 +1717,39 @@ export function WorkoutOverlay() {
 
   return (
     <>
-      {!expanded && (
+      {!expanded && !chromeHidden && (
         <View style={[styles.pillContainer, { bottom: pillBottomOffset }]}>
           <WorkoutPill />
         </View>
       )}
 
       {showFullScreen && (
-        <Animated.View style={[styles.fullScreen, { paddingTop: insets.top, transform: [{ translateY: slideAnim }] }]}>
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            <View style={styles.header}>
-              <TouchableOpacity onPress={minimize} activeOpacity={0.7} style={styles.backBtn}>
-                <Text style={styles.chevronDown}>&#x25BC;</Text>
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Workout</Text>
-              <TouchableOpacity
-                style={[styles.finishBtn, isCompleting && styles.finishBtnDisabled]}
-                onPress={handleComplete}
-                activeOpacity={0.7}
-                disabled={isCompleting}
-              >
-                <Text style={styles.finishText}>{isCompleting ? 'Finishing...' : 'Finish'}</Text>
-              </TouchableOpacity>
-            </View>
+        <View style={[styles.fullScreen, { paddingTop: insets.top }]}>
+          <Reanimated.View pointerEvents="none" style={[styles.backdropTint, animatedBackdropStyle]} />
+          <Reanimated.View style={[styles.sheet, animatedSheetStyle]}>
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+            <GestureDetector gesture={headerDragGesture}>
+              <View style={styles.header}>
+                <View style={styles.headerGrip} />
+                <View style={styles.headerRow}>
+                  <TouchableOpacity onPress={minimize} activeOpacity={0.7} style={styles.backBtn}>
+                    <Text style={styles.chevronDown}>&#x25BC;</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.headerTitle}>Workout</Text>
+                  <TouchableOpacity
+                    style={[styles.finishBtn, isCompleting && styles.finishBtnDisabled]}
+                    onPress={handleComplete}
+                    activeOpacity={0.7}
+                    disabled={isCompleting}
+                  >
+                    <Text style={styles.finishText}>{isCompleting ? 'Finishing...' : 'Finish'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </GestureDetector>
             <View style={styles.infoBar}>
               <Text style={styles.elapsedTimer}>{elapsed}</Text>
               <TouchableOpacity onPress={() => setShowTimerSettings(true)} activeOpacity={0.7} style={styles.timerIconBtn}>
@@ -1470,7 +1983,11 @@ export function WorkoutOverlay() {
                 />
               ) : (
                 <ScrollView
-                  contentContainerStyle={styles.scrollContent}
+                  ref={scrollRef}
+                  contentContainerStyle={[
+                    styles.scrollContent,
+                    valueEditorVisible && styles.scrollContentEditorOpen,
+                  ]}
                   keyboardShouldPersistTaps="handled"
                   automaticallyAdjustKeyboardInsets
                 >
@@ -1510,9 +2027,26 @@ export function WorkoutOverlay() {
                         onDuplicate={() => handleDuplicate(item.id)}
                         onDetails={() => navigateToExerciseDetail(item.exercise_id)}
                         noBottomMargin={needsNoMargin}
+                        activeCell={valueEditorCell?.entryId === item.id ? { rowId: valueEditorCell.rowId, field: valueEditorCell.field } : null}
+                        onBeginEditCell={(rowId, field) => handleBeginEditCell(item.id, rowId, field)}
+                        onRowLayout={(rowId, y) => {
+                          const prev = rowLayoutYRef.current[item.id] ?? {};
+                          rowLayoutYRef.current[item.id] = { ...prev, [rowId]: y };
+                        }}
                       />
                     );
-                    return <SupersetBracket key={item.id} position={position} contentRadius={16} style={position === 'last' ? { marginBottom: 6 } : undefined}>{card}</SupersetBracket>;
+                    return (
+                      <View
+                        key={item.id}
+                        onLayout={(event) => {
+                          entryLayoutYRef.current[item.id] = event.nativeEvent.layout.y;
+                        }}
+                      >
+                        <SupersetBracket position={position} contentRadius={16} style={position === 'last' ? { marginBottom: 6 } : undefined}>
+                          {card}
+                        </SupersetBracket>
+                      </View>
+                    );
                   })}
                   {normalFooter()}
                 </ScrollView>
@@ -1541,6 +2075,41 @@ export function WorkoutOverlay() {
               currentValue={restTimerDefault}
               onSave={handleTimerSettingsSave}
               onClose={() => setShowTimerSettings(false)}
+            />
+
+            <SetValueEditorModal
+              visible={valueEditorVisible}
+              field={valueEditorCell?.field ?? null}
+              syncKey={valueEditorCell ? `${valueEditorCell.entryId ?? ''}:${valueEditorCell.rowId}:${valueEditorCell.field}` : undefined}
+              title={valueEditorCell?.field ? `Edit ${valueEditorCell.field.toUpperCase()}` : undefined}
+              numericValue={valueEditorNumeric}
+              allowDecimal={allowsDecimalForField(valueEditorCell?.field)}
+              durationValue={valueEditorDuration}
+              rirValue={valueEditorRir}
+              canNavigate={valueEditorCanNavigate}
+              onClose={() => { void closeValueEditor(); }}
+              onDone={() => { void closeValueEditor(); }}
+              onNavigate={handleValueEditorNavigate}
+              onEnter={handleValueEditorEnter}
+              onNumericValueChange={(nextValue) => {
+                setValueEditorNumeric(nextValue);
+                if (valueEditorCell && isNumericEditableField(valueEditorCell.field)) {
+                  applyLocalCellValue(valueEditorCell, nextValue);
+                }
+              }}
+              onDurationValueChange={(nextValue) => {
+                setValueEditorDuration(nextValue);
+                if (valueEditorCell?.field === 'duration') {
+                  applyLocalCellValue(valueEditorCell, nextValue);
+                }
+              }}
+              onRirValueChange={(nextValue) => {
+                setValueEditorRir(nextValue);
+                if (valueEditorCell?.field === 'rir') {
+                  applyLocalCellValue(valueEditorCell, nextValue);
+                  maybeAutoCompleteRirCell(valueEditorCell, nextValue);
+                }
+              }}
             />
 
             <AddExerciseModal
@@ -1577,8 +2146,9 @@ export function WorkoutOverlay() {
               selectedExerciseId={swapEntryId ? (exercises.find((entry) => entry.id === swapEntryId)?.exercise_id ?? null) : null}
               onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
             />
-          </KeyboardAvoidingView>
-        </Animated.View>
+            </KeyboardAvoidingView>
+          </Reanimated.View>
+        </View>
       )}
     </>
   );
