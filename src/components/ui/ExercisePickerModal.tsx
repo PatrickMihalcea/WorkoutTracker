@@ -436,12 +436,21 @@ export function ExercisePickerModal({
     if (!visible) setIsKeyboardVisible(false);
   }, [visible]);
 
+  useEffect(() => {
+    setNewSecondaryMuscles((prev) => prev.filter((muscle) => muscle !== newExerciseMuscle));
+  }, [newExerciseMuscle]);
+
   useEffect(() => () => {
     if (railScrollRetryTimerRef.current) {
       clearTimeout(railScrollRetryTimerRef.current);
       railScrollRetryTimerRef.current = null;
     }
   }, []);
+
+  const secondaryMuscleItems = useMemo(
+    () => MUSCLE_GROUP_ITEMS.filter((item) => item.value !== newExerciseMuscle),
+    [newExerciseMuscle],
+  );
 
   const loadExercises = async () => {
     try {
@@ -638,6 +647,10 @@ export function ExercisePickerModal({
 
   const handleCreateExercise = async () => {
     if (!user || !newExerciseName.trim()) { Alert.alert('Error', 'Please enter an exercise name'); return; }
+    if (newSecondaryMuscles.includes(newExerciseMuscle)) {
+      Alert.alert('Invalid selection', 'Primary muscle group cannot also be selected as a secondary muscle.');
+      return;
+    }
     const duplicate = exercises.find(
       (exercise) =>
         exercise.name.toLowerCase() === newExerciseName.trim().toLowerCase() &&
@@ -757,7 +770,7 @@ export function ExercisePickerModal({
                 placeholder="Select primary muscle"
               />
               <Text style={styles.formFieldLabel}>Secondary Muscles (optional)</Text>
-              <MultiChipPicker items={MUSCLE_GROUP_ITEMS} selected={newSecondaryMuscles} onChange={setNewSecondaryMuscles} horizontal={false} maxHeight={150} />
+              <MultiChipPicker items={secondaryMuscleItems} selected={newSecondaryMuscles} onChange={setNewSecondaryMuscles} horizontal={false} maxHeight={150} />
               <Text style={styles.formFieldLabel}>Equipment</Text>
               <FieldDropdown
                 selected={newExerciseEquipment}

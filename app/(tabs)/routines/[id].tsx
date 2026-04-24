@@ -386,7 +386,7 @@ export default function RoutineDetailScreen() {
       // Dismiss whichever editor is currently open, whether opened via direct tap or boundary nav
       const prev = currentVisibleEntryIdRef.current;
       if (prev && prev !== entryId) {
-        requestAnimationFrame(() => requestEditorDismiss(prev));
+        requestEditorDismiss(prev);
       }
       currentVisibleEntryIdRef.current = entryId;
     } else if (currentVisibleEntryIdRef.current === entryId) {
@@ -422,6 +422,12 @@ export default function RoutineDetailScreen() {
     const delta = direction === 'up' || direction === 'left' ? -1 : 1;
     const target = day.exercises[sourceIndex + delta];
     if (!target) return false;
+    setEditorDismissTokens((prev) => {
+      if (prev[target.id] == null) return prev;
+      const next = { ...prev };
+      delete next[target.id];
+      return next;
+    });
     setExpandedIds((prev) => {
       if (prev.has(target.id)) return prev;
       const next = new Set(prev);

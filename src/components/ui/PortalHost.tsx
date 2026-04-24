@@ -13,35 +13,32 @@ interface PortalHostProps {
 }
 
 export function PortalHost({ children }: PortalHostProps) {
-  const [nodes, setNodes] = useState<Record<number, React.ReactNode>>({});
+  const [nodes, setNodes] = useState<Array<{ key: number; node: React.ReactNode }>>([]);
 
   const contextValue = useMemo<PortalContextValue>(() => ({
     setNode: (key, node) => {
       setNodes((prev) => {
         if (node == null) {
-          if (!(key in prev)) return prev;
-          const next = { ...prev };
-          delete next[key];
+          const next = prev.filter((item) => item.key !== key);
+          if (next.length === prev.length) return prev;
           return next;
         }
-        if (prev[key] === node) return prev;
-        return { ...prev, [key]: node };
+        const existing = prev.find((item) => item.key === key);
+        if (existing?.node === node) return prev;
+        const next = prev.filter((item) => item.key !== key);
+        next.push({ key, node });
+        return next;
       });
     },
   }), []);
-
-  const orderedKeys = useMemo(
-    () => Object.keys(nodes).map((k) => Number(k)).sort((a, b) => a - b),
-    [nodes],
-  );
 
   return (
     <PortalContext.Provider value={contextValue}>
       <View style={styles.root}>
         {children}
         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-          {orderedKeys.map((key) => (
-            <React.Fragment key={key}>{nodes[key]}</React.Fragment>
+          {nodes.map((item) => (
+            <React.Fragment key={item.key}>{item.node}</React.Fragment>
           ))}
         </View>
       </View>
@@ -77,4 +74,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

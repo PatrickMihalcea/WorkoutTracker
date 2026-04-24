@@ -270,6 +270,12 @@ export function SetsTableEditor({
   const showDistance = config.fields.some((f) => f.key === 'distance');
   const appliedExternalNavTokenRef = React.useRef<number | null>(null);
   const appliedForceDismissTokenRef = React.useRef<number | undefined>(undefined);
+  const lastReportedVisibilityRef = React.useRef(false);
+  const onEditorVisibilityChangeRef = React.useRef(onEditorVisibilityChange);
+
+  useEffect(() => {
+    onEditorVisibilityChangeRef.current = onEditorVisibilityChange;
+  }, [onEditorVisibilityChange]);
 
   const tableEditorRows = useMemo<TableEditorRow[]>(() => {
     const fields: EditableFieldKind[] = [];
@@ -506,12 +512,16 @@ export function SetsTableEditor({
   }, [tableEditorRows, valueEditorCell]);
 
   useEffect(() => {
-    onEditorVisibilityChange?.(valueEditorVisible);
-  }, [onEditorVisibilityChange, valueEditorVisible]);
+    if (lastReportedVisibilityRef.current === valueEditorVisible) return;
+    lastReportedVisibilityRef.current = valueEditorVisible;
+    onEditorVisibilityChangeRef.current?.(valueEditorVisible);
+  }, [valueEditorVisible]);
 
   useEffect(() => () => {
-    onEditorVisibilityChange?.(false);
-  }, [onEditorVisibilityChange]);
+    if (!lastReportedVisibilityRef.current) return;
+    lastReportedVisibilityRef.current = false;
+    onEditorVisibilityChangeRef.current?.(false);
+  }, []);
 
   useEffect(() => {
     if (!externalNavigationRequest) return;

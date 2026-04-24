@@ -46,13 +46,35 @@ function sanitizeBucketName(value: string): string {
   return value.replace(/^\/+|\/+$/g, '');
 }
 
+function shouldAppendBucketToPublicBase(baseUrl: string, bucket: string): boolean {
+  const safeBase = sanitizeBaseUrl(baseUrl);
+  const safeBucket = sanitizeBucketName(bucket).toLowerCase();
+  if (safeBase.toLowerCase().endsWith(`/${safeBucket}`)) return false;
+
+  try {
+    const parsed = new URL(safeBase);
+    const hostname = parsed.hostname.toLowerCase();
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '').toLowerCase();
+
+    // Cloudflare R2 public dev domains are already bucket-scoped.
+    if (hostname.endsWith('.r2.dev')) return false;
+
+    // Some setups use bucket in subdomain or path.
+    if (hostname.startsWith(`${safeBucket}.`)) return false;
+    if (normalizedPath === `/${safeBucket}`) return false;
+  } catch {
+    // If baseUrl is not a valid absolute URL, preserve existing behavior.
+  }
+
+  return true;
+}
+
 function buildPublicUrl(baseUrl: string, bucket: string, objectPath: string): string {
   const safeBase = sanitizeBaseUrl(baseUrl);
   const safeBucket = sanitizeBucketName(bucket);
   const safeObjectPath = objectPath.replace(/^\/+/, '');
 
-  // If the base URL already includes /<bucket>, avoid duplicating it.
-  if (safeBase.toLowerCase().endsWith(`/${safeBucket.toLowerCase()}`)) {
+  if (!shouldAppendBucketToPublicBase(safeBase, safeBucket)) {
     return `${safeBase}/${safeObjectPath}`;
   }
 
