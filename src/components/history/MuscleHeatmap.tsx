@@ -19,6 +19,7 @@ type BodySlug =
 
 const MUSCLE_TO_SLUGS: Record<string, BodySlug[]> = {
   chest:      ['chest'],
+  upper_chest:['chest'],
   back:       ['upper-back', 'lower-back'],
   upper_back: ['upper-back'],
   lower_back: ['lower-back'],

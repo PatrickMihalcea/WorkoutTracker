@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useWorkoutStore } from '../../stores/workout.store';
 
+let lastKnownSessionId: string | null = null;
+
 interface WorkoutOverlayContextType {
   expanded: boolean;
   expand: () => void;
@@ -18,7 +20,7 @@ const WorkoutOverlayContext = createContext<WorkoutOverlayContextType>({
 export function WorkoutOverlayProvider({ children }: { children: React.ReactNode }) {
   const session = useWorkoutStore((s) => s.session);
   const [expanded, setExpanded] = useState(false);
-  const prevSessionRef = useRef<string | null>(null);
+  const prevSessionRef = useRef<string | null>(lastKnownSessionId);
   const suppressRef = useRef(false);
 
   useEffect(() => {
@@ -34,6 +36,7 @@ export function WorkoutOverlayProvider({ children }: { children: React.ReactNode
       setExpanded(false);
     }
     prevSessionRef.current = currentId;
+    lastKnownSessionId = currentId;
   }, [session?.id]);
 
   const expand = useCallback(() => setExpanded(true), []);

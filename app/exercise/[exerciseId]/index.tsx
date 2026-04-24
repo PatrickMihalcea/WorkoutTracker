@@ -13,33 +13,36 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
-import { useAuthStore } from '../../src/stores/auth.store';
-import { useProfileStore } from '../../src/stores/profile.store';
+import { useNavigation } from '@react-navigation/native';
+import { useAuthStore } from '../../../src/stores/auth.store';
+import { useProfileStore } from '../../../src/stores/profile.store';
+import { useWorkoutStore } from '../../../src/stores/workout.store';
 import {
   exerciseDetailService,
   exerciseMediaService,
   ExerciseDetailData,
-} from '../../src/services';
-import { updateCustomExercise } from '../../src/services/exerciseMutation.service';
-import { fonts, spacing } from '../../src/constants';
+} from '../../../src/services';
+import { updateCustomExercise } from '../../../src/services/exerciseMutation.service';
+import { fonts, spacing } from '../../../src/constants';
 import {
   SimpleLineChart,
   MetricChips,
   RecordsBarChart,
   formatVolume,
-} from '../../src/components/charts';
-import type { BarDataItem } from '../../src/components/charts';
-import { BottomSheetModal, Button, ChipPicker, FieldDropdown, Input, MultiChipPicker, OverflowMenu } from '../../src/components/ui';
-import type { OverflowMenuItem } from '../../src/components/ui';
-import { getExerciseTypeConfig } from '../../src/utils/exerciseType';
-import { EXERCISE_TYPE_ITEMS } from '../../src/utils/exerciseType';
-import { formatDurationValue } from '../../src/utils/duration';
-import { distanceUnitLabel } from '../../src/utils/units';
-import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
-import { confirmDeleteExercise } from '../../src/utils/confirmDeleteExercise';
-import { Equipment, ExerciseType, MuscleGroup } from '../../src/models';
-import { useTheme } from '../../src/contexts/ThemeContext';
-import type { ThemeColors } from '../../src/constants/themes';
+} from '../../../src/components/charts';
+import type { BarDataItem } from '../../../src/components/charts';
+import { BottomSheetModal, Button, ChipPicker, FieldDropdown, Input, MultiChipPicker, OverflowMenu } from '../../../src/components/ui';
+import type { OverflowMenuItem } from '../../../src/components/ui';
+import { getExerciseTypeConfig } from '../../../src/utils/exerciseType';
+import { EXERCISE_TYPE_ITEMS } from '../../../src/utils/exerciseType';
+import { formatDurationValue } from '../../../src/utils/duration';
+import { distanceUnitLabel } from '../../../src/utils/units';
+import { ChartInteractionProvider, useChartInteraction } from '../../../src/components/charts';
+import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
+import { Equipment, ExerciseType, MuscleGroup } from '../../../src/models';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+import type { ThemeColors } from '../../../src/constants/themes';
+import { useWorkoutOverlay } from '../../../src/components/workout';
 
 type MetricKey = string;
 
@@ -204,13 +207,20 @@ function getMinYStep(metricKey: string): number {
 function ExerciseDetailContent() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
+  const { exerciseId, fromWorkout } = useLocalSearchParams<{ exerciseId: string; fromWorkout?: string | string[] }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const { user } = useAuthStore();
+  const hasActiveWorkout = useWorkoutStore((state) => !!state.session?.id);
+  const { expand } = useWorkoutOverlay();
   const { profile } = useProfileStore();
   const { scrollEnabled } = useChartInteraction();
   const wUnit = profile?.weight_unit ?? 'kg';
   const dUnit = profile?.distance_unit ?? 'km';
+  const cameFromWorkout = useMemo(() => {
+    const flag = Array.isArray(fromWorkout) ? fromWorkout[0] : fromWorkout;
+    return flag === '1' || flag === 'true';
+  }, [fromWorkout]);
 
   const [data, setData] = useState<ExerciseDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -248,6 +258,14 @@ function ExerciseDetailContent() {
   }, [user?.id, exerciseId, wUnit, dUnit]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!cameFromWorkout || !hasActiveWorkout) return;
+    const unsub = navigation.addListener('beforeRemove', () => {
+      expand();
+    });
+    return unsub;
+  }, [cameFromWorkout, expand, hasActiveWorkout, navigation]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -395,6 +413,14 @@ function ExerciseDetailContent() {
     });
   }, [data, isCustomExercise, router, user?.id]);
 
+  const handleOpenExerciseHistory = useCallback(() => {
+    if (!exerciseId) return;
+    router.push({
+      pathname: '/exercise/[exerciseId]/history',
+      params: { exerciseId },
+    });
+  }, [exerciseId, router]);
+
   const points = data?.timeSeries?.[selectedMetric] ?? [];
   const secondaryMuscles = (data?.exercise.secondary_muscles ?? [])
     .map((m) => m.replace(/_/g, ' '))
@@ -496,6 +522,20 @@ function ExerciseDetailContent() {
   const lastPerformedLabel = data.lastPerformedAt
     ? new Date(data.lastPerformedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : 'Never';
+  const lastPerformedCard = (
+    <TouchableOpacity
+      style={[styles.mediaStatCard, styles.mediaStatCardInteractive]}
+      activeOpacity={0.82}
+      onPress={handleOpenExerciseHistory}
+    >
+      <Text style={styles.mediaStatLabel}>Last performed</Text>
+      <Text style={styles.mediaStatValueSmall}>{lastPerformedLabel}</Text>
+      <View style={styles.mediaStatHintRow}>
+        <Text style={styles.mediaStatHint}>View history</Text>
+        <Text style={styles.mediaStatChevron}>›</Text>
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <ScrollView
@@ -531,10 +571,7 @@ function ExerciseDetailContent() {
                 <Text style={styles.mediaStatLabel}>Sets completed</Text>
                 <Text style={styles.mediaStatValue}>{data.totalCompletedSets}</Text>
               </View>
-              <View style={styles.mediaStatCard}>
-                <Text style={styles.mediaStatLabel}>Last performed</Text>
-                <Text style={styles.mediaStatValueSmall}>{lastPerformedLabel}</Text>
-              </View>
+              {lastPerformedCard}
             </View>
           </View>
         )}
@@ -563,10 +600,7 @@ function ExerciseDetailContent() {
               <Text style={styles.mediaStatLabel}>Sets completed</Text>
               <Text style={styles.mediaStatValue}>{data.totalCompletedSets}</Text>
             </View>
-            <View style={styles.mediaStatCard}>
-              <Text style={styles.mediaStatLabel}>Last performed</Text>
-              <Text style={styles.mediaStatValueSmall}>{lastPerformedLabel}</Text>
-            </View>
+            {lastPerformedCard}
           </View>
         )}
       </View>
@@ -721,9 +755,20 @@ function ExerciseDetailContent() {
 }
 
 export default function ExerciseDetailScreen() {
+  const { colors } = useTheme();
   return (
     <>
-      <Stack.Screen options={{ title: 'Exercise Details' }} />
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: colors.background },
+          headerTintColor: colors.text,
+          headerTitle: 'Exercise Details',
+          headerTitleStyle: { fontFamily: 'Monospaceland-Bold' },
+          headerBackButtonDisplayMode: 'minimal',
+          headerBackTitle: '',
+        }}
+      />
       <ChartInteractionProvider>
         <ExerciseDetailContent />
       </ChartInteractionProvider>
@@ -798,6 +843,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 10,
     justifyContent: 'center',
   },
+  mediaStatCardInteractive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
+  },
   mediaStatLabel: {
     fontSize: 11,
     fontFamily: fonts.semiBold,
@@ -818,6 +867,25 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontFamily: fonts.semiBold,
     color: colors.accent,
     textAlign: 'center',
+  },
+  mediaStatHintRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  mediaStatHint: {
+    fontSize: 10,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+    letterSpacing: 0.2,
+  },
+  mediaStatChevron: {
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    lineHeight: 12,
   },
   videoBadge: {
     position: 'absolute',

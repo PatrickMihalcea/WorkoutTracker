@@ -13,6 +13,7 @@ import { useProfileStore } from '../src/stores/profile.store';
 import { useRoutineStore } from '../src/stores/routine.store';
 import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
+import { WorkoutOverlay, WorkoutOverlayProvider } from '../src/components/workout';
 import { notificationService } from '../src/services';
 
 const HAS_OPENED_KEY = 'has_opened_before';
@@ -177,6 +178,11 @@ function RootLayoutInner() {
     headerLeftBackgroundVisible: false,
   }), [colors]);
 
+  const exerciseHistoryHeaderOptions = useMemo<NativeStackNavigationOptions>(() => ({
+    ...exerciseHeaderOptions,
+    headerTitle: 'Exercise History',
+  }), [exerciseHeaderOptions]);
+
   if (!ready) {
     return (
       <View style={styles.loading}>
@@ -195,17 +201,24 @@ function RootLayoutInner() {
         style={StyleSheet.absoluteFillObject}
       />
       <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(onboarding)" />
-        <Stack.Screen
-          name="exercise/[exerciseId]"
-          options={exerciseHeaderOptions}
-        />
-      </Stack>
-      <KeyboardDismiss />
+      <WorkoutOverlayProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(onboarding)" />
+          <Stack.Screen
+            name="exercise/[exerciseId]"
+            options={exerciseHeaderOptions}
+          />
+          <Stack.Screen
+            name="exercise/[exerciseId]/history"
+            options={exerciseHistoryHeaderOptions}
+          />
+        </Stack>
+        <WorkoutOverlay />
+        <KeyboardDismiss />
+      </WorkoutOverlayProvider>
     </GestureHandlerRootView>
   );
 }

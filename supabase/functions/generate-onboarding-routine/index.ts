@@ -309,15 +309,45 @@ async function generateAndPersistRoutine(args: {
   const generationWeekCount = 1;
   const userContext = await fetchUserContext({ supabase, userId });
 
-  const { data: exerciseRows, error: exercisesError } = await supabase
+  const exerciseSelect = 'id, name, muscle_group, equipment, exercise_type, difficulty_tier, movement_pattern, user_id';
+  const { data: curatedRows, error: curatedError } = await supabase
     .from('exercises')
-    .select('id, name, muscle_group, equipment, exercise_type, difficulty_tier, movement_pattern, user_id')
-    .is('user_id', null);
-  if (exercisesError) {
-    throw new Error(`Failed to load exercise library: ${exercisesError.message}`);
+    .select(exerciseSelect)
+    .is('user_id', null)
+    .eq('is_ai_routine_candidate', true);
+
+  let exerciseLibrary = curatedRows ?? [];
+
+  if (curatedError) {
+    // Backward-compatible fallback when the new column is not available yet.
+    const { data: fallbackRows, error: fallbackError } = await supabase
+      .from('exercises')
+      .select(exerciseSelect)
+      .is('user_id', null);
+    if (fallbackError) {
+      throw new Error(`Failed to load exercise library: ${fallbackError.message}`);
+    }
+    exerciseLibrary = fallbackRows ?? [];
+  } else if (exerciseLibrary.length === 0) {
+    // Safety net for environments where the flag exists but has not been curated yet.
+    const { data: fallbackRows, error: fallbackError } = await supabase
+      .from('exercises')
+      .select(exerciseSelect)
+      .is('user_id', null);
+    if (fallbackError) {
+      throw new Error(`Failed to load exercise library fallback: ${fallbackError.message}`);
+    }
+    exerciseLibrary = fallbackRows ?? [];
+
+    console.warn(
+      JSON.stringify({
+        event: 'routine_generation_library_fallback',
+        user_id: userId,
+        reason: 'no_curated_ai_candidates',
+      }),
+    );
   }
 
-  const exerciseLibrary = exerciseRows ?? [];
   const filteredExercises = filterExercisesForAnswers(exerciseLibrary, answers);
 
   const { draft, generationModeUsed } = await buildDraftWithOptionalAi({

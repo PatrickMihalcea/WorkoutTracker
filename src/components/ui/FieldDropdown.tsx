@@ -53,9 +53,9 @@ export function FieldDropdown<T extends string | number>({
     },
     triggerDescription: {
       marginTop: 2,
-      fontSize: 11,
+      fontSize: 9,
       fontFamily: fonts.regular,
-      color: colors.textMuted,
+      color: colors.textSecondary,
     },
     triggerChevron: {
       fontSize: 12,
@@ -97,9 +97,9 @@ export function FieldDropdown<T extends string | number>({
     },
     menuItemDescription: {
       marginTop: 2,
-      fontSize: 12,
+      fontSize: 9,
       fontFamily: fonts.regular,
-      color: colors.textMuted,
+      color: colors.textSecondary,
     },
   }), [colors, selectedOption]);
 

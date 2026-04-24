@@ -11,6 +11,7 @@ export enum ExerciseType {
 
 export enum MuscleGroup {
   Chest = 'chest',
+  UpperChest = 'upper_chest',
   Back = 'back',
   UpperBack = 'upper_back',
   LowerBack = 'lower_back',

@@ -51,6 +51,7 @@ const TAB_BAR_HEIGHT = 60;
 const SLIDE_IN_MS = 500;
 const SLIDE_OUT_MS = 300;
 const SESSION_ID_PATH_REGEX = /^\/profile\/[0-9a-fA-F-]{36}$/;
+const PROFILE_SESSION_PATH_REGEX = /^\/profile\/[^/]+$/;
 type TooltipWarningVariant = 'empty-finish' | 'first-entry-walkthrough';
 type WorkoutTooltipKey = 'setToggleDemo' | 'setSwipeActions' | 'supersetMenu' | 'reorderLongPress';
 
@@ -177,7 +178,7 @@ export function WorkoutOverlay() {
   }, []));
 
   const openExerciseDetail = useCallback((exerciseId: string) => {
-    const href = `/exercise/${exerciseId}` as const;
+    const href = `/exercise/${exerciseId}?fromWorkout=1` as const;
     if (pathname.startsWith('/exercise/')) {
       router.replace(href);
       return;
@@ -195,13 +196,26 @@ export function WorkoutOverlay() {
     router.push(href);
   }, [pathname, router]);
 
-  const navigateToExerciseDetail = useCallback((exerciseId: string, source: 'swap' | 'add') => {
-    pendingPickerReopenRef.current = source;
+  const hasBottomTabs = /^\/(today|routines|history|profile)(\/|$)/.test(pathname)
+    && !PROFILE_SESSION_PATH_REGEX.test(pathname);
+  const pillBottomOffset = (hasBottomTabs ? TAB_BAR_HEIGHT : 0) + Math.max(insets.bottom, 8);
+
+  const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
+    if (source) {
+      pendingPickerReopenRef.current = source;
+    }
     setShowSwapPicker(false);
     setShowAddExercise(false);
     setShowDirectAddPicker(false);
-    setTimeout(() => openExerciseDetail(exerciseId), 0);
-  }, [openExerciseDetail]);
+
+    if (expanded) {
+      minimize();
+      setTimeout(() => openExerciseDetail(exerciseId), SLIDE_OUT_MS);
+      return;
+    }
+
+    openExerciseDetail(exerciseId);
+  }, [expanded, minimize, openExerciseDetail]);
 
   useEffect(() => {
     if (expanded && session) {
@@ -1198,7 +1212,7 @@ export function WorkoutOverlay() {
   return (
     <>
       {!expanded && (
-        <View style={[styles.pillContainer, { bottom: TAB_BAR_HEIGHT + Math.max(insets.bottom, 8) }]}>
+        <View style={[styles.pillContainer, { bottom: pillBottomOffset }]}>
           <WorkoutPill />
         </View>
       )}
@@ -1494,7 +1508,7 @@ export function WorkoutOverlay() {
                         onSeparate={() => handleSeparate(item.id)}
                         onSwap={() => handleSwap(item.id)}
                         onDuplicate={() => handleDuplicate(item.id)}
-                        onDetails={() => openExerciseDetail(item.exercise_id)}
+                        onDetails={() => navigateToExerciseDetail(item.exercise_id)}
                         noBottomMargin={needsNoMargin}
                       />
                     );

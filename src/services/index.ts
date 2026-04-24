@@ -10,7 +10,15 @@ export { accountService } from './account.service';
 export { dashboardService, EARLIEST_DATE } from './dashboard.service';
 export type { DashboardData, PRRecord, SummaryStats, ExerciseProgression, Granularity, TimeSeriesPoint, RoutineChartData } from './dashboard.service';
 export { exerciseDetailService } from './exerciseDetail.service';
-export type { ExerciseDetailData, PersonalRecord, SetRecord, WeightDurationRecord, DistanceRecord } from './exerciseDetail.service';
+export type {
+  ExerciseDetailData,
+  PersonalRecord,
+  SetRecord,
+  WeightDurationRecord,
+  DistanceRecord,
+  ExerciseHistoryData,
+  ExerciseHistorySession,
+} from './exerciseDetail.service';
 export type { SessionRecordAchieved, SessionRecordMetric } from './session.service';
 export { notificationService } from './notification.service';
 export { onboardingService } from './onboarding.service';

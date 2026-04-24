@@ -13,13 +13,14 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import { useLocalSearchParams, usePathname, useRouter, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import { HeaderBackButton } from '@react-navigation/elements';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { routineService, sessionService } from '../../../src/services';
 import type { SessionRecordAchieved, SessionRecordMetric } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useAuthStore } from '../../../src/stores/auth.store';
-import { Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle } from '../../../src/components/ui';
+import { Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle, ExerciseIconPreview } from '../../../src/components/ui';
 import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { SetRow } from '../../../src/components/workout/SetRow';
@@ -40,6 +41,7 @@ import {
 } from '../../../src/utils/superset';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
+import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../../src/utils/exerciseMedia';
 
 const EXERCISE_THUMB_PLACEHOLDER = require('../../../assets/Setora-black-and-white.png');
 
@@ -80,15 +82,6 @@ function formatMuscleGroupLabel(muscleGroup: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-}
-
-function getExerciseThumbnailUrl(exercise: SetLogWithExercise['exercise']): string | null {
-  if (!exercise) return null;
-  if (exercise.thumbnail_url) return exercise.thumbnail_url;
-  if (exercise.media_type === 'image' || exercise.media_type === 'gif') {
-    return exercise.media_url;
-  }
-  return null;
 }
 
 function groupSetsByExercise(sets: SetLogWithExercise[]): ExerciseGroup[] {
@@ -291,7 +284,17 @@ export default function SessionDetailScreen() {
   const { colors } = useTheme();
   const androidPickerPopupTextColor = '#111111';
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { sessionId, justCompleted } = useLocalSearchParams<{ sessionId: string; justCompleted?: string }>();
+  const {
+    sessionId,
+    justCompleted,
+    from,
+    exerciseId: returnExerciseId,
+  } = useLocalSearchParams<{
+    sessionId: string;
+    justCompleted?: string;
+    from?: string;
+    exerciseId?: string;
+  }>();
   const { profile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
   const distUnit = profile?.distance_unit ?? 'km';
@@ -855,7 +858,26 @@ export default function SessionDetailScreen() {
     return items;
   };
 
+  const handleHeaderBack = useCallback(() => {
+    if (from === 'exercise-history' && returnExerciseId) {
+      router.replace(`/exercise/${returnExerciseId}/history`);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/(tabs)/profile');
+  }, [from, returnExerciseId, router]);
+
   const stackScreenOptions = {
+    headerLeft: () => (
+      <HeaderBackButton
+        onPress={handleHeaderBack}
+        tintColor={colors.text}
+        displayMode="minimal"
+      />
+    ),
     headerRight: () => (
       <TouchableOpacity
         onPress={handleStartWorkout}
@@ -1079,13 +1101,11 @@ export default function SessionDetailScreen() {
               <Card style={[styles.exerciseCard, position !== null && styles.exerciseCardNoMargin]}>
                 <View style={styles.exerciseHeader}>
                   <View style={styles.exerciseHeaderIdentity}>
-                    <TouchableOpacity onPress={() => openExerciseDetail(group.exerciseId)} activeOpacity={0.7}>
-                      <Image
-                        source={group.thumbnailUrl ? { uri: group.thumbnailUrl } : EXERCISE_THUMB_PLACEHOLDER}
-                        style={styles.exerciseThumb}
-                        resizeMode="cover"
-                      />
-                    </TouchableOpacity>
+                    <ExerciseIconPreview
+                      imageSource={group.thumbnailUrl ? { uri: group.thumbnailUrl } : EXERCISE_THUMB_PLACEHOLDER}
+                      previewUri={getExercisePreviewUrl(group.sets[0]?.exercise)}
+                      imageStyle={styles.exerciseThumb}
+                    />
                     <View style={styles.exerciseHeaderText}>
                       <Text
                         onPress={() => openExerciseDetail(group.exerciseId)}
