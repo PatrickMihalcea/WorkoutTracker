@@ -29,7 +29,10 @@ export function cmToFeetInches(cm: number): { feet: number; inches: number } {
   const totalInches = cm * CM_TO_IN;
   const feet = Math.floor(totalInches / 12);
   const inches = Math.round(totalInches % 12);
-  return { feet, inches: inches === 12 ? 0 : inches };
+  if (inches === 12) {
+    return { feet: feet + 1, inches: 0 };
+  }
+  return { feet, inches };
 }
 
 export function feetInchesToCm(feet: number, inches: number): number {

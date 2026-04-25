@@ -110,6 +110,47 @@ function groupByEntry(allRows: WorkoutRow[]): RowMap {
   return map;
 }
 
+async function buildCustomWorkoutEntries(
+  session: WorkoutSession,
+  grouped: RowMap,
+): Promise<RoutineDayExercise[]> {
+  const orderedEntryIds = Object.keys(grouped).sort((a, b) => {
+    const orderA = grouped[a]?.[0]?.exercise_order ?? 999;
+    const orderB = grouped[b]?.[0]?.exercise_order ?? 999;
+    return orderA - orderB;
+  });
+
+  return Promise.all(
+    orderedEntryIds.map(async (entryId, index) => {
+      const entryRows = grouped[entryId] ?? [];
+      const exercise = await exerciseService.getById(entryRows[0].exercise_id);
+
+      return {
+        id: entryId,
+        routine_day_id: session.routine_day_id ?? '',
+        exercise_id: exercise.id,
+        sort_order: entryRows[0]?.exercise_order ?? index,
+        target_sets: entryRows.length,
+        target_reps: entryRows[0]?.target_reps_min || 10,
+        superset_group: entryRows[0]?.superset_group ?? null,
+        exercise,
+        sets: entryRows.map((row) => ({
+          id: '',
+          routine_day_exercise_id: entryId,
+          set_number: row.set_number,
+          target_weight: row.target_weight,
+          target_reps_min: row.target_reps_min,
+          target_reps_max: row.target_reps_max,
+          target_rir: null,
+          target_duration: row.target_duration ?? 0,
+          target_distance: row.target_distance ?? 0,
+          is_warmup: row.is_warmup ?? false,
+        })),
+      };
+    }),
+  );
+}
+
 export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   session: null,
   rows: {},
@@ -136,13 +177,30 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     }
 
     if (!session.routine_day_id) {
+      const allRows = await workoutRowService.getBySession(session.id);
+      const grouped = groupByEntry(allRows);
+      const exercises = await buildCustomWorkoutEntries(session, grouped);
+      const collapsedCards: Record<string, boolean> = {};
+      for (const entry of exercises) {
+        const entryRows = grouped[entry.id] ?? [];
+        if (entryRows.length > 0 && entryRows.every((r) => r.is_completed)) {
+          collapsedCards[entry.id] = true;
+        }
+      }
+
+      const groups: SupersetGroups = {};
+      for (const entry of exercises) {
+        const entryRows = grouped[entry.id] ?? [];
+        groups[entry.id] = entryRows[0]?.superset_group ?? entry.superset_group ?? null;
+      }
+
       set({
         session,
-        rows: {},
+        rows: grouped,
         previousSets: {},
-        exercises: [],
-        collapsedCards: {},
-        supersetGroups: {},
+        exercises,
+        collapsedCards,
+        supersetGroups: groups,
         restTimer: null,
       });
       void notificationService.cancelRestTimerNotification();

@@ -222,7 +222,7 @@ function RootLayoutInner() {
               options={exerciseHistoryHeaderOptions}
             />
           </Stack>
-          <WorkoutOverlay />
+          {!launchVisible ? <WorkoutOverlay /> : null}
           <KeyboardDismiss />
         </WorkoutOverlayProvider>
       ) : null}
