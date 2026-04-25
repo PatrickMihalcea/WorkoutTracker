@@ -9,9 +9,9 @@
     "scheme": "workout-tracker",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/Setora.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0f172a"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,

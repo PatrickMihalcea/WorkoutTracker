@@ -1,7 +1,7 @@
-import { useEffect, useCallback, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
@@ -12,7 +12,9 @@ import { useAuthStore } from '../src/stores/auth.store';
 import { useProfileStore } from '../src/stores/profile.store';
 import { useRoutineStore } from '../src/stores/routine.store';
 import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
+import { LaunchScreen } from '../src/components/ui/LaunchScreen';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
+import { DEFAULT_THEME } from '../src/constants/themes';
 import { WorkoutOverlay, WorkoutOverlayProvider } from '../src/components/workout';
 import { notificationService } from '../src/services';
 
@@ -31,6 +33,8 @@ function RootLayoutInner() {
   const router = useRouter();
   const [hasOpenedBefore, setHasOpenedBefore] = useState<boolean | null>(null);
   const [initTimedOut, setInitTimedOut] = useState(false);
+  const [launchVisible, setLaunchVisible] = useState(true);
+  const [launchExiting, setLaunchExiting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -75,8 +79,15 @@ function RootLayoutInner() {
     void notificationService.initialize();
   }, []);
 
+  const launchScreenReady = hasOpenedBefore !== null;
   const profileReady = !session?.user || profileResolved;
-  const ready = (fontsLoaded && initialized && !profileLoading && profileReady && hasOpenedBefore !== null) || initTimedOut;
+  const ready = (fontsLoaded && initialized && !profileLoading && profileReady && launchScreenReady) || initTimedOut;
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!launchVisible) return;
+    setLaunchExiting(true);
+  }, [launchVisible, ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -89,19 +100,19 @@ function RootLayoutInner() {
   }, [ready, session?.user?.id, profile?.onboarding_complete]);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!launchScreenReady) return;
     void SplashScreen.hideAsync().catch(() => {
       // noop
     });
-  }, [ready]);
+  }, [launchScreenReady]);
 
-  // Hard fallback so splash cannot get stuck forever.
+  // Hard fallback so the native handoff cannot get stuck forever.
   useEffect(() => {
     const id = setTimeout(() => {
       void SplashScreen.hideAsync().catch(() => {
         // noop
       });
-    }, 12000);
+    }, 4000);
     return () => clearTimeout(id);
   }, []);
 
@@ -159,11 +170,9 @@ function RootLayoutInner() {
       flex: 1,
       backgroundColor: colors.background,
     },
-    loading: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: colors.background,
+    overlay: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 20,
     },
   }), [colors]);
 
@@ -183,15 +192,6 @@ function RootLayoutInner() {
     headerTitle: 'Exercise History',
   }), [exerciseHeaderOptions]);
 
-  if (!ready) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={colors.text} />
-        <StatusBar style="light" />
-      </View>
-    );
-  }
-
   return (
     <GestureHandlerRootView style={styles.root}>
       <LinearGradient
@@ -201,29 +201,39 @@ function RootLayoutInner() {
         style={StyleSheet.absoluteFillObject}
       />
       <StatusBar style="light" />
-      <WorkoutOverlayProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(onboarding)" />
-          <Stack.Screen
-            name="exercise/[exerciseId]"
-            options={exerciseHeaderOptions}
-          />
-          <Stack.Screen
-            name="exercise/[exerciseId]/history"
-            options={exerciseHistoryHeaderOptions}
-          />
-        </Stack>
-        <WorkoutOverlay />
-        <KeyboardDismiss />
-      </WorkoutOverlayProvider>
+      {ready ? (
+        <WorkoutOverlayProvider>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.background },
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(onboarding)" />
+            <Stack.Screen
+              name="exercise/[exerciseId]"
+              options={exerciseHeaderOptions}
+            />
+            <Stack.Screen
+              name="exercise/[exerciseId]/history"
+              options={exerciseHistoryHeaderOptions}
+            />
+          </Stack>
+          <WorkoutOverlay />
+          <KeyboardDismiss />
+        </WorkoutOverlayProvider>
+      ) : null}
+      {launchVisible ? (
+        <LaunchScreen
+          accentColor={DEFAULT_THEME.colors.accent}
+          exiting={launchExiting}
+          onExitComplete={() => setLaunchVisible(false)}
+          style={styles.overlay}
+        />
+      ) : null}
     </GestureHandlerRootView>
   );
 }

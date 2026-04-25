@@ -174,7 +174,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   calendarContent: {
     paddingTop: FILTER_BAR_HEIGHT + spacing.xs,
-    paddingBottom: spacing.xl+50,
+    paddingBottom: spacing.bottom,
   },
   flex: {
     flex: 1,

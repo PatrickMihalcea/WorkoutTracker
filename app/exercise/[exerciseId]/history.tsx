@@ -203,7 +203,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   listContent: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xl + 50,
+    paddingBottom: spacing.bottom,
     gap: spacing.sm,
   },
   listContentEmpty: {

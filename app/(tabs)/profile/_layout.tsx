@@ -15,6 +15,8 @@ export default function ProfileLayout() {
       <Stack.Screen name="colour-customization" options={{ title: 'Colour Customization' }} />
       <Stack.Screen name="workouts" options={{ title: 'Workouts' }} />
       <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+      <Stack.Screen name="about" options={{ title: 'About' }} />
+      <Stack.Screen name="feedback" options={{ title: 'App Feedback' }} />
       <Stack.Screen name="measurements" options={{ title: 'Measurements', headerBackButtonMenuEnabled: false }} />
       <Stack.Screen name="goals" options={{ title: 'Goals', headerBackButtonMenuEnabled: false }} />
       <Stack.Screen name="[sessionId]" options={{ title: 'Workout Details' }} />

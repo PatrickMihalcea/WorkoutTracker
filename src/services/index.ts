@@ -23,3 +23,4 @@ export type { SessionRecordAchieved, SessionRecordMetric } from './session.servi
 export { notificationService } from './notification.service';
 export { onboardingService } from './onboarding.service';
 export { exerciseMediaService } from './exerciseMedia.service';
+export { feedbackService } from './feedback.service';

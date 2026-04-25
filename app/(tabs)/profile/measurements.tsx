@@ -596,7 +596,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   content: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
-    paddingBottom: spacing.xl + 50,
+    paddingBottom: spacing.bottom,
   },
   headerRow: {
     flexDirection: 'row',

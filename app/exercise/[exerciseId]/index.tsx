@@ -783,7 +783,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.xl+50,
+    paddingBottom: spacing.bottom,
   },
   centered: {
     flex: 1,

@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useRouter } from 'expo-router';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { Button, Input } from '../../../src/components/ui';
 import { fonts } from '../../../src/constants';
@@ -25,6 +26,7 @@ const SEX_OPTIONS: { value: Sex; label: string }[] = [
 const MIN_BIRTHDAY = new Date(1900, 0, 1);
 
 export default function EditProfileScreen() {
+  const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { profile, updateProfile } = useProfileStore();
@@ -51,7 +53,7 @@ export default function EditProfileScreen() {
         sex,
         birthday: birthday.toISOString().split('T')[0],
       });
-      Alert.alert('Saved', 'Profile updated successfully');
+      router.back();
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     } finally {

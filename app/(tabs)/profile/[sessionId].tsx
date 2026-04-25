@@ -1338,7 +1338,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   content: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl+50,
+    paddingBottom: spacing.bottom,
   },
   contentEditorModalOpen: {
     paddingBottom: spacing.xl + 50 + SESSION_EDITOR_MODAL_HEIGHT + SESSION_EDITOR_MODAL_MARGIN,

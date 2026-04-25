@@ -929,7 +929,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingBottom: spacing.xl+50, 
+    paddingBottom: spacing.bottom, 
   },
   contentEditorOpen: {
     paddingBottom: 420,

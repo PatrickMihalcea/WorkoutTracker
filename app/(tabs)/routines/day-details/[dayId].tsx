@@ -347,7 +347,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   content: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl * 2,
+    paddingBottom: spacing.bottom,
   },
   centered: {
     flex: 1,

@@ -21,7 +21,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl + 50,
+    paddingBottom: spacing.bottom,
   },
   contentEmpty: {
     paddingBottom: spacing.xl,

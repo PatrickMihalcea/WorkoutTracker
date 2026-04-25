@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts } from '../../../src/constants';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, footerBottomOffset: number) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -46,6 +48,17 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontFamily: fonts.light,
     color: colors.textMuted,
   },
+  footer: {
+    marginTop: 'auto',
+    paddingTop: 24,
+    paddingBottom: footerBottomOffset,
+    alignItems: 'flex-start',
+  },
+  footerText: {
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    color: colors.textMuted,
+  },
 });
 
 interface SettingsItemProps {
@@ -65,8 +78,17 @@ function SettingsItem({ label, onPress, styles }: SettingsItemProps) {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const footerBottomOffset = Math.max(insets.bottom, 8) + 56;
+  const styles = useMemo(() => createStyles(colors, footerBottomOffset), [colors, footerBottomOffset]);
+  const appVersion = Constants.expoConfig?.version ?? Constants.nativeAppVersion;
+  const buildVersion = Constants.nativeBuildVersion;
+  const versionLabel = appVersion
+    ? buildVersion && buildVersion !== appVersion
+      ? `Version ${appVersion} (${buildVersion})`
+      : `Version ${appVersion}`
+    : 'Version unavailable';
 
   return (
     <View style={styles.container}>
@@ -106,6 +128,24 @@ export default function SettingsScreen() {
           onPress={() => router.push('/(tabs)/profile/workouts')}
           styles={styles}
         />
+      </View>
+
+      <Text style={styles.sectionHeader}>Other</Text>
+      <View style={styles.section}>
+        <SettingsItem
+          label="About"
+          onPress={() => router.push('/(tabs)/profile/about')}
+          styles={styles}
+        />
+        <SettingsItem
+          label="App Feedback"
+          onPress={() => router.push('/(tabs)/profile/feedback')}
+          styles={styles}
+        />
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>{versionLabel}</Text>
       </View>
     </View>
   );
