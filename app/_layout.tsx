@@ -28,7 +28,7 @@ function RootLayoutInner() {
   const { colors, gradients } = useTheme();
   const { session, initialized, initialize } = useAuthStore();
   const { profile, loading: profileLoading, resolved: profileResolved } = useProfileStore();
-  const { fetchRoutines, fetchActiveRoutine } = useRoutineStore();
+  const { fetchRoutines, fetchActiveRoutine, activeRoutineInitialized } = useRoutineStore();
   const segments = useSegments();
   const router = useRouter();
   const [hasOpenedBefore, setHasOpenedBefore] = useState<boolean | null>(null);
@@ -81,7 +81,8 @@ function RootLayoutInner() {
 
   const launchScreenReady = hasOpenedBefore !== null;
   const profileReady = !session?.user || profileResolved;
-  const ready = (fontsLoaded && initialized && !profileLoading && profileReady && launchScreenReady) || initTimedOut;
+  const routineBootstrapReady = !session?.user || !profile?.onboarding_complete || activeRoutineInitialized;
+  const ready = (fontsLoaded && initialized && !profileLoading && profileReady && routineBootstrapReady && launchScreenReady) || initTimedOut;
 
   useEffect(() => {
     if (!ready) return;
@@ -90,14 +91,14 @@ function RootLayoutInner() {
   }, [launchVisible, ready]);
 
   useEffect(() => {
-    if (!ready) return;
     if (!session?.user) return;
+    if (!profileResolved) return;
     if (!profile?.onboarding_complete) return;
 
     void fetchRoutines();
     void fetchActiveRoutine();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, session?.user?.id, profile?.onboarding_complete]);
+  }, [session?.user?.id, profileResolved, profile?.onboarding_complete]);
 
   useEffect(() => {
     if (!launchScreenReady) return;
