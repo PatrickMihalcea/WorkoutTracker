@@ -23,6 +23,10 @@ import { RirCircle } from './RirCircle';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const DURATION_PICKER_HEIGHT = Platform.OS === 'ios' ? 200 : 56;
 const FIXED_SHEET_HEIGHT = 340;
+const MODAL_EXIT_OVERLAY_MS = 260;
+const MODAL_EXIT_SHEET_MS = 340;
+const MODAL_ENTER_OVERLAY_MS = MODAL_EXIT_OVERLAY_MS;
+const MODAL_ENTER_SHEET_MS = MODAL_EXIT_SHEET_MS;
 const DURATION_HOURS = Array.from({ length: 24 }, (_, i) => i);
 const DURATION_MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const DURATION_SECONDS = Array.from({ length: 60 }, (_, i) => i);
@@ -30,6 +34,8 @@ const DURATION_SECONDS = Array.from({ length: 60 }, (_, i) => i);
 interface SetValueEditorModalProps {
   visible: boolean;
   animated?: boolean;
+  animateOpen?: boolean;
+  animateDoneExit?: boolean;
   field: EditableFieldKind | null;
   syncKey?: string;
   numericValue: string;
@@ -91,6 +97,8 @@ function ArrowButton({ direction, symbol, enabled, onPress }: ArrowButtonProps) 
 export function SetValueEditorModal({
   visible,
   animated = true,
+  animateOpen = false,
+  animateDoneExit = false,
   field,
   syncKey,
   numericValue,
@@ -115,9 +123,24 @@ export function SetValueEditorModal({
   const [minutes, setMinutes] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [numericReplaceMode, setNumericReplaceMode] = useState(false);
+  const [doneExitAnimating, setDoneExitAnimating] = useState(false);
+  const doneCloseInFlightRef = useRef(false);
+  const useAnimatedOpen = animated || animateOpen;
+  const useAnimatedPresentation = useAnimatedOpen || doneExitAnimating;
+
+  const animateModalOut = (overlayDuration: number, sheetDuration: number, onComplete?: () => void) => {
+    Animated.parallel([
+      Animated.timing(overlayOpacity, { toValue: 0, duration: overlayDuration, useNativeDriver: true }),
+      Animated.timing(sheetTranslateY, { toValue: SCREEN_HEIGHT, duration: sheetDuration, useNativeDriver: true }),
+    ]).start(() => {
+      setModalVisible(false);
+      onComplete?.();
+    });
+  };
 
   useEffect(() => {
-    if (!animated) {
+    if (!useAnimatedOpen) {
+      if (doneCloseInFlightRef.current) return;
       setModalVisible(visible);
       return;
     }
@@ -128,21 +151,17 @@ export function SetValueEditorModal({
       overlayOpacity.setValue(0);
       sheetTranslateY.setValue(SCREEN_HEIGHT);
       setModalVisible(true);
-      requestAnimationFrame(() => {
-        Animated.parallel([
-          Animated.timing(overlayOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
-          Animated.timing(sheetTranslateY, { toValue: 0, duration: 260, useNativeDriver: true }),
-        ]).start();
-      });
+      Animated.parallel([
+        Animated.timing(overlayOpacity, { toValue: 1, duration: MODAL_ENTER_OVERLAY_MS, useNativeDriver: true }),
+        Animated.timing(sheetTranslateY, { toValue: 0, duration: MODAL_ENTER_SHEET_MS, useNativeDriver: true }),
+      ]).start();
       return;
     }
 
     if (!modalVisible) return;
-    Animated.parallel([
-      Animated.timing(overlayOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
-      Animated.timing(sheetTranslateY, { toValue: SCREEN_HEIGHT, duration: 180, useNativeDriver: true }),
-    ]).start(() => setModalVisible(false));
-  }, [animated, modalVisible, visible]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (doneCloseInFlightRef.current) return;
+    animateModalOut(180, 180);
+  }, [modalVisible, useAnimatedOpen, visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!visible || field !== 'duration') return;
@@ -216,6 +235,24 @@ export function SetValueEditorModal({
     if (canNavigate?.right !== false) {
       onNavigate('right');
     }
+  };
+
+  const handleDonePress = () => {
+    if (!animateDoneExit) {
+      onDone();
+      return;
+    }
+    if (doneCloseInFlightRef.current) return;
+    doneCloseInFlightRef.current = true;
+    setDoneExitAnimating(true);
+    overlayOpacity.setValue(1);
+    sheetTranslateY.setValue(0);
+    setModalVisible(true);
+    animateModalOut(MODAL_EXIT_OVERLAY_MS, MODAL_EXIT_SHEET_MS, () => {
+      doneCloseInFlightRef.current = false;
+      setDoneExitAnimating(false);
+      onDone();
+    });
   };
 
   const styles = useMemo(() => StyleSheet.create({
@@ -420,18 +457,18 @@ export function SetValueEditorModal({
       }
     : undefined;
 
-  if (animated && !modalVisible) return null;
-  if (!animated && !visible) return null;
+  if (useAnimatedPresentation && !modalVisible) return null;
+  if (!useAnimatedPresentation && !visible) return null;
 
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <Animated.View style={[styles.overlay, { opacity: animated ? overlayOpacity : 1 }]} />
+        <Animated.View style={[styles.overlay, { opacity: useAnimatedPresentation ? overlayOpacity : 1 }]} />
       </View>
 
       <Animated.View
         pointerEvents="auto"
-        style={[styles.sheet, { transform: [{ translateY: animated ? sheetTranslateY : 0 }] }]}
+        style={[styles.sheet, { transform: [{ translateY: useAnimatedPresentation ? sheetTranslateY : 0 }] }]}
       >
         <View style={styles.body}>
           <View style={styles.rail}>
@@ -609,7 +646,7 @@ export function SetValueEditorModal({
             </TouchableOpacity>
           </View>
         </View>
-        <TouchableOpacity style={styles.doneBtn} onPress={onDone} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.doneBtn} onPress={handleDonePress} activeOpacity={0.8}>
           <Text style={styles.doneText}>Done</Text>
         </TouchableOpacity>
       </Animated.View>

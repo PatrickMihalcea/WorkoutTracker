@@ -85,6 +85,7 @@ function ExerciseSetsEditor({
   externalNavigationRequest,
   forceDismissToken,
   onForceDismissHandled,
+  getValueEditorOpenDelayMs,
   styles,
 }: {
   entry: RoutineDayExercise;
@@ -99,6 +100,7 @@ function ExerciseSetsEditor({
   externalNavigationRequest?: ExternalSetEditorNavigationRequest;
   forceDismissToken?: number;
   onForceDismissHandled?: () => void;
+  getValueEditorOpenDelayMs?: () => number;
   styles: Record<string, any>;
 }) {
   const initial = setsToTemplateRows(entry.sets ?? [], entry.target_reps, wUnit);
@@ -161,6 +163,8 @@ function ExerciseSetsEditor({
         onForceDismissHandled={onForceDismissHandled}
         renderValueEditorInPortal
         valueEditorAnimated={false}
+        valueEditorAnimateDoneExit
+        getValueEditorOpenDelayMs={getValueEditorOpenDelayMs}
       />
     </View>
   );
@@ -274,6 +278,7 @@ function SwipeableExerciseRow({
 }
 
 export default function RoutineDetailScreen() {
+  const SET_EDITOR_OPEN_DELAY_MS = 440;
   const { colors, gradients } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { scrollEnabled } = useChartInteraction();
@@ -401,6 +406,13 @@ export default function RoutineDetailScreen() {
   const handleSetEditorFocusRequest = useCallback((entryId: string) => {
     scrollRoutineExerciseIntoView(entryId);
   }, [scrollRoutineExerciseIntoView]);
+
+  const getSetEditorOpenDelayMs = useCallback((entryId: string) => {
+    if (currentVisibleEntryIdRef.current === entryId) return 0;
+    if (currentVisibleEntryIdRef.current) return 0;
+    setChromeHidden(true);
+    return SET_EDITOR_OPEN_DELAY_MS;
+  }, [setChromeHidden]);
 
   useEffect(() => {
     setChromeHidden(!!setEditorVisibleEntryId);
@@ -1142,7 +1154,11 @@ export default function RoutineDetailScreen() {
     },
   ], [handleStartDay, openCopyDayModal, handleDeleteDay, router]);
 
-  if (!currentRoutine) return null;
+  if (!currentRoutine) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]} />
+    );
+  }
 
   const renderDay = (day: RoutineDayWithExercises) => {
     const groups: SupersetGroups = {};
@@ -1219,6 +1235,7 @@ export default function RoutineDetailScreen() {
                       externalNavigationRequest={editorNavRequests[item.entry.id]}
                       forceDismissToken={editorDismissTokens[item.entry.id]}
                       onForceDismissHandled={() => handleForceDismissHandled(item.entry.id)}
+                      getValueEditorOpenDelayMs={() => getSetEditorOpenDelayMs(item.entry.id)}
                       styles={styles}
                     />
                   </SwipeableExerciseRow>
@@ -1259,6 +1276,7 @@ export default function RoutineDetailScreen() {
                               externalNavigationRequest={editorNavRequests[entry.id]}
                               forceDismissToken={editorDismissTokens[entry.id]}
                               onForceDismissHandled={() => handleForceDismissHandled(entry.id)}
+                              getValueEditorOpenDelayMs={() => getSetEditorOpenDelayMs(entry.id)}
                               styles={styles}
                             />
                           </SwipeableExerciseRow>

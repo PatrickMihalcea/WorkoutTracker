@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { withLayoutContext, useSegments } from 'expo-router';
 import { createMaterialTopTabNavigator, type MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts } from '../../src/constants';
 import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
@@ -29,6 +29,11 @@ const TAB_LABELS: Record<string, string> = {
   profile: 'Profile',
 };
 
+const TAB_CHROME_EXIT_TRANSLATE_MS = 340;
+const TAB_CHROME_EXIT_OPACITY_MS = 260;
+const TAB_CHROME_ENTER_TRANSLATE_MS = 260;
+const TAB_CHROME_ENTER_OPACITY_MS = 220;
+
 function getFocusedLeafRouteName(route: { state?: unknown; name?: string }): string | null {
   let current: any = route;
   while (current?.state?.routes && Array.isArray(current.state.routes)) {
@@ -45,21 +50,66 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { chromeHidden } = useWorkoutOverlay();
+  const slideY = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
   const focusedTab = state.routes[state.index];
   const focusedLeafRoute = getFocusedLeafRouteName(focusedTab as any);
   const hideOnWorkoutDetails = focusedTab?.name === 'profile' && focusedLeafRoute === '[sessionId]';
-  if (hideOnWorkoutDetails || chromeHidden) {
+  const [renderChrome, setRenderChrome] = useState(!chromeHidden);
+
+  useEffect(() => {
+    if (chromeHidden) {
+      if (!renderChrome) return;
+      Animated.parallel([
+        Animated.timing(slideY, {
+          toValue: 30,
+          duration: TAB_CHROME_EXIT_TRANSLATE_MS,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: TAB_CHROME_EXIT_OPACITY_MS,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished) {
+          setRenderChrome(false);
+        }
+      });
+      return;
+    }
+
+    setRenderChrome(true);
+    slideY.setValue(22);
+    opacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(slideY, {
+        toValue: 0,
+        duration: TAB_CHROME_ENTER_TRANSLATE_MS,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: TAB_CHROME_ENTER_OPACITY_MS,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [chromeHidden, opacity, renderChrome, slideY]);
+
+  if (hideOnWorkoutDetails || !renderChrome) {
     return null;
   }
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.tabBar,
         {
           backgroundColor: colors.background,
           borderTopColor: colors.border,
           paddingBottom: Math.max(insets.bottom, 8),
+          opacity,
+          transform: [{ translateY: slideY }],
         },
       ]}
     >
@@ -105,7 +155,7 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
           </TouchableOpacity>
         );
       })}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -158,6 +208,7 @@ function TabLayoutInner() {
           lazyPreloadDistance: 1,
           animationEnabled: true,
           sceneStyle: { backgroundColor: colors.background },
+          tabBarStyle: styles.tabBarOverlay,
         }}
       >
       <SwipeableTabs.Screen
@@ -196,9 +247,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tabBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 20,
     flexDirection: 'row',
     borderTopWidth: 1,
     paddingTop: 8,
+  },
+  tabBarOverlay: {
+    position: 'absolute',
   },
   tab: {
     flex: 1,

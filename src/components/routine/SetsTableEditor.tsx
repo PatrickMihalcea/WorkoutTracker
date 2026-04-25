@@ -214,6 +214,8 @@ interface SetsTableEditorProps {
   onForceDismissHandled?: () => void;
   renderValueEditorInPortal?: boolean;
   valueEditorAnimated?: boolean;
+  valueEditorAnimateDoneExit?: boolean;
+  getValueEditorOpenDelayMs?: () => number;
 }
 
 export interface TableEditorCell {
@@ -253,6 +255,8 @@ export function SetsTableEditor({
   onForceDismissHandled,
   renderValueEditorInPortal = false,
   valueEditorAnimated = true,
+  valueEditorAnimateDoneExit = false,
+  getValueEditorOpenDelayMs,
 }: SetsTableEditorProps) {
   const { colors } = useTheme();
   const [valueEditorVisible, setValueEditorVisible] = useState(false);
@@ -260,8 +264,10 @@ export function SetsTableEditor({
   const [valueEditorNumeric, setValueEditorNumeric] = useState('');
   const [valueEditorDuration, setValueEditorDuration] = useState(0);
   const [valueEditorRir, setValueEditorRir] = useState<number | null>(null);
+  const [valueEditorAnimateOpen, setValueEditorAnimateOpen] = useState(false);
   const [rowLayoutY, setRowLayoutY] = useState<Record<number, number>>({});
   const rowsScrollRef = React.useRef<ScrollView | null>(null);
+  const pendingOpenTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const config = getExerciseTypeConfig(exerciseType);
 
   const showWeight = config.fields.some((f) => f.key === 'weight');
@@ -307,6 +313,10 @@ export function SetsTableEditor({
   const openValueEditorForCell = (cell: TableEditorCell, animated = true) => {
     const row = rows[cell.rowIndex];
     if (!row) return;
+    if (pendingOpenTimeoutRef.current) {
+      clearTimeout(pendingOpenTimeoutRef.current);
+      pendingOpenTimeoutRef.current = null;
+    }
     scrollCellIntoView(cell, animated);
     onFocusRow?.(cell.rowIndex);
     onFocusCell?.(cell);
@@ -331,6 +341,16 @@ export function SetsTableEditor({
     } else {
       setValueEditorNumeric('');
     }
+    const openDelayMs = valueEditorVisible ? 0 : (getValueEditorOpenDelayMs?.() ?? 0);
+    if (openDelayMs > 0) {
+      setValueEditorAnimateOpen(true);
+      pendingOpenTimeoutRef.current = setTimeout(() => {
+        pendingOpenTimeoutRef.current = null;
+        setValueEditorVisible(true);
+      }, openDelayMs);
+      return;
+    }
+    setValueEditorAnimateOpen(false);
     setValueEditorVisible(true);
   };
 
@@ -485,8 +505,17 @@ export function SetsTableEditor({
   };
 
   const handleModalClose = () => {
-    if (!valueEditorCell) { setValueEditorVisible(false); setValueEditorCell(null); return; }
-    withRepRangeValidation(valueEditorCell, () => { setValueEditorVisible(false); setValueEditorCell(null); });
+    if (!valueEditorCell) {
+      setValueEditorAnimateOpen(false);
+      setValueEditorVisible(false);
+      setValueEditorCell(null);
+      return;
+    }
+    withRepRangeValidation(valueEditorCell, () => {
+      setValueEditorAnimateOpen(false);
+      setValueEditorVisible(false);
+      setValueEditorCell(null);
+    });
   };
 
   const handleModalNavigate = (direction: EditorDirection) => {
@@ -506,6 +535,7 @@ export function SetsTableEditor({
     if (!valueEditorCell) return;
     const row = tableEditorRows.find((item) => item.rowIndex === valueEditorCell.rowIndex);
     if (!row || !row.fields.includes(valueEditorCell.field)) {
+      setValueEditorAnimateOpen(false);
       setValueEditorVisible(false);
       setValueEditorCell(null);
     }
@@ -518,6 +548,10 @@ export function SetsTableEditor({
   }, [valueEditorVisible]);
 
   useEffect(() => () => {
+    if (pendingOpenTimeoutRef.current) {
+      clearTimeout(pendingOpenTimeoutRef.current);
+      pendingOpenTimeoutRef.current = null;
+    }
     if (!lastReportedVisibilityRef.current) return;
     lastReportedVisibilityRef.current = false;
     onEditorVisibilityChangeRef.current?.(false);
@@ -556,7 +590,12 @@ export function SetsTableEditor({
     if (forceDismissToken == null) return;
     if (appliedForceDismissTokenRef.current === forceDismissToken) return;
     appliedForceDismissTokenRef.current = forceDismissToken;
+    if (pendingOpenTimeoutRef.current) {
+      clearTimeout(pendingOpenTimeoutRef.current);
+      pendingOpenTimeoutRef.current = null;
+    }
     if (valueEditorVisible) {
+      setValueEditorAnimateOpen(false);
       setValueEditorVisible(false);
       setValueEditorCell(null);
     }
@@ -966,6 +1005,7 @@ export function SetsTableEditor({
                   style={styles.removeSetBtn}
                   onPress={() => {
                     const updated = rows.filter((_, idx) => idx !== i);
+                    setValueEditorAnimateOpen(false);
                     setValueEditorVisible(false);
                     setValueEditorCell(null);
                     setRows(updated);
@@ -985,6 +1025,7 @@ export function SetsTableEditor({
           onPress={() => {
             const warmups = rows.filter((r) => r.isWarmup);
             const working = rows.filter((r) => !r.isWarmup);
+            setValueEditorAnimateOpen(false);
             setValueEditorVisible(false);
             setValueEditorCell(null);
             setRows([...warmups, defaultSetRow(true), ...working]);
@@ -995,6 +1036,7 @@ export function SetsTableEditor({
         <TouchableOpacity
           style={styles.addSetBtn}
           onPress={() => {
+            setValueEditorAnimateOpen(false);
             setValueEditorVisible(false);
             setValueEditorCell(null);
             setRows([...rows, defaultSetRow()]);
@@ -1009,6 +1051,8 @@ export function SetsTableEditor({
           <SetValueEditorModal
             visible={valueEditorVisible}
             animated={valueEditorAnimated}
+            animateOpen={valueEditorAnimateOpen}
+            animateDoneExit={valueEditorAnimateDoneExit}
             field={valueEditorCell?.field ?? null}
             syncKey={valueEditorCell ? `${valueEditorCell.rowIndex}:${valueEditorCell.field}` : undefined}
             title={valueEditorCell?.field ? `Edit ${valueEditorCell.field.toUpperCase()}` : undefined}
@@ -1039,6 +1083,8 @@ export function SetsTableEditor({
         <SetValueEditorModal
           visible={valueEditorVisible}
           animated={valueEditorAnimated}
+          animateOpen={valueEditorAnimateOpen}
+          animateDoneExit={valueEditorAnimateDoneExit}
           field={valueEditorCell?.field ?? null}
           syncKey={valueEditorCell ? `${valueEditorCell.rowIndex}:${valueEditorCell.field}` : undefined}
           title={valueEditorCell?.field ? `Edit ${valueEditorCell.field.toUpperCase()}` : undefined}
@@ -1048,10 +1094,12 @@ export function SetsTableEditor({
           rirValue={valueEditorRir}
           canNavigate={valueEditorCanNavigate}
           onClose={() => {
+            setValueEditorAnimateOpen(false);
             setValueEditorVisible(false);
             setValueEditorCell(null);
           }}
           onDone={() => {
+            setValueEditorAnimateOpen(false);
             setValueEditorVisible(false);
             setValueEditorCell(null);
           }}

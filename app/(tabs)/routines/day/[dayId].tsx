@@ -178,6 +178,7 @@ function ExerciseSetsEditor({
   externalNavigationRequest,
   forceDismissToken,
   onForceDismissHandled,
+  getValueEditorOpenDelayMs,
   styles,
 }: {
   entry: RoutineDayExercise;
@@ -192,6 +193,7 @@ function ExerciseSetsEditor({
   externalNavigationRequest?: ExternalSetEditorNavigationRequest;
   forceDismissToken?: number;
   onForceDismissHandled?: () => void;
+  getValueEditorOpenDelayMs?: () => number;
   styles: Record<string, any>;
 }) {
   const initial = setsToTemplateRows(entry.sets ?? [], entry.target_reps, wUnit);
@@ -254,12 +256,15 @@ function ExerciseSetsEditor({
         onForceDismissHandled={onForceDismissHandled}
         renderValueEditorInPortal
         valueEditorAnimated={false}
+        valueEditorAnimateDoneExit
+        getValueEditorOpenDelayMs={getValueEditorOpenDelayMs}
       />
     </View>
   );
 }
 
 export default function DayEditorScreen() {
+  const SET_EDITOR_OPEN_DELAY_MS = 440;
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { dayId } = useLocalSearchParams<{ dayId: string }>();
@@ -354,6 +359,13 @@ export default function DayEditorScreen() {
   const handleSetEditorFocusRequest = useCallback((entryId: string) => {
     scrollDayExerciseIntoView(entryId);
   }, [scrollDayExerciseIntoView]);
+
+  const getSetEditorOpenDelayMs = useCallback((entryId: string) => {
+    if (currentVisibleEntryIdRef.current === entryId) return 0;
+    if (currentVisibleEntryIdRef.current) return 0;
+    setChromeHidden(true);
+    return SET_EDITOR_OPEN_DELAY_MS;
+  }, [setChromeHidden]);
 
   useEffect(() => {
     setChromeHidden(!!setEditorVisibleEntryId);
@@ -713,7 +725,9 @@ export default function DayEditorScreen() {
     ]);
   }, [day, dayId, currentRoutine, fetchRoutineDetail, router]);
 
-  if (!day) return null;
+  if (!day) {
+    return <View style={styles.container} />;
+  }
 
 
   return (
@@ -809,6 +823,7 @@ export default function DayEditorScreen() {
                       externalNavigationRequest={editorNavRequests[item.entry.id]}
                       forceDismissToken={editorDismissTokens[item.entry.id]}
                       onForceDismissHandled={() => handleForceDismissHandled(item.entry.id)}
+                      getValueEditorOpenDelayMs={() => getSetEditorOpenDelayMs(item.entry.id)}
                       styles={styles}
                     />
                   </SwipeableExerciseRow>
@@ -849,6 +864,7 @@ export default function DayEditorScreen() {
                               externalNavigationRequest={editorNavRequests[entry.id]}
                               forceDismissToken={editorDismissTokens[entry.id]}
                               onForceDismissHandled={() => handleForceDismissHandled(entry.id)}
+                              getValueEditorOpenDelayMs={() => getSetEditorOpenDelayMs(entry.id)}
                               styles={styles}
                             />
                           </SwipeableExerciseRow>
