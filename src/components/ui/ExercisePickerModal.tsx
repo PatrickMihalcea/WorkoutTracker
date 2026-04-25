@@ -12,6 +12,7 @@ import {
   Alert,
   Keyboard,
   Platform,
+  type ViewToken,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -34,6 +35,10 @@ const chartIcon = require('../../../assets/icons/chart.png');
 const exerciseThumbPlaceholder = require('../../../assets/Setora-black-and-white.png');
 const UPLOAD_ICON_MAX_DIMENSION = 480;
 const UPLOAD_ICON_COMPRESSION_QUALITY = 0.72;
+const EXERCISE_ROW_HEIGHT = 69;
+const LETTER_HEADER_HEIGHT = 22;
+const SECTION_HEADER_HEIGHT = 32;
+const VIEWABLE_MEDIA_BUFFER = 2;
 
 const MUSCLE_GROUP_ITEMS = Object.values(MuscleGroup).map((mg) => ({
   key: mg,
@@ -232,14 +237,16 @@ export function ExercisePickerModal({
   const [savingCreateExercise, setSavingCreateExercise] = useState(false);
   const [pendingDeletedSelection, setPendingDeletedSelection] = useState<Exercise | null>(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const [sectionWindow, setSectionWindow] = useState<{ start: number; end: number } | null>(null);
+  const [listHeaderHeight, setListHeaderHeight] = useState(0);
   const sectionListRef = useRef<SectionList<Exercise>>(null);
   const railHeightRef = useRef(0);
   const lastRailLetterRef = useRef<string | null>(null);
   const pendingRailLetterRef = useRef<string | null>(null);
   const railScrollRetryCountRef = useRef(0);
   const railScrollRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const customExerciseIdsRef = useRef<string[]>([]);
   const suppressCloseWarningRef = useRef(false);
+  const [activeMediaExerciseIds, setActiveMediaExerciseIds] = useState<Set<string>>(() => new Set());
 
   const styles = useMemo(() => StyleSheet.create({
     searchInput: {
@@ -387,7 +394,6 @@ export function ExercisePickerModal({
       setSearch('');
       setMuscleFilter(null);
       setEquipmentFilter(null);
-      setSectionWindow(null);
       setHighlightedExerciseId(selectedExerciseId ?? null);
       setPendingDeletedSelection(null);
       suppressCloseWarningRef.current = false;
@@ -405,15 +411,19 @@ export function ExercisePickerModal({
       setNewExerciseMediaUri(null);
       setNewExerciseMediaMimeType('image/jpeg');
       setSavingCreateExercise(false);
-      setSectionWindow(null);
       setPendingDeletedSelection(null);
+      pendingRailLetterRef.current = null;
+      railScrollRetryCountRef.current = 0;
+      if (railScrollRetryTimerRef.current) {
+        clearTimeout(railScrollRetryTimerRef.current);
+        railScrollRetryTimerRef.current = null;
+      }
       suppressCloseWarningRef.current = false;
     }
   }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
-    setSectionWindow(null);
     pendingRailLetterRef.current = null;
     railScrollRetryCountRef.current = 0;
     if (railScrollRetryTimerRef.current) {
@@ -477,6 +487,10 @@ export function ExercisePickerModal({
     return applyFilters(exercises.filter((e) => e.user_id === user.id));
   }, [equipmentFilter, exercises, muscleFilter, search, user]);
 
+  useEffect(() => {
+    customExerciseIdsRef.current = customExercises.map((exercise) => exercise.id);
+  }, [customExercises]);
+
   const allExercises = useMemo(() => applyFilters(exercises), [equipmentFilter, exercises, muscleFilter, search]);
 
   const allExercisesByLetter = useMemo(() => {
@@ -513,20 +527,53 @@ export function ExercisePickerModal({
     [allExerciseSections],
   );
 
-  const WINDOW_SECTION_RADIUS = 1;
+  const sectionScrollMetaByLetter = useMemo(() => {
+    const meta: Record<string, { offset: number; sectionIndex: number }> = {};
+    let offset = listHeaderHeight;
 
-  const getSectionWindowForIndex = (sectionIndex: number) => {
-    const start = Math.max(0, sectionIndex - WINDOW_SECTION_RADIUS);
-    const end = Math.min(allExerciseSections.length - 1, sectionIndex + WINDOW_SECTION_RADIUS);
-    return { start, end };
+    allExerciseSections.forEach((section, sectionIndex) => {
+      meta[section.title] = { offset, sectionIndex };
+      offset += LETTER_HEADER_HEIGHT + (section.data.length * EXERCISE_ROW_HEIGHT);
+    });
+
+    return meta;
+  }, [allExerciseSections, listHeaderHeight]);
+
+  const getSectionListItemLayout = (
+    _data: SectionList<Exercise>['props']['sections'] | null,
+    index: number,
+  ) => {
+    let cursor = 0;
+    let offset = listHeaderHeight;
+
+    for (const section of allExerciseSections) {
+      if (index === cursor) {
+        return { length: LETTER_HEADER_HEIGHT, offset, index };
+      }
+      cursor += 1;
+      offset += LETTER_HEADER_HEIGHT;
+
+      if (index < cursor + section.data.length) {
+        const itemOffset = index - cursor;
+        return {
+          length: EXERCISE_ROW_HEIGHT,
+          offset: offset + (itemOffset * EXERCISE_ROW_HEIGHT),
+          index,
+        };
+      }
+      cursor += section.data.length;
+      offset += section.data.length * EXERCISE_ROW_HEIGHT;
+
+      if (index === cursor) {
+        return { length: 0, offset, index };
+      }
+      cursor += 1;
+    }
+
+    return { length: EXERCISE_ROW_HEIGHT, offset, index };
   };
 
-  const visibleExerciseSections = useMemo(() => {
-    if (!sectionWindow) return allExerciseSections;
-    return allExerciseSections.slice(sectionWindow.start, sectionWindow.end + 1);
-  }, [allExerciseSections, sectionWindow]);
-
-  const scheduleLetterScroll = (letter: string, delayMs: number, windowStart: number) => {
+  const scheduleLetterScroll = (letter: string, delayMs: number, animated = true) => {
     if (railScrollRetryTimerRef.current) {
       clearTimeout(railScrollRetryTimerRef.current);
       railScrollRetryTimerRef.current = null;
@@ -535,27 +582,28 @@ export function ExercisePickerModal({
       const globalSectionIndex = sectionIndexByLetter[letter];
       railScrollRetryTimerRef.current = null;
       if (globalSectionIndex == null) return;
-      const localSectionIndex = Math.max(0, globalSectionIndex - windowStart);
       sectionListRef.current?.scrollToLocation({
-        sectionIndex: localSectionIndex,
+        sectionIndex: globalSectionIndex,
         itemIndex: 0,
         viewOffset: 6,
-        animated: true,
+        animated,
       });
     }, delayMs);
   };
 
   const handlePressIndexLetter = (letter: string) => {
     if (!availableLetters.has(letter)) return;
-    const globalSectionIndex = sectionIndexByLetter[letter];
-    if (globalSectionIndex == null) return;
-    const nextWindow = getSectionWindowForIndex(globalSectionIndex);
+    const target = sectionScrollMetaByLetter[letter];
+    if (!target) return;
     pendingRailLetterRef.current = letter;
-    setSectionWindow((prev) => {
-      if (prev && prev.start === nextWindow.start && prev.end === nextWindow.end) return prev;
-      return nextWindow;
+    railScrollRetryCountRef.current = 0;
+    sectionListRef.current?.recordInteraction();
+    sectionListRef.current?.scrollToLocation({
+      sectionIndex: target.sectionIndex,
+      itemIndex: 0,
+      viewOffset: 6,
+      animated: true,
     });
-    scheduleLetterScroll(letter, 50, nextWindow.start);
   };
 
   const handleRailDragAt = (locationY: number) => {
@@ -609,15 +657,16 @@ export function ExercisePickerModal({
     void confirmDeleteExercise(exercise, user.id, afterDeleted);
   };
 
-  const renderRow = (item: Exercise) => {
+  const renderRow = (item: Exercise, allowMedia = true) => {
     const previewUrl = getExercisePreviewUrl(item);
     const thumbnailUrl = getExerciseThumbnailUrl(item);
+    const shouldLoadMedia = allowMedia && activeMediaExerciseIds.has(item.id);
 
     return (
       <View key={item.id} style={[styles.exerciseRow, highlightedExerciseId === item.id && styles.exerciseRowSelected]}>
         <ExerciseIconPreview
-          imageSource={thumbnailUrl ? { uri: thumbnailUrl } : exerciseThumbPlaceholder}
-          previewUri={previewUrl}
+          imageSource={shouldLoadMedia && thumbnailUrl ? { uri: thumbnailUrl } : exerciseThumbPlaceholder}
+          previewUri={shouldLoadMedia ? previewUrl : null}
           touchableStyle={styles.exercisePreview}
           imageStyle={styles.exercisePreviewImage}
         />
@@ -738,6 +787,50 @@ export function ExercisePickerModal({
     onClose();
   };
 
+  const onViewableItemsChangedRef = useRef(
+    ({ viewableItems }: { viewableItems: Array<ViewToken<Exercise>> }) => {
+      const nextIds = new Set(customExerciseIdsRef.current);
+
+      for (const token of viewableItems) {
+        const item = token.item;
+        const itemIndex = token.index;
+        const section = token.section as ExerciseSection | undefined;
+        if (!item || typeof itemIndex !== 'number' || !section) continue;
+
+        for (let offset = -VIEWABLE_MEDIA_BUFFER; offset <= VIEWABLE_MEDIA_BUFFER; offset += 1) {
+          const neighbor = section.data[itemIndex + offset];
+          if (neighbor) nextIds.add(neighbor.id);
+        }
+      }
+
+      setActiveMediaExerciseIds(nextIds);
+    },
+  );
+
+  const viewabilityConfigRef = useRef({
+    itemVisiblePercentThreshold: 15,
+    minimumViewTime: 40,
+  });
+
+  useEffect(() => {
+    if (!visible) {
+      setActiveMediaExerciseIds(new Set());
+      return;
+    }
+
+    const initialIds = new Set(customExercises.map((exercise) => exercise.id));
+    for (const section of allExerciseSections) {
+      for (const exercise of section.data) {
+        initialIds.add(exercise.id);
+        if (initialIds.size >= 12) {
+          setActiveMediaExerciseIds(initialIds);
+          return;
+        }
+      }
+    }
+    setActiveMediaExerciseIds(initialIds);
+  }, [allExerciseSections, visible]);
+
   return (
       <BottomSheetModal
         visible={visible}
@@ -821,7 +914,7 @@ export function ExercisePickerModal({
               <SectionList
                 ref={sectionListRef}
                 style={styles.list}
-                sections={visibleExerciseSections}
+                sections={allExerciseSections}
                 contentContainerStyle={styles.listContent}
                 keyboardShouldPersistTaps="always"
                 keyboardDismissMode="none"
@@ -831,9 +924,12 @@ export function ExercisePickerModal({
                 maxToRenderPerBatch={24}
                 windowSize={11}
                 removeClippedSubviews
+                getItemLayout={getSectionListItemLayout}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => renderRow(item)}
-                onScrollToIndexFailed={() => {
+                onViewableItemsChanged={onViewableItemsChangedRef.current}
+                viewabilityConfig={viewabilityConfigRef.current}
+                onScrollToIndexFailed={(info) => {
                   const letter = pendingRailLetterRef.current;
                   if (!letter) return;
                   if (railScrollRetryTimerRef.current) {
@@ -844,36 +940,36 @@ export function ExercisePickerModal({
                     railScrollRetryCountRef.current = 0;
                     return;
                   }
-                  const globalSectionIndex = sectionIndexByLetter[letter];
-                  if (globalSectionIndex != null) {
-                    const nextWindow = getSectionWindowForIndex(globalSectionIndex);
-                    setSectionWindow((prev) => {
-                      if (prev && prev.start === nextWindow.start && prev.end === nextWindow.end) return prev;
-                      return nextWindow;
+                  const target = sectionScrollMetaByLetter[letter];
+                  if (target) {
+                    sectionListRef.current?.getScrollResponder()?.scrollTo({
+                      y: Math.max(listHeaderHeight, info.averageItemLength * info.index),
+                      animated: false,
                     });
-                    scheduleLetterScroll(letter, 70, nextWindow.start);
+                    scheduleLetterScroll(letter, 70, false);
                   }
                   railScrollRetryCountRef.current += 1;
                 }}
                 onMomentumScrollEnd={() => {
                   railScrollRetryCountRef.current = 0;
+                  pendingRailLetterRef.current = null;
                 }}
                 renderSectionHeader={({ section }) => (
                   <Text style={styles.letterHeader}>{section.title}</Text>
                 )}
                 ListHeaderComponent={(
-                  <>
+                  <View onLayout={(event) => { setListHeaderHeight(event.nativeEvent.layout.height); }}>
                     {customExercises.length > 0 && (
                       <>
                         <Text style={styles.sectionHeader}>Custom</Text>
-                        {customExercises.map(renderRow)}
+                        {customExercises.map((exercise) => renderRow(exercise, true))}
                       </>
                     )}
                     <Text style={styles.sectionHeader}>All Exercises</Text>
                     {allExerciseSections.length === 0 && (
                       <Text style={styles.emptyText}>No exercises found.</Text>
                     )}
-                  </>
+                  </View>
                 )}
               />
               {allExercises.length > 0 && (
