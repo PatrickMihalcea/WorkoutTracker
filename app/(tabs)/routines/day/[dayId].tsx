@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, usePathname, useRouter, Stack } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import { useRoutineStore } from '../../../../src/stores/routine.store';
 import { useAuthStore } from '../../../../src/stores/auth.store';
 import { useProfileStore } from '../../../../src/stores/profile.store';
@@ -35,7 +34,7 @@ import {
   type ExternalSetEditorNavigationRequest,
   type TableEditorCell,
 } from '../../../../src/components/routine/SetsTableEditor';
-import { AddExerciseModal, SetsPayloadItem } from '../../../../src/components/routine/AddExerciseModal';
+import { SetsPayloadItem } from '../../../../src/components/routine/AddExerciseModal';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import {
   supersetPrev,
@@ -293,13 +292,10 @@ export default function DayEditorScreen() {
   const pendingSourceDismissRef = useRef<Record<string, string>>({});
   const currentVisibleEntryIdRef = useRef<string | null>(null);
 
-  const [showAddExercise, setShowAddExercise] = useState(false);
   const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
-  const [autoOpenPicker, setAutoOpenPicker] = useState(false);
-  const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
   const pendingReopenEntryIdRef = useRef<string | null>(null);
   const lastFocusedCellRef = useRef<Record<string, TableEditorCell>>({});
 
@@ -366,10 +362,11 @@ export default function DayEditorScreen() {
     setChromeHidden(true);
     return SET_EDITOR_OPEN_DELAY_MS;
   }, [setChromeHidden]);
+  const pickerVisible = showSwapPicker || showDirectAddPicker;
 
   useEffect(() => {
-    setChromeHidden(!!setEditorVisibleEntryId);
-  }, [setChromeHidden, setEditorVisibleEntryId]);
+    setChromeHidden(!!setEditorVisibleEntryId || pickerVisible);
+  }, [pickerVisible, setChromeHidden, setEditorVisibleEntryId]);
 
   useEffect(() => () => {
     setChromeHidden(false);
@@ -425,18 +422,6 @@ export default function DayEditorScreen() {
     return !!day.exercises[sourceIndex + delta];
   }, [day]);
 
-  useFocusEffect(useCallback(() => {
-    const which = pendingPickerReopenRef.current;
-    if (which) {
-      pendingPickerReopenRef.current = null;
-      if (which === 'swap') {
-        setShowSwapPicker(true);
-      } else if (which === 'add') {
-        setShowDirectAddPicker(true);
-      }
-    }
-  }, []));
-
   const openExerciseDetail = useCallback((exerciseId: string) => {
     const href = `/exercise/${exerciseId}` as const;
     if (pathname.startsWith('/exercise/')) {
@@ -446,12 +431,8 @@ export default function DayEditorScreen() {
     router.push(href);
   }, [pathname, router]);
 
-  const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
-    if (source) pendingPickerReopenRef.current = source;
-    setShowSwapPicker(false);
-    setShowAddExercise(false);
-    setShowDirectAddPicker(false);
-    setTimeout(() => openExerciseDetail(exerciseId), 280);
+  const navigateToExerciseDetail = useCallback((exerciseId: string) => {
+    openExerciseDetail(exerciseId);
   }, [openExerciseDetail]);
 
   const loadDay = useCallback(() => {
@@ -568,7 +549,6 @@ export default function DayEditorScreen() {
         normalizedSets,
       );
       setExpandedIds((prev) => new Set([...prev, newEntry.id]));
-      setShowAddExercise(false);
       refresh();
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
@@ -878,36 +858,29 @@ export default function DayEditorScreen() {
           )}
         />
 
-        <AddRowButton label="+ Add Exercise" onPress={() => setShowDirectAddPicker(true)} />
+        <AddRowButton label="+ Add Exercise" onPress={() => {
+          setShowDirectAddPicker(true);
+        }} />
 
         <TouchableOpacity onPress={handleRemoveDay} style={styles.removeDayBtn}>
           <Text style={styles.removeDayText}>Remove Day</Text>
         </TouchableOpacity>
       </ScrollView>
 
-      <AddExerciseModal
-        visible={showAddExercise}
-        onClose={() => { setShowAddExercise(false); setAutoOpenPicker(false); }}
-        onConfirm={handleAddExerciseConfirm}
-        weightUnit={wUnit}
-        distanceUnit={dUnit}
-        onDeleteExercise={handleDeleteExercise}
-        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
-        autoOpenPicker={autoOpenPicker}
-      />
-
       <ExercisePickerModal
         visible={showSwapPicker}
+        presentation="inline"
         onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); }}
         onSelect={handleExSwapSelect}
         onDeletedSelectedWithoutReplacement={handleSwapDeletedWithoutReplacement}
         selectedExerciseId={swapEntryId ? (day?.exercises.find((entry) => entry.id === swapEntryId)?.exercise_id ?? null) : null}
-        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
+        onExerciseDetails={navigateToExerciseDetail}
       />
 
       <ExercisePickerModal
         visible={showDirectAddPicker}
-        onClose={() => setShowDirectAddPicker(false)}
+        presentation="inline"
+        onClose={() => { setShowDirectAddPicker(false); }}
         onSelect={(exercise) => {
           setShowDirectAddPicker(false);
           handleAddExerciseConfirm(exercise, [{
@@ -915,7 +888,7 @@ export default function DayEditorScreen() {
             target_reps_min: 8, target_reps_max: 12, target_rir: null,
           }]);
         }}
-        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
+        onExerciseDetails={navigateToExerciseDetail}
       />
       </View>
     </PortalHost>

@@ -13,7 +13,7 @@ import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { Button, Input } from '../../../src/components/ui';
-import { fonts } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
 import { Sex } from '../../../src/models/profile';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
@@ -128,7 +128,6 @@ export default function EditProfileScreen() {
 
       <Text style={styles.sectionLabel}>Birthday</Text>
       <View style={styles.editRow}>
-        <Text style={styles.editRowLabel}>Date</Text>
         {Platform.OS === 'ios' ? (
           <DateTimePicker
             value={birthday}
@@ -163,7 +162,6 @@ export default function EditProfileScreen() {
 
       <Text style={styles.sectionLabel}>Height</Text>
       <View style={styles.editRow}>
-        <Text style={styles.editRowLabel}>Value</Text>
         <TouchableOpacity
           style={styles.pickerValueButton}
           onPress={() => setShowHeightPicker((prev) => !prev)}
@@ -172,9 +170,6 @@ export default function EditProfileScreen() {
           <Text style={styles.pickerButtonText}>{heightDisplay}</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.hint}>
-        Uses your preferred height units: {heightUnit === 'in' ? 'ft/in' : 'cm'}.
-      </Text>
       {showHeightPicker && (
         heightUnit === 'in' ? (
           <View style={styles.heightRow}>
@@ -231,7 +226,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: spacing.bottom,
   },
   sectionLabel: {
     fontSize: 14,

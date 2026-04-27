@@ -15,7 +15,7 @@ import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
 import { LaunchScreen } from '../src/components/ui/LaunchScreen';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { DEFAULT_THEME } from '../src/constants/themes';
-import { WorkoutOverlay, WorkoutOverlayProvider } from '../src/components/workout';
+import { WorkoutFloatingPill, WorkoutOverlayProvider } from '../src/components/workout';
 import { notificationService } from '../src/services';
 
 const HAS_OPENED_KEY = 'has_opened_before';
@@ -178,7 +178,7 @@ function RootLayoutInner() {
   }), [colors]);
 
   const exerciseHeaderOptions = useMemo<NativeStackNavigationOptions>(() => ({
-    headerShown: true,
+    headerShown: false,
     headerStyle: { backgroundColor: colors.background },
     headerTintColor: colors.text,
     headerTitle: 'Exercise Details',
@@ -190,6 +190,7 @@ function RootLayoutInner() {
 
   const exerciseHistoryHeaderOptions = useMemo<NativeStackNavigationOptions>(() => ({
     ...exerciseHeaderOptions,
+    headerShown: true,
     headerTitle: 'Exercise History',
   }), [exerciseHeaderOptions]);
 
@@ -222,8 +223,16 @@ function RootLayoutInner() {
               name="exercise/[exerciseId]/history"
               options={exerciseHistoryHeaderOptions}
             />
+            <Stack.Screen
+              name="workout"
+              options={{
+                presentation: 'transparentModal',
+                animation: 'none',
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
           </Stack>
-          {!launchVisible ? <WorkoutOverlay /> : null}
+          {!launchVisible ? <WorkoutFloatingPill /> : null}
           <KeyboardDismiss />
         </WorkoutOverlayProvider>
       ) : null}

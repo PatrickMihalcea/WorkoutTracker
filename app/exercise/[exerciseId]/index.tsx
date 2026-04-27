@@ -13,36 +13,51 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { useWorkoutStore } from '../../../src/stores/workout.store';
 import {
   exerciseDetailService,
   exerciseMediaService,
   ExerciseDetailData,
 } from '../../../src/services';
 import { updateCustomExercise } from '../../../src/services/exerciseMutation.service';
+
 import { fonts, spacing } from '../../../src/constants';
+import type { ThemeColors } from '../../../src/constants/themes';
+import { useTheme } from '../../../src/contexts/ThemeContext';
+
 import {
+  ChartInteractionProvider,
+  useChartInteraction,
   SimpleLineChart,
   MetricChips,
   RecordsBarChart,
   formatVolume,
 } from '../../../src/components/charts';
 import type { BarDataItem } from '../../../src/components/charts';
-import { BottomSheetModal, Button, ChipPicker, FieldDropdown, Input, MultiChipPicker, OverflowMenu } from '../../../src/components/ui';
+
+import {
+  BottomSheetModal,
+  Button,
+  ChipPicker,
+  FieldDropdown,
+  Input,
+  MultiChipPicker,
+  OverflowMenu,
+} from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
-import { getExerciseTypeConfig } from '../../../src/utils/exerciseType';
-import { EXERCISE_TYPE_ITEMS } from '../../../src/utils/exerciseType';
+
+import {
+  getExerciseTypeConfig,
+  EXERCISE_TYPE_ITEMS,
+} from '../../../src/utils/exerciseType';
 import { formatDurationValue } from '../../../src/utils/duration';
 import { distanceUnitLabel } from '../../../src/utils/units';
-import { ChartInteractionProvider, useChartInteraction } from '../../../src/components/charts';
 import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
+
 import { Equipment, ExerciseType, MuscleGroup } from '../../../src/models';
-import { useTheme } from '../../../src/contexts/ThemeContext';
-import type { ThemeColors } from '../../../src/constants/themes';
-import { useWorkoutOverlay } from '../../../src/components/workout';
 
 type MetricKey = string;
 
@@ -207,20 +222,14 @@ function getMinYStep(metricKey: string): number {
 function ExerciseDetailContent() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { exerciseId, fromWorkout } = useLocalSearchParams<{ exerciseId: string; fromWorkout?: string | string[] }>();
+  const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
   const router = useRouter();
-  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { user } = useAuthStore();
-  const hasActiveWorkout = useWorkoutStore((state) => !!state.session?.id);
-  const { expand } = useWorkoutOverlay();
   const { profile } = useProfileStore();
   const { scrollEnabled } = useChartInteraction();
   const wUnit = profile?.weight_unit ?? 'kg';
   const dUnit = profile?.distance_unit ?? 'km';
-  const cameFromWorkout = useMemo(() => {
-    const flag = Array.isArray(fromWorkout) ? fromWorkout[0] : fromWorkout;
-    return flag === '1' || flag === 'true';
-  }, [fromWorkout]);
 
   const [data, setData] = useState<ExerciseDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -258,14 +267,6 @@ function ExerciseDetailContent() {
   }, [user?.id, exerciseId, wUnit, dUnit]);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  useEffect(() => {
-    if (!cameFromWorkout || !hasActiveWorkout) return;
-    const unsub = navigation.addListener('beforeRemove', () => {
-      expand();
-    });
-    return unsub;
-  }, [cameFromWorkout, expand, hasActiveWorkout, navigation]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -514,6 +515,13 @@ function ExerciseDetailContent() {
     );
   }
 
+  const { paddingTop } = useLocalSearchParams<{
+    paddingTop?: string;
+  }>();
+
+  const resolvedPaddingTop =
+    paddingTop !== undefined ? Number(paddingTop) : insets.top;
+
   const hasChartData = points.length > 0;
   const mediaUrl = data.exercise.media_url ?? null;
   const thumbnailUrl = data.exercise.thumbnail_url ?? mediaUrl;
@@ -540,13 +548,23 @@ function ExerciseDetailContent() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: resolvedPaddingTop },
+      ]}
       showsVerticalScrollIndicator={false}
       scrollEnabled={scrollEnabled}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.textSecondary} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={colors.textSecondary}
+        />
       }
     >
+      <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backButton}>
+        <Text style={styles.backButtonText}>‹ Back</Text>
+      </TouchableOpacity>
       {/* Header */}
       <View style={styles.header}>
         {hasMedia && (
@@ -755,20 +773,9 @@ function ExerciseDetailContent() {
 }
 
 export default function ExerciseDetailScreen() {
-  const { colors } = useTheme();
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
-          headerTitle: 'Exercise Details',
-          headerTitleStyle: { fontFamily: 'Monospaceland-Bold' },
-          headerBackButtonDisplayMode: 'minimal',
-          headerBackTitle: '',
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
       <ChartInteractionProvider>
         <ExerciseDetailContent />
       </ChartInteractionProvider>
@@ -795,6 +802,17 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.regular,
     color: colors.textMuted,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingRight: 16,
+    marginBottom: 4,
+  },
+  backButtonText: {
+    fontSize: 17,
+    fontFamily: fonts.regular,
+    color: colors.accent,
   },
   header: {
     paddingVertical: spacing.md,

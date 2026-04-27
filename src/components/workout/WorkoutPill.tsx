@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Alert, useWindowDimensions } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Alert, useWindowDimensions, Animated } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useWorkoutStore } from '../../stores/workout.store';
 import { useWorkoutOverlay } from './WorkoutOverlayContext';
@@ -7,10 +7,11 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { fonts } from '../../constants';
 import { formatElapsed } from '../../utils/date';
 
-const PILL_HEIGHT = 52;
-const PILL_MARGIN = 8;
-const BORDER_RADIUS = 26;
+const PILL_HEIGHT = 44;
+const PILL_MARGIN = 16;
+const BORDER_RADIUS = 22;
 const STROKE_WIDTH = 2.5;
+const PILL_DISMISS_FADE_MS = 220;
 
 function formatCountdown(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -43,14 +44,18 @@ export function WorkoutPill() {
   const [elapsed, setElapsed] = useState('');
   const [smoothProgress, setSmoothProgress] = useState(0);
   const endTimeRef = useRef(0);
+  const pillOpacity = useRef(new Animated.Value(1)).current;
+  const dismissingRef = useRef(false);
 
   useEffect(() => {
     if (!session) return;
+    dismissingRef.current = false;
+    pillOpacity.setValue(1);
     const tick = () => setElapsed(formatElapsed(session.started_at));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [session]);
+  }, [pillOpacity, session]);
 
   useEffect(() => {
     if (restTimer) {
@@ -70,7 +75,7 @@ export function WorkoutPill() {
   }, [restTimer !== null, restTimer?.total]);
 
   const styles = useMemo(() => StyleSheet.create({
-    wrapper: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', paddingBottom: 4 },
+    wrapper: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', paddingBottom: 0 },
     pill: { height: PILL_HEIGHT, borderRadius: BORDER_RADIUS, backgroundColor: colors.surface, overflow: 'hidden' },
     content: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
     iconBtn: {
@@ -93,10 +98,27 @@ export function WorkoutPill() {
 
   if (!session) return null;
 
+  const fadeOutAndCancel = () => {
+    if (dismissingRef.current) return;
+    dismissingRef.current = true;
+    Animated.timing(pillOpacity, {
+      toValue: 0,
+      duration: PILL_DISMISS_FADE_MS,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) {
+        dismissingRef.current = false;
+        pillOpacity.setValue(1);
+        return;
+      }
+      void cancelWorkout();
+    });
+  };
+
   const handleCancel = () => {
     Alert.alert('Cancel Workout', 'Discard this workout session?', [
       { text: 'Keep Going', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: () => cancelWorkout() },
+      { text: 'Discard', style: 'destructive', onPress: fadeOutAndCancel },
     ]);
   };
 
@@ -123,7 +145,7 @@ export function WorkoutPill() {
   const gapLen = perimeter - visibleLen;
 
   return (
-    <View style={styles.wrapper}>
+    <Animated.View style={[styles.wrapper, { opacity: pillOpacity }]}>
       <View style={[styles.pill, { width: pillWidth }]}>
         <Svg width={pillWidth} height={PILL_HEIGHT} style={StyleSheet.absoluteFill}>
           <Path d={pathD} fill="none" stroke={colors.border} strokeWidth={STROKE_WIDTH} />
@@ -158,6 +180,6 @@ export function WorkoutPill() {
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }

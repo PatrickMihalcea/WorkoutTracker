@@ -21,6 +21,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+    paddingBottom: spacing.bottom,
   },
   loadingContainer: {
     flex: 1,

@@ -200,6 +200,10 @@ function FilterDropdown<T extends string>({
 
 interface ExercisePickerModalProps {
   visible: boolean;
+  animated?: boolean;
+  presentation?: 'modal' | 'inline';
+  topInset?: number;
+  preserveStateOnOpen?: boolean;
   onClose: () => void;
   onSelect: (exercise: Exercise) => void;
   onDeleteExercise?: (exercise: Exercise, onDeleted?: () => void) => void;
@@ -211,6 +215,10 @@ interface ExercisePickerModalProps {
 
 export function ExercisePickerModal({
   visible,
+  animated = true,
+  presentation = 'modal',
+  topInset = 0,
+  preserveStateOnOpen = false,
   onClose,
   onSelect,
   onDeleteExercise,
@@ -227,6 +235,7 @@ export function ExercisePickerModal({
   const [equipmentFilter, setEquipmentFilter] = useState<Equipment | null>(null);
   const [highlightedExerciseId, setHighlightedExerciseId] = useState<string | null>(selectedExerciseId ?? null);
   const [showCreateExercise, setShowCreateExercise] = useState(false);
+  const [loadingExercises, setLoadingExercises] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
   const [newExerciseMuscle, setNewExerciseMuscle] = useState<MuscleGroup>(MuscleGroup.Chest);
   const [newExerciseEquipment, setNewExerciseEquipment] = useState<Equipment>(Equipment.Barbell);
@@ -391,14 +400,16 @@ export function ExercisePickerModal({
   useEffect(() => {
     if (visible) {
       loadExercises();
-      setSearch('');
-      setMuscleFilter(null);
-      setEquipmentFilter(null);
-      setHighlightedExerciseId(selectedExerciseId ?? null);
+      if (!preserveStateOnOpen) {
+        setSearch('');
+        setMuscleFilter(null);
+        setEquipmentFilter(null);
+        setHighlightedExerciseId(selectedExerciseId ?? null);
+      }
       setPendingDeletedSelection(null);
       suppressCloseWarningRef.current = false;
     }
-  }, [selectedExerciseId, visible]);
+  }, [preserveStateOnOpen, selectedExerciseId, visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -463,11 +474,14 @@ export function ExercisePickerModal({
   );
 
   const loadExercises = async () => {
+    setLoadingExercises(true);
     try {
       const list = await exerciseService.getAll();
       setExercises(list);
     } catch {
       // empty
+    } finally {
+      setLoadingExercises(false);
     }
   };
 
@@ -834,6 +848,9 @@ export function ExercisePickerModal({
   return (
       <BottomSheetModal
         visible={visible}
+        animated={animated}
+        presentation={presentation}
+        topInset={topInset}
         title={showCreateExercise ? 'Create New Exercise' : 'Select Exercise'}
         fullHeight
         scrollable={showCreateExercise}
@@ -966,7 +983,7 @@ export function ExercisePickerModal({
                       </>
                     )}
                     <Text style={styles.sectionHeader}>All Exercises</Text>
-                    {allExerciseSections.length === 0 && (
+                    {!loadingExercises && allExerciseSections.length === 0 && (
                       <Text style={styles.emptyText}>No exercises found.</Text>
                     )}
                   </View>

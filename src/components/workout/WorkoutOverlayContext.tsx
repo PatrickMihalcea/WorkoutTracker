@@ -1,15 +1,14 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import { usePathname, useRouter } from 'expo-router';
 import { useWorkoutStore } from '../../stores/workout.store';
-
-let lastKnownSessionId: string | null = null;
 
 interface WorkoutOverlayContextType {
   expanded: boolean;
   chromeHidden: boolean;
   expand: () => void;
   minimize: () => void;
-  suppressNextAutoExpand: () => void;
   setChromeHidden: (hidden: boolean) => void;
+  setWorkoutRouteOpen: (open: boolean) => void;
 }
 
 const WorkoutOverlayContext = createContext<WorkoutOverlayContextType>({
@@ -17,40 +16,50 @@ const WorkoutOverlayContext = createContext<WorkoutOverlayContextType>({
   chromeHidden: false,
   expand: () => {},
   minimize: () => {},
-  suppressNextAutoExpand: () => {},
   setChromeHidden: () => {},
+  setWorkoutRouteOpen: () => {},
 });
 
 export function WorkoutOverlayProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const session = useWorkoutStore((s) => s.session);
-  const [expanded, setExpanded] = useState(false);
+  const [workoutRouteOpen, setWorkoutRouteOpen] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false);
-  const prevSessionRef = useRef<string | null>(lastKnownSessionId);
-  const suppressRef = useRef(false);
+  const isWorkoutRoute = pathname === '/workout';
+  const expanded = workoutRouteOpen || isWorkoutRoute;
 
   useEffect(() => {
-    const currentId = session?.id ?? null;
-    if (currentId && currentId !== prevSessionRef.current) {
-      if (suppressRef.current) {
-        suppressRef.current = false;
-      } else {
-        setExpanded(true);
-      }
+    if (!session?.id) {
+      setWorkoutRouteOpen(false);
     }
-    if (!currentId) {
-      setExpanded(false);
-    }
-    prevSessionRef.current = currentId;
-    lastKnownSessionId = currentId;
   }, [session?.id]);
 
-  const expand = useCallback(() => setExpanded(true), []);
-  const minimize = useCallback(() => setExpanded(false), []);
-  const suppressNextAutoExpand = useCallback(() => { suppressRef.current = true; }, []);
+  const expand = useCallback(() => {
+    if (!session?.id) return;
+    setWorkoutRouteOpen(true);
+    if (!isWorkoutRoute) {
+      router.push('/workout');
+    }
+  }, [isWorkoutRoute, router, session?.id]);
+
+  const minimize = useCallback(() => {
+    setWorkoutRouteOpen(false);
+    if (isWorkoutRoute) {
+      router.back();
+    }
+  }, [isWorkoutRoute, router]);
 
   const value = useMemo(
-    () => ({ expanded, chromeHidden, expand, minimize, suppressNextAutoExpand, setChromeHidden }),
-    [expanded, chromeHidden, expand, minimize, suppressNextAutoExpand, setChromeHidden],
+    () => ({
+      expanded,
+      chromeHidden,
+      expand,
+      minimize,
+      setChromeHidden,
+      setWorkoutRouteOpen,
+    }),
+    [expanded, chromeHidden, expand, minimize, setChromeHidden, setWorkoutRouteOpen],
   );
 
   return (

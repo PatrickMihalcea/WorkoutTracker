@@ -18,7 +18,7 @@ import {
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import Reanimated, {
   cancelAnimation,
   Easing as ReanimatedEasing,
@@ -38,10 +38,9 @@ import { ExerciseCard } from './ExerciseCard';
 import { SetRow } from './SetRow';
 import { RestTimerBar } from './RestTimerBar';
 import { RestTimerModal } from './RestTimerModal';
-import { WorkoutPill } from './WorkoutPill';
 import { Button, BottomSheetModal, ExercisePickerModal, SupersetBracket } from '../ui';
 import { MuscleHeatmap } from '../history/MuscleHeatmap';
-import { AddExerciseModal, SetsPayloadItem } from '../routine/AddExerciseModal';
+import type { SetsPayloadItem } from '../routine/AddExerciseModal';
 import { fonts } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatElapsed } from '../../utils/date';
@@ -59,6 +58,7 @@ import {
   type SupersetGroups,
 } from '../../utils/superset';
 import { SetValueEditorModal } from '../ui/SetValueEditorModal';
+import { PortalHost } from '../ui/PortalHost';
 import { formatWeight } from '../../utils/units';
 import {
   EditableFieldKind,
@@ -68,7 +68,6 @@ import {
   isNumericEditableField,
 } from '../set-editor/types';
 
-const TAB_BAR_HEIGHT = 60;
 const SLIDE_IN_MS = 500;
 const SLIDE_OUT_MS = 400;
 const HEADER_DRAG_DISMISS_THRESHOLD_RATIO = 0.4;
@@ -77,7 +76,6 @@ const HEADER_DRAG_VELOCITY_PROJECTION = 0.12;
 const HEADER_DRAG_SETTLE_MS_MIN = 120;
 const HEADER_DRAG_SETTLE_MS_MAX = 240;
 const SESSION_ID_PATH_REGEX = /^\/profile\/[0-9a-fA-F-]{36}$/;
-const PROFILE_SESSION_PATH_REGEX = /^\/profile\/[^/]+$/;
 type TooltipWarningVariant = 'empty-finish' | 'first-entry-walkthrough';
 type WorkoutTooltipKey = 'setToggleDemo' | 'setSwipeActions' | 'supersetMenu' | 'reorderLongPress';
 
@@ -202,6 +200,7 @@ export function WorkoutOverlay() {
   const { colors } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
+  const navigation = useNavigation();
   const { user } = useAuthStore();
   const { profile, updateProfile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
@@ -238,23 +237,21 @@ export function WorkoutOverlay() {
     dismissRestTimer,
   } = useWorkoutStore();
 
-  const { expanded, chromeHidden, minimize } = useWorkoutOverlay();
+  const { expanded, minimize, setWorkoutRouteOpen } = useWorkoutOverlay();
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
 
   const sheetTranslateY = useSharedValue(screenHeight);
   const headerDragBaseY = useSharedValue(0);
-  const [showFullScreen, setShowFullScreen] = useState(false);
+  const [showFullScreen, setShowFullScreen] = useState(true);
 
   const [elapsed, setElapsed] = useState('0m 00s');
-  const [showAddExercise, setShowAddExercise] = useState(false);
   const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [showTimerSettings, setShowTimerSettings] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [swapEntryId, setSwapEntryId] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
-  const [autoOpenPicker, setAutoOpenPicker] = useState(false);
   const [valueEditorVisible, setValueEditorVisible] = useState(false);
   const [valueEditorCell, setValueEditorCell] = useState<EditableCellRef | null>(null);
   const [valueEditorNumeric, setValueEditorNumeric] = useState('');
@@ -263,7 +260,6 @@ export function WorkoutOverlay() {
   const [tooltipWarningVariant, setTooltipWarningVariant] = useState<TooltipWarningVariant | null>(null);
   const [walkthroughStepIndex, setWalkthroughStepIndex] = useState(0);
   const [isCompleting, setIsCompleting] = useState(false);
-  const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
   const entryLayoutYRef = useRef<Record<string, number>>({});
   const rowLayoutYRef = useRef<Record<string, Record<string, number>>>({});
@@ -284,57 +280,60 @@ export function WorkoutOverlay() {
   const warningDemoLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const firstTooltipShownSessionIdRef = useRef<string | null>(null);
 
-  useFocusEffect(useCallback(() => {
-    const which = pendingPickerReopenRef.current;
-    if (which) {
-      pendingPickerReopenRef.current = null;
-      if (which === 'swap') {
-        setShowSwapPicker(true);
-      } else if (which === 'add') {
-        setShowDirectAddPicker(true);
+  const handleMinimize = useCallback(() => {
+    sheetTranslateY.value = withTiming(screenHeight, {
+      duration: SLIDE_OUT_MS,
+      easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+    }, (finished) => {
+      if (finished) {
+        runOnJS(minimize)();
       }
-    }
-  }, []));
+    });
+  }, [minimize, screenHeight, sheetTranslateY]);
 
-  const openExerciseDetail = useCallback((exerciseId: string) => {
-    const href = `/exercise/${exerciseId}?fromWorkout=1` as const;
-    if (pathname.startsWith('/exercise/')) {
-      router.replace(href);
-      return;
-    }
-    router.push(href);
-  }, [pathname, router]);
+  const openExerciseDetail = useCallback((exerciseId: string, paddingTop?: number) => {
+  const href = {
+    pathname: '/exercise/[exerciseId]',
+    params: {
+      exerciseId,
+      ...(paddingTop !== undefined ? { paddingTop: String(paddingTop) } : {}),
+    },
+  } as const;
 
-  const openWorkoutDetail = useCallback((sessionId: string, justCompleted?: boolean) => {
-    const suffix = justCompleted ? '?justCompleted=1' : '';
-    const href = `/(tabs)/profile/${sessionId}${suffix}` as const;
-    if (SESSION_ID_PATH_REGEX.test(pathname)) {
-      router.replace(href);
-      return;
-    }
-    router.push(href);
-  }, [pathname, router]);
+  if (pathname.startsWith('/exercise/')) {
+    router.replace(href);
+    return;
+  }
 
-  const hasBottomTabs = /^\/(today|routines|history|profile)(\/|$)/.test(pathname)
-    && !PROFILE_SESSION_PATH_REGEX.test(pathname);
-  const pillBottomOffset = (hasBottomTabs ? TAB_BAR_HEIGHT : 0) + Math.max(insets.bottom, 8);
+  router.push(href);
+}, [pathname, router]);
 
-  const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
-    if (source) {
-      pendingPickerReopenRef.current = source;
-    }
-    setShowSwapPicker(false);
-    setShowAddExercise(false);
-    setShowDirectAddPicker(false);
+const openWorkoutDetail = useCallback((sessionId: string, justCompleted?: boolean) => {
+  const suffix = justCompleted ? '?justCompleted=1' : '';
+  const href = `/(tabs)/profile/${sessionId}${suffix}` as const;
 
-    if (expanded) {
-      minimize();
-      setTimeout(() => openExerciseDetail(exerciseId), SLIDE_OUT_MS);
-      return;
-    }
+  if (SESSION_ID_PATH_REGEX.test(pathname)) {
+    router.replace(href);
+    return;
+  }
 
-    openExerciseDetail(exerciseId);
-  }, [expanded, minimize, openExerciseDetail]);
+  router.push(href);
+}, [pathname, router]);
+
+const navigateToExerciseDetail = useCallback((exerciseId: string) => {
+  openExerciseDetail(exerciseId, 0);
+}, [openExerciseDetail]);
+
+  useEffect(() => {
+    setWorkoutRouteOpen(true);
+  }, [setWorkoutRouteOpen]);
+
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', () => {
+      setWorkoutRouteOpen(false);
+    });
+    return unsub;
+  }, [navigation, setWorkoutRouteOpen]);
 
   useEffect(() => {
     if (expanded && session) {
@@ -1114,19 +1113,26 @@ export function WorkoutOverlay() {
     } catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
   };
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     Alert.alert('Cancel Workout', 'Discard this workout session?', [
       { text: 'Keep Going', style: 'cancel' },
       {
         text: 'Discard',
         style: 'destructive',
         onPress: () => {
-          minimize();
-          setTimeout(() => cancelWorkout(), SLIDE_OUT_MS);
+          sheetTranslateY.value = withTiming(screenHeight, {
+            duration: SLIDE_OUT_MS,
+            easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+          }, (finished) => {
+            if (finished) {
+              runOnJS(minimize)();
+              runOnJS(cancelWorkout)();
+            }
+          });
         },
       },
     ]);
-  };
+  }, [cancelWorkout, minimize, screenHeight, sheetTranslateY]);
 
   const handleTimerSettingsSave = async (seconds: number) => {
     await updateProfile({ rest_timer_seconds: seconds });
@@ -1272,9 +1278,8 @@ export function WorkoutOverlay() {
 
   const styles = useMemo(() => StyleSheet.create({
     fullScreen: {
-      ...StyleSheet.absoluteFillObject,
+      flex: 1,
       backgroundColor: 'transparent',
-      zIndex: 100,
     },
     sheet: {
       flex: 1,
@@ -1283,13 +1288,6 @@ export function WorkoutOverlay() {
     backdropTint: {
       ...StyleSheet.absoluteFillObject,
       backgroundColor: '#000000',
-    },
-    pillContainer: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      alignItems: 'center',
-      zIndex: 99,
     },
     header: {
       paddingHorizontal: 16,
@@ -1716,13 +1714,7 @@ export function WorkoutOverlay() {
   if (!session) return null;
 
   return (
-    <>
-      {!expanded && !chromeHidden && (
-        <View style={[styles.pillContainer, { bottom: pillBottomOffset }]}>
-          <WorkoutPill />
-        </View>
-      )}
-
+    <PortalHost>
       {showFullScreen && (
         <View style={[styles.fullScreen, { paddingTop: insets.top }]}>
           <Reanimated.View pointerEvents="none" style={[styles.backdropTint, animatedBackdropStyle]} />
@@ -1735,7 +1727,7 @@ export function WorkoutOverlay() {
               <View style={styles.header}>
                 <View style={styles.headerGrip} />
                 <View style={styles.headerRow}>
-                  <TouchableOpacity onPress={minimize} activeOpacity={0.7} style={styles.backBtn}>
+                  <TouchableOpacity onPress={handleMinimize} activeOpacity={0.7} style={styles.backBtn}>
                     <Text style={styles.chevronDown}>&#x25BC;</Text>
                   </TouchableOpacity>
                   <Text style={styles.headerTitle}>Workout</Text>
@@ -2112,18 +2104,10 @@ export function WorkoutOverlay() {
               }}
             />
 
-            <AddExerciseModal
-              visible={showAddExercise}
-              onClose={() => { setShowAddExercise(false); setAutoOpenPicker(false); }}
-              onConfirm={handleAddExerciseConfirm}
-              weightUnit={weightUnit}
-              distanceUnit={distanceUnit}
-              onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
-              autoOpenPicker={autoOpenPicker}
-            />
-
             <ExercisePickerModal
               visible={showDirectAddPicker}
+              presentation="inline"
+              topInset={insets.top}
               onClose={() => setShowDirectAddPicker(false)}
               onSelect={(exercise) => {
                 setShowDirectAddPicker(false);
@@ -2135,21 +2119,23 @@ export function WorkoutOverlay() {
                   target_rir: null,
                 }]);
               }}
-              onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
+              onExerciseDetails={navigateToExerciseDetail}
             />
 
             <ExercisePickerModal
               visible={showSwapPicker}
+              presentation="inline"
+              topInset={insets.top}
               onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); }}
               onSelect={handleSwapSelect}
               onDeletedSelectedWithoutReplacement={handleSwapDeletedWithoutReplacement}
               selectedExerciseId={swapEntryId ? (exercises.find((entry) => entry.id === swapEntryId)?.exercise_id ?? null) : null}
-              onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
+              onExerciseDetails={navigateToExerciseDetail}
             />
             </KeyboardAvoidingView>
           </Reanimated.View>
         </View>
       )}
-    </>
+    </PortalHost>
   );
 }

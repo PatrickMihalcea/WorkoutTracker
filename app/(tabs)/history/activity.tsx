@@ -72,6 +72,7 @@ export default function ActivityScreen() {
     inputRange: [0, 1],
     outputRange: [0, FILTER_BAR_HEIGHT],
   });
+  const activityScrollKey = `${viewMode}:${selectedRange}`;
 
   return (
     <View style={styles.container}>
@@ -112,12 +113,14 @@ export default function ActivityScreen() {
             tallCells
             style={styles.flex}
             contentContainerStyle={styles.calendarContent}
+            autoScrollToEndKey={activityScrollKey}
           />
         ) : (
           <WeekCalendarList
             rows={weekRows}
             filledDays={filledDays}
             contentContainerStyle={styles.calendarContent}
+            autoScrollToEndKey={activityScrollKey}
           />
         )}
       </View>

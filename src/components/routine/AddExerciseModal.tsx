@@ -44,6 +44,7 @@ interface AddExerciseModalProps {
   onDeleteExercise?: (exercise: Exercise, onDeleted?: () => void) => void;
   onExerciseDetails?: (exerciseId: string) => void;
   autoOpenPicker?: boolean;
+  preserveStateOnOpen?: boolean;
 }
 
 export function AddExerciseModal({
@@ -56,6 +57,7 @@ export function AddExerciseModal({
   onDeleteExercise,
   onExerciseDetails,
   autoOpenPicker,
+  preserveStateOnOpen = false,
 }: AddExerciseModalProps) {
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
@@ -65,30 +67,34 @@ export function AddExerciseModal({
 
   useEffect(() => {
     if (visible) {
-      if (editingEntry) {
-        const ex = editingEntry.exercise ?? null;
-        setSelectedExercise(ex);
-        const { rows, hasRepRange } = setsToTemplateRows(
-          editingEntry.sets ?? [],
-          editingEntry.target_reps,
-          weightUnit,
-        );
-        setTemplateSets(rows);
-        setUseRepRange(hasRepRange);
-      } else {
-        setSelectedExercise(null);
-        setTemplateSets([defaultSetRow()]);
-        setUseRepRange(false);
+      if (!preserveStateOnOpen) {
+        if (editingEntry) {
+          const ex = editingEntry.exercise ?? null;
+          setSelectedExercise(ex);
+          const { rows, hasRepRange } = setsToTemplateRows(
+            editingEntry.sets ?? [],
+            editingEntry.target_reps,
+            weightUnit,
+          );
+          setTemplateSets(rows);
+          setUseRepRange(hasRepRange);
+        } else {
+          setSelectedExercise(null);
+          setTemplateSets([defaultSetRow()]);
+          setUseRepRange(false);
+        }
       }
       if (autoOpenPicker) {
         setShowExercisePicker(true);
       }
+      return;
     }
-  }, [visible]);
+    setShowExercisePicker(false);
+  }, [autoOpenPicker, editingEntry, preserveStateOnOpen, visible, weightUnit]);
 
   const handleExerciseDetails = useCallback((exerciseId: string) => {
     setShowExercisePicker(false);
-    setTimeout(() => onExerciseDetails?.(exerciseId), 250);
+    onExerciseDetails?.(exerciseId);
   }, [onExerciseDetails]);
 
   const resetAndClose = () => {
@@ -209,6 +215,8 @@ export function AddExerciseModal({
           onExerciseDeleted={handlePickerExerciseDeleted}
           onExerciseDetails={handleExerciseDetails}
           selectedExerciseId={selectedExercise?.id}
+          animated={!preserveStateOnOpen}
+          preserveStateOnOpen={preserveStateOnOpen}
         />
       </BottomSheetModal>
   );

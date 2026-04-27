@@ -23,7 +23,6 @@ import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
 import { Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle, ExerciseIconPreview } from '../../../src/components/ui';
-import { AddExerciseModal, SetsPayloadItem } from '../../../src/components/routine/AddExerciseModal';
 import { SetsTableEditor, TemplateSetRow, buildSetsPayload } from '../../../src/components/routine/SetsTableEditor';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { MetricRing } from '../../../src/components/history/MetricRing';
@@ -50,6 +49,7 @@ const EXERCISE_THUMB_PLACEHOLDER = require('../../../assets/Setora-black-and-whi
 const SESSION_EDITOR_MODAL_HEIGHT = 390;
 const SESSION_EDITOR_MODAL_MARGIN = 24;
 const WINDOW_HEIGHT = Dimensions.get('window').height;
+const MODAL_CLOSE_NAV_DELAY_MS = 260;
 
 interface ExerciseGroup {
   key: string;
@@ -280,6 +280,8 @@ export default function SessionDetailScreen() {
   const [swapGroupKey, setSwapGroupKey] = useState<string | null>(null);
   const [showSwapPicker, setShowSwapPicker] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [resumeSwapPicker, setResumeSwapPicker] = useState(false);
+  const [resumeAddExercise, setResumeAddExercise] = useState(false);
   const [sessionRecords, setSessionRecords] = useState<SessionRecordAchieved[]>([]);
   const [showCompletionBanner, setShowCompletionBanner] = useState(justCompleted === '1');
   const [routineDayTemplate, setRoutineDayTemplate] = useState<RoutineDayWithExercises | null>(null);
@@ -287,6 +289,8 @@ export default function SessionDetailScreen() {
   const pageScrollRef = useRef<ScrollView | null>(null);
   const pageScrollYRef = useRef(0);
   const exerciseNodeRef = useRef<Record<string, View | null>>({});
+  const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
+  const pendingExerciseDetailTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scrollSessionExerciseIntoView = useCallback((groupKey: string) => {
     const node = exerciseNodeRef.current[groupKey];
@@ -317,9 +321,34 @@ export default function SessionDetailScreen() {
     router.push(href);
   }, [pathname, router]);
 
+  const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
+    if (pendingExerciseDetailTimeoutRef.current) {
+      clearTimeout(pendingExerciseDetailTimeoutRef.current);
+      pendingExerciseDetailTimeoutRef.current = null;
+    }
+    if (source === 'swap') {
+      pendingPickerReopenRef.current = 'swap';
+      setShowSwapPicker(false);
+    } else if (source === 'add') {
+      pendingPickerReopenRef.current = 'add';
+      setShowAddExercise(false);
+    }
+    pendingExerciseDetailTimeoutRef.current = setTimeout(() => {
+      pendingExerciseDetailTimeoutRef.current = null;
+      openExerciseDetail(exerciseId);
+    }, MODAL_CLOSE_NAV_DELAY_MS);
+  }, [openExerciseDetail]);
+
   useEffect(() => {
     setShowCompletionBanner(justCompleted === '1');
   }, [justCompleted, sessionId]);
+
+  useEffect(() => () => {
+    if (pendingExerciseDetailTimeoutRef.current) {
+      clearTimeout(pendingExerciseDetailTimeoutRef.current);
+      pendingExerciseDetailTimeoutRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!exerciseEditor && setEditorModalVisible) {
@@ -328,8 +357,8 @@ export default function SessionDetailScreen() {
   }, [exerciseEditor, setEditorModalVisible]);
 
   useEffect(() => {
-    setChromeHidden(setEditorModalVisible);
-  }, [setChromeHidden, setEditorModalVisible]);
+    setChromeHidden(setEditorModalVisible || showAddExercise || showSwapPicker);
+  }, [setChromeHidden, setEditorModalVisible, showAddExercise, showSwapPicker]);
 
   useEffect(() => () => {
     setChromeHidden(false);
@@ -357,6 +386,19 @@ export default function SessionDetailScreen() {
   useFocusEffect(useCallback(() => {
     void loadSession();
   }, [loadSession]));
+
+  useFocusEffect(useCallback(() => {
+    const which = pendingPickerReopenRef.current;
+    if (!which) return;
+    pendingPickerReopenRef.current = null;
+    if (which === 'swap') {
+      setResumeSwapPicker(true);
+      setShowSwapPicker(true);
+      return;
+    }
+    setResumeAddExercise(true);
+    setShowAddExercise(true);
+  }, []));
 
   useEffect(() => {
     let active = true;
@@ -691,27 +733,24 @@ export default function SessionDetailScreen() {
     );
   };
 
-  const handleAddExerciseConfirm = async (exercise: Exercise, setsPayload: SetsPayloadItem[]) => {
+  const handleAddExercise = async (exercise: Exercise) => {
     if (!session || !sessionId) return;
     const groups = groupSetsByExercise(session.sets);
     const exerciseOrder = groups.length;
     try {
-      for (let i = 0; i < setsPayload.length; i++) {
-        await sessionService.addSet({
-          session_id: session.id,
-          exercise_id: exercise.id,
-          set_number: i + 1,
-          weight: 0,
-          reps_performed: 0,
-          rir: null,
-          is_warmup: false,
-          exercise_order: exerciseOrder,
-          superset_group: null,
-          duration: 0,
-          distance: 0,
-        });
-      }
-      setShowAddExercise(false);
+      await sessionService.addSet({
+        session_id: session.id,
+        exercise_id: exercise.id,
+        set_number: 1,
+        weight: 0,
+        reps_performed: 0,
+        rir: null,
+        is_warmup: false,
+        exercise_order: exerciseOrder,
+        superset_group: null,
+        duration: 0,
+        distance: 0,
+      });
       const updated = await sessionService.getByIdWithExercises(sessionId);
       setSession(updated);
     } catch (error: unknown) {
@@ -747,6 +786,7 @@ export default function SessionDetailScreen() {
   };
 
   const handleSwapStart = (group: ExerciseGroup) => {
+    setResumeSwapPicker(false);
     setSwapGroupKey(group.key);
     setShowSwapPicker(true);
   };
@@ -759,6 +799,7 @@ export default function SessionDetailScreen() {
     await withGroupUpdate(async () => {
       await sessionService.updateSetsByIds(group.sets.map((set) => set.id), { exercise_id: exercise.id });
     });
+    setResumeSwapPicker(false);
     setShowSwapPicker(false);
     setSwapGroupKey(null);
   };
@@ -1156,7 +1197,7 @@ export default function SessionDetailScreen() {
             </View>
           );
         })}
-        <Button title="+ Add Exercise" variant="dashed" onPress={() => setShowAddExercise(true)} style={{ marginTop: 8, marginBottom: 8 }} />
+        <Button title="+ Add Exercise" variant="dashed" onPress={() => { setResumeAddExercise(false); setShowAddExercise(true); }} style={{ marginTop: 8, marginBottom: 8 }} />
         <TouchableOpacity onPress={handleDeleteWorkout} activeOpacity={0.7} style={{ alignItems: 'center', paddingVertical: 12, marginBottom: 16 }}>
           <Text style={{ fontSize: 15, fontFamily: fonts.semiBold, color: '#FF6B6B' }}>Delete Workout</Text>
         </TouchableOpacity>
@@ -1303,23 +1344,29 @@ export default function SessionDetailScreen() {
 
       <ExercisePickerModal
         visible={showSwapPicker}
-        onClose={() => { setShowSwapPicker(false); setSwapGroupKey(null); }}
+        animated={!resumeSwapPicker}
+        preserveStateOnOpen={resumeSwapPicker}
+        onClose={() => { setResumeSwapPicker(false); setShowSwapPicker(false); setSwapGroupKey(null); }}
         onSelect={handleSwapSelect}
         onDeletedSelectedWithoutReplacement={handleSwapDeletedWithoutReplacement}
         selectedExerciseId={swapGroupKey
           ? (groupSetsByExercise(session?.sets ?? []).find((group) => group.key === swapGroupKey)?.exerciseId ?? null)
           : null}
-        onExerciseDetails={openExerciseDetail}
+        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
       />
 
-      <AddExerciseModal
+      <ExercisePickerModal
         visible={showAddExercise}
-        onClose={() => setShowAddExercise(false)}
-        onConfirm={handleAddExerciseConfirm}
-        weightUnit={weightUnit}
-        distanceUnit={distUnit}
-        onDeleteExercise={() => {}}
-        onExerciseDetails={openExerciseDetail}
+        presentation="inline"
+        animated={!resumeAddExercise}
+        preserveStateOnOpen={resumeAddExercise}
+        onClose={() => { setResumeAddExercise(false); setShowAddExercise(false); }}
+        onSelect={(exercise) => {
+          setResumeAddExercise(false);
+          setShowAddExercise(false);
+          void handleAddExercise(exercise);
+        }}
+        onExerciseDetails={(id: string) => navigateToExerciseDetail(id, 'add')}
       />
         </View>
       </PortalHost>

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   FlatList,
   ScrollView,
@@ -247,6 +247,7 @@ export function MonthCalendarGrid({
   virtualized = true,
   style,
   contentContainerStyle,
+  autoScrollToEndKey,
 }: {
   months: MonthCalendar[];
   filledDays: Set<string>;
@@ -258,15 +259,38 @@ export function MonthCalendarGrid({
   virtualized?: boolean;
   style?: ViewStyle;
   contentContainerStyle?: ViewStyle;
+  autoScrollToEndKey?: string;
 }) {
   const { styles } = useActivityCalendarStyles();
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const flatListRef = useRef<FlatList<MonthCalendar> | null>(null);
+
+  const scrollToEnd = useMemo(() => () => {
+    requestAnimationFrame(() => {
+      if (virtualized) {
+        flatListRef.current?.scrollToEnd({ animated: false });
+        return;
+      }
+      scrollViewRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [virtualized]);
+
+  useEffect(() => {
+    if (!autoScrollToEndKey || months.length === 0) return;
+    scrollToEnd();
+  }, [autoScrollToEndKey, months.length, scrollToEnd]);
+
   if (!virtualized) {
     return (
       <ScrollView
+        ref={scrollViewRef}
         style={style}
         scrollEnabled={scrollEnabled}
         nestedScrollEnabled
         contentContainerStyle={[styles.monthListContent, contentContainerStyle]}
+        onContentSizeChange={() => {
+          if (autoScrollToEndKey) scrollToEnd();
+        }}
       >
         <View style={styles.monthCardsWrap}>
           {months.map((item) => (
@@ -288,6 +312,7 @@ export function MonthCalendarGrid({
 
   return (
     <FlatList
+      ref={flatListRef}
       data={months}
       keyExtractor={(item) => item.key}
       numColumns={numColumns}
@@ -295,6 +320,9 @@ export function MonthCalendarGrid({
       scrollEnabled={scrollEnabled}
       nestedScrollEnabled
       contentContainerStyle={[styles.monthListContent, contentContainerStyle]}
+      onContentSizeChange={() => {
+        if (autoScrollToEndKey) scrollToEnd();
+      }}
       renderItem={({ item }) => (
         <View style={[styles.monthCardWrap, { width: `${100 / numColumns}%` }]}>
           <MonthCard
@@ -315,12 +343,15 @@ export function WeekCalendarList({
   rows,
   filledDays,
   contentContainerStyle,
+  autoScrollToEndKey,
 }: {
   rows: WeekRow[];
   filledDays: Set<string>;
   contentContainerStyle?: ViewStyle;
+  autoScrollToEndKey?: string;
 }) {
   const { styles } = useActivityCalendarStyles();
+  const sectionListRef = useRef<any>(null);
   const sections = useMemo(() => {
     const map = new Map<string, WeekRow[]>();
     for (const row of rows) {
@@ -337,12 +368,27 @@ export function WeekCalendarList({
     });
   }, [rows]);
 
+  const scrollToEnd = useMemo(() => () => {
+    requestAnimationFrame(() => {
+      sectionListRef.current?.scrollToEnd({ animated: false });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!autoScrollToEndKey || rows.length === 0) return;
+    scrollToEnd();
+  }, [autoScrollToEndKey, rows.length, scrollToEnd]);
+
   return (
     <SectionList
+      ref={sectionListRef}
       sections={sections}
       keyExtractor={(item) => item.key}
       contentContainerStyle={[styles.weekListContent, contentContainerStyle]}
       stickySectionHeadersEnabled={false}
+      onContentSizeChange={() => {
+        if (autoScrollToEndKey) scrollToEnd();
+      }}
       ListHeaderComponent={
         <View style={styles.weekHeaderRowWide}>
           {DAY_HEADERS.map((h, idx) => (

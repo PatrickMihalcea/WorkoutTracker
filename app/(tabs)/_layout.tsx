@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { withLayoutContext, useSegments } from 'expo-router';
 import { createMaterialTopTabNavigator, type MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { Text, Image, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts } from '../../src/constants';
 import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
@@ -54,11 +54,12 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const opacity = useRef(new Animated.Value(1)).current;
   const focusedTab = state.routes[state.index];
   const focusedLeafRoute = getFocusedLeafRouteName(focusedTab as any);
-  const hideOnWorkoutDetails = focusedTab?.name === 'profile' && focusedLeafRoute === '[sessionId]';
-  const [renderChrome, setRenderChrome] = useState(!chromeHidden);
+  const navHidden = focusedTab?.name === 'profile' && focusedLeafRoute === '[sessionId]';
+  const shouldHide = chromeHidden || navHidden;
+  const [renderChrome, setRenderChrome] = useState(!shouldHide);
 
   useEffect(() => {
-    if (chromeHidden) {
+    if (shouldHide) {
       if (!renderChrome) return;
       Animated.parallel([
         Animated.timing(slideY, {
@@ -94,9 +95,9 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [chromeHidden, opacity, renderChrome, slideY]);
+  }, [shouldHide, opacity, renderChrome, slideY]);
 
-  if (hideOnWorkoutDetails || !renderChrome) {
+  if (!renderChrome) {
     return null;
   }
 
@@ -168,7 +169,6 @@ function TabLayoutInner() {
   const { profile } = useProfileStore();
   const { session, resumeWorkout } = useWorkoutStore();
   const { fetchSessions } = useSessionStore();
-  const { suppressNextAutoExpand } = useWorkoutOverlay();
   const isAtTabRoot = segments.length <= 2;
   const currentTab = segments.find((segment) => (
     segment === 'today'
@@ -180,7 +180,6 @@ function TabLayoutInner() {
 
   useEffect(() => {
     if (user && !session) {
-      suppressNextAutoExpand();
       resumeWorkout(user.id);
     }
   }, [user?.id]);

@@ -17,11 +17,15 @@ import {
 import { useTheme } from '../../contexts/ThemeContext';
 import { fonts } from '../../constants';
 import { KeyboardDismiss } from './KeyboardDismiss';
+import { Portal } from './PortalHost';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 interface BottomSheetModalProps {
   visible: boolean;
+  animated?: boolean;
+  presentation?: 'modal' | 'inline';
+  topInset?: number;
   title?: string;
   children: React.ReactNode;
   scrollable?: boolean;
@@ -34,6 +38,9 @@ interface BottomSheetModalProps {
 
 export function BottomSheetModal({
   visible,
+  animated = true,
+  presentation = 'modal',
+  topInset = 0,
   title,
   children,
   scrollable = false,
@@ -50,6 +57,19 @@ export function BottomSheetModal({
 
   useEffect(() => {
     if (visible) {
+      if (modalVisible) {
+        if (!animated) {
+          overlayOpacity.setValue(1);
+          sheetTranslateY.setValue(0);
+        }
+        return;
+      }
+      if (!animated) {
+        overlayOpacity.setValue(1);
+        sheetTranslateY.setValue(0);
+        setModalVisible(true);
+        return;
+      }
       overlayOpacity.setValue(0);
       sheetTranslateY.setValue(SCREEN_HEIGHT);
       setModalVisible(true);
@@ -60,6 +80,10 @@ export function BottomSheetModal({
         ]).start();
       });
     } else if (modalVisible) {
+      if (!animated) {
+        setModalVisible(false);
+        return;
+      }
       const fallback = setTimeout(() => setModalVisible(false), 250);
       Animated.parallel([
         Animated.timing(overlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
@@ -70,13 +94,14 @@ export function BottomSheetModal({
       });
       return () => clearTimeout(fallback);
     }
-  }, [visible]);
+  }, [animated, modalVisible, overlayOpacity, sheetTranslateY, visible]);
 
   const styles = useMemo(() => StyleSheet.create({
     wrapper: { flex: 1, justifyContent: 'flex-end' },
     overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
     sheetWrapper: { maxHeight: '85%' },
     sheetWrapperFull: { flex: 1, marginTop: 48 },
+    sheetWrapperFullInline: { flex: 1 },
     sheet: {
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
@@ -111,15 +136,21 @@ export function BottomSheetModal({
     ? { style: styles.wrapper }
     : { style: styles.wrapper, behavior: Platform.OS === 'ios' ? ('padding' as const) : undefined };
 
-  return (
-    <Modal visible={modalVisible} animationType="none" transparent>
+  const content = (
+    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <Wrapper {...wrapperProps}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
           <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
         </Pressable>
         <Animated.View
           style={[
-            fullHeight ? styles.sheetWrapperFull : styles.sheetWrapper,
+            fullHeight
+              ? (
+                presentation === 'inline'
+                  ? [styles.sheetWrapperFullInline, topInset > 0 ? { marginTop: topInset } : null]
+                  : styles.sheetWrapperFull
+              )
+              : styles.sheetWrapper,
             { transform: [{ translateY: sheetTranslateY }] },
           ]}
         >
@@ -137,6 +168,17 @@ export function BottomSheetModal({
         </Animated.View>
         <KeyboardDismiss />
       </Wrapper>
+    </View>
+  );
+
+  if (presentation === 'inline') {
+    if (!modalVisible) return null;
+    return <Portal>{content}</Portal>;
+  }
+
+  return (
+    <Modal visible={modalVisible} animationType="none" transparent>
+      {content}
     </Modal>
   );
 }

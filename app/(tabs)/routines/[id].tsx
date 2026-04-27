@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
@@ -351,8 +350,6 @@ export default function RoutineDetailScreen() {
       return next;
     });
   }, []);
-  const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
-
   const scrollRoutineExerciseIntoView = useCallback((entryId: string) => {
     const node = exerciseNodeRef.current[entryId];
     if (!node) return;
@@ -413,10 +410,11 @@ export default function RoutineDetailScreen() {
     setChromeHidden(true);
     return SET_EDITOR_OPEN_DELAY_MS;
   }, [setChromeHidden]);
+  const pickerVisible = showSwapPicker || showDirectAddPicker;
 
   useEffect(() => {
-    setChromeHidden(!!setEditorVisibleEntryId);
-  }, [setChromeHidden, setEditorVisibleEntryId]);
+    setChromeHidden(!!setEditorVisibleEntryId || pickerVisible);
+  }, [pickerVisible, setChromeHidden, setEditorVisibleEntryId]);
 
   useEffect(() => () => {
     setChromeHidden(false);
@@ -472,18 +470,6 @@ export default function RoutineDetailScreen() {
     return !!day.exercises[sourceIndex + delta];
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    const which = pendingPickerReopenRef.current;
-    if (which) {
-      pendingPickerReopenRef.current = null;
-      if (which === 'swap') {
-        setShowSwapPicker(true);
-      } else if (which === 'add') {
-        setShowDirectAddPicker(true);
-      }
-    }
-  }, []));
-
   const openExerciseDetail = useCallback((exerciseId: string) => {
     const href = `/exercise/${exerciseId}` as const;
     if (pathname.startsWith('/exercise/')) {
@@ -493,11 +479,8 @@ export default function RoutineDetailScreen() {
     router.push(href);
   }, [pathname, router]);
 
-  const navigateToExerciseDetail = useCallback((exerciseId: string, source?: 'swap' | 'add') => {
-    if (source) pendingPickerReopenRef.current = source;
-    setShowSwapPicker(false);
-    setShowDirectAddPicker(false);
-    setTimeout(() => openExerciseDetail(exerciseId), 280);
+  const navigateToExerciseDetail = useCallback((exerciseId: string) => {
+    openExerciseDetail(exerciseId);
   }, [openExerciseDetail]);
 
   const { session: activeSession, startWorkout } = useWorkoutStore();
@@ -1179,6 +1162,19 @@ export default function RoutineDetailScreen() {
                 else ids.forEach((eid) => next.add(eid));
                 return next;
               });
+              // Clear any pending cross-exercise navigation so re-expanding a day
+              // does not reopen a stale value editor target.
+              setEditorNavRequests((prev) => {
+                let changed = false;
+                const next = { ...prev };
+                ids.forEach((entryId) => {
+                  if (next[entryId]) {
+                    delete next[entryId];
+                    changed = true;
+                  }
+                });
+                return changed ? next : prev;
+              });
             }}
             activeOpacity={0.7}
           >
@@ -1587,18 +1583,20 @@ export default function RoutineDetailScreen() {
 
       <ExercisePickerModal
         visible={showSwapPicker}
+        presentation="inline"
         onClose={() => { setShowSwapPicker(false); setSwapEntryId(null); setSwapDayId(null); }}
         onSelect={handleExSwapSelect}
         onDeletedSelectedWithoutReplacement={handleSwapDeletedWithoutReplacement}
         selectedExerciseId={swapEntryId && swapDayId
           ? (currentRoutine?.days.find((day) => day.id === swapDayId)?.exercises.find((entry) => entry.id === swapEntryId)?.exercise_id ?? null)
           : null}
-        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'swap')}
+        onExerciseDetails={navigateToExerciseDetail}
       />
 
       <ExercisePickerModal
         visible={showDirectAddPicker}
-        onClose={() => setShowDirectAddPicker(false)}
+        presentation="inline"
+        onClose={() => { setShowDirectAddPicker(false); }}
         onSelect={(exercise) => {
           setShowDirectAddPicker(false);
           handleAddExerciseConfirm(exercise, [{
@@ -1606,7 +1604,7 @@ export default function RoutineDetailScreen() {
             target_reps_min: 8, target_reps_max: 12, target_rir: null,
           }]);
         }}
-        onExerciseDetails={(id) => navigateToExerciseDetail(id, 'add')}
+        onExerciseDetails={navigateToExerciseDetail}
       />
 
       <BottomSheetModal
