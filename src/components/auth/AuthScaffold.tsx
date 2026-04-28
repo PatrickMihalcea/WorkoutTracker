@@ -91,7 +91,7 @@ export function AuthScaffold({ title, subtitle, children }: AuthScaffoldProps) {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.hero}>
-              <Text style={styles.kicker}>WORKOUT TRACKER</Text>
+              <Text style={styles.kicker}>SETORA</Text>
               <Text style={styles.title}>{title}</Text>
               <Text style={styles.subtitle}>{subtitle}</Text>
             </View>

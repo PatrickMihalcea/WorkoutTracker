@@ -18,6 +18,7 @@ import { DEFAULT_THEME } from '../src/constants/themes';
 import { WorkoutFloatingPill, WorkoutOverlayProvider } from '../src/components/workout';
 import { notificationService } from '../src/services';
 
+
 const HAS_OPENED_KEY = 'has_opened_before';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {

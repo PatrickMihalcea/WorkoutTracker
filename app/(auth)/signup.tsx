@@ -9,6 +9,7 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { Button, Input } from '../../src/components/ui';
 import { fonts, spacing } from '../../src/constants';
 import { AuthScaffold } from '../../src/components/auth/AuthScaffold';
+import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../src/constants/themes';
 
@@ -40,7 +41,7 @@ export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const { signUp, loading } = useAuthStore();
+  const { signUp, signInWithOAuth, loading } = useAuthStore();
 
   const handleSignUp = async () => {
     if (!email || !password) {
@@ -58,6 +59,14 @@ export default function SignUpScreen() {
     try {
       await signUp(email.trim(), password);
       Alert.alert('Success', 'Check your email to confirm your account');
+    } catch (error: unknown) {
+      Alert.alert('Sign Up Failed', (error as Error).message);
+    }
+  };
+
+  const handleOAuth = async (provider: 'google' | 'facebook') => {
+    try {
+      await signInWithOAuth(provider);
     } catch (error: unknown) {
       Alert.alert('Sign Up Failed', (error as Error).message);
     }
@@ -99,6 +108,11 @@ export default function SignUpScreen() {
         onPress={handleSignUp}
         loading={loading}
         style={styles.signUpButton}
+      />
+
+      <SocialAuthButtons
+        onGoogle={() => handleOAuth('google')}
+        loading={loading}
       />
 
       <Link href="/(auth)/login" replace style={styles.link}>

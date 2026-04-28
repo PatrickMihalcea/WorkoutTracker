@@ -14,6 +14,7 @@ interface AuthState {
   initialize: () => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithOAuth: (provider: 'google' | 'facebook') => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   updateEmail: (newEmail: string) => Promise<void>;
@@ -76,6 +77,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ loading: true });
     try {
       await authService.signIn(email, password);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  signInWithOAuth: async (provider) => {
+    set({ loading: true });
+    try {
+      await authService.signInWithOAuth(provider);
     } finally {
       set({ loading: false });
     }

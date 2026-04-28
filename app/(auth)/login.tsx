@@ -9,6 +9,7 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { Button, Input } from '../../src/components/ui';
 import { fonts, spacing } from '../../src/constants';
 import { AuthScaffold } from '../../src/components/auth/AuthScaffold';
+import { SocialAuthButtons } from '../../src/components/auth/SocialAuthButtons';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../src/constants/themes';
 
@@ -39,7 +40,7 @@ export default function LoginScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { signIn, loading } = useAuthStore();
+  const { signIn, signInWithOAuth, loading } = useAuthStore();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -50,6 +51,14 @@ export default function LoginScreen() {
       await signIn(email.trim(), password);
     } catch (error: unknown) {
       Alert.alert('Login Failed', (error as Error).message);
+    }
+  };
+
+  const handleOAuth = async (provider: 'google' | 'facebook') => {
+    try {
+      await signInWithOAuth(provider);
+    } catch (error: unknown) {
+      Alert.alert('Sign In Failed', (error as Error).message);
     }
   };
 
@@ -81,6 +90,11 @@ export default function LoginScreen() {
         onPress={handleLogin}
         loading={loading}
         style={styles.loginButton}
+      />
+
+      <SocialAuthButtons
+        onGoogle={() => handleOAuth('google')}
+        loading={loading}
       />
 
       <Link href="/(auth)/signup" replace style={styles.link}>
