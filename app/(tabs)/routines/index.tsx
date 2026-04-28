@@ -21,7 +21,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingBottom: spacing.bottom,
   },
   loadingContainer: {
     flex: 1,
@@ -31,7 +30,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   list: {
     padding: spacing.sm,
-    paddingBottom: 80,
+    paddingBottom: spacing.bottom,
   },
   routineCard: {
     marginBottom: 12,
