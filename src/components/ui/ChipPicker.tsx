@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ViewStyle, TextSt
 import { LinearGradient } from 'expo-linear-gradient';
 import { DayOfWeek, DAY_LABELS } from '../../models';
 import { useTheme } from '../../contexts/ThemeContext';
+import { isLightTheme } from '../../constants/themes';
 import { fonts } from '../../constants';
 
 interface ChipPickerProps<T extends string | number> {
@@ -42,9 +43,11 @@ export function ChipPicker<T extends string | number>({
   horizontal = true,
   maxHeight,
 }: ChipPickerProps<T>) {
-  const { colors } = useTheme();
+  const { theme, colors } = useTheme();
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [tooltipContent, setTooltipContent] = useState('');
+  const selectedChipBackground = isLightTheme(theme) ? '#111111' : '#FFFFFF';
+  const selectedChipText = isLightTheme(theme) ? '#FFFFFF' : '#111111';
 
   const styles = useMemo(() => StyleSheet.create({
     scroll: { flexGrow: 0, marginBottom: 16 },
@@ -59,14 +62,14 @@ export function ChipPicker<T extends string | number>({
       overflow: 'hidden',
     },
     chipWithTooltip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    chipSelected: { backgroundColor: '#111111' },
+    chipSelected: { backgroundColor: selectedChipBackground },
     chipText: {
       color: colors.textSecondary,
       fontSize: 13,
       fontFamily: fonts.semiBold,
       textTransform: 'capitalize',
     },
-    chipTextSelected: { color: '#FFFFFF' },
+    chipTextSelected: { color: selectedChipText },
     tooltipBtn: {
       width: 16,
       height: 16,
@@ -127,7 +130,7 @@ export function ChipPicker<T extends string | number>({
       alignItems: 'center',
     },
     tooltipDismissBtnText: { color: colors.text, fontSize: 14, fontFamily: fonts.semiBold },
-  }), [colors]);
+  }), [colors, selectedChipBackground, selectedChipText]);
 
   const useScrollContainer = horizontal || !!maxHeight;
   const content = (
@@ -259,7 +262,9 @@ export function MultiChipPicker<T extends string | number>({
   horizontal = true,
   maxHeight,
 }: MultiChipPickerProps<T>) {
-  const { colors } = useTheme();
+  const { theme, colors } = useTheme();
+  const selectedChipBackground = isLightTheme(theme) ? '#111111' : '#FFFFFF';
+  const selectedChipText = isLightTheme(theme) ? '#FFFFFF' : '#111111';
   const styles = useMemo(() => StyleSheet.create({
     scroll: { flexGrow: 0, marginBottom: 16 },
     row: { flexDirection: 'row', gap: 8 },
@@ -272,15 +277,15 @@ export function MultiChipPicker<T extends string | number>({
       backgroundColor: colors.surfaceLight,
       overflow: 'hidden',
     },
-    chipSelected: { backgroundColor: '#111111' },
+    chipSelected: { backgroundColor: selectedChipBackground },
     chipText: {
       color: colors.textSecondary,
       fontSize: 13,
       fontFamily: fonts.semiBold,
       textTransform: 'capitalize',
     },
-    chipTextSelected: { color: '#FFFFFF' },
-  }), [colors]);
+    chipTextSelected: { color: selectedChipText },
+  }), [colors, selectedChipBackground, selectedChipText]);
 
   return (
     <ScrollView
