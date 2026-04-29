@@ -78,24 +78,32 @@ const INTENSITY_COLORS = [
   'rgba(208, 32, 32, 1.0)',
 ];
 
+function getSlugs(label: string): BodySlug[] | undefined {
+  const slugs = MUSCLE_TO_SLUGS[label] ?? MUSCLE_TO_SLUGS[label.replace(' ', '_')];
+  return slugs && slugs.length > 0 ? slugs : undefined;
+}
+
 function toBodyData(slices: MuscleSlice[], overrideMax?: number) {
   if (slices.length === 0) return [];
 
-  const maxVal = overrideMax ?? Math.max(...slices.map((s) => s.value));
+  const renderableMax = slices
+    .filter((s) => s.value > 0 && getSlugs(s.label) !== undefined)
+    .map((s) => s.value);
+  const maxVal = overrideMax ?? (renderableMax.length > 0 ? Math.max(...renderableMax) : 0);
   if (maxVal === 0) return [];
 
-  const parts: { slug: BodySlug; intensity: number }[] = [];
+  const slugIntensity = new Map<BodySlug, number>();
   for (const slice of slices) {
     if (slice.value === 0) continue;
-    const slugs = MUSCLE_TO_SLUGS[slice.label] ?? MUSCLE_TO_SLUGS[slice.label.replace(' ', '_')];
+    const slugs = getSlugs(slice.label);
     if (!slugs) continue;
     const ratio = Math.min(slice.value / maxVal, 1);
     const intensity = Math.max(1, Math.min(INTENSITY_COLORS.length, Math.ceil(ratio * INTENSITY_COLORS.length)));
     for (const slug of slugs) {
-      parts.push({ slug, intensity });
+      slugIntensity.set(slug, Math.max(slugIntensity.get(slug) ?? 0, intensity));
     }
   }
-  return parts;
+  return [...slugIntensity.entries()].map(([slug, intensity]) => ({ slug, intensity }));
 }
 
 interface MuscleHeatmapProps {

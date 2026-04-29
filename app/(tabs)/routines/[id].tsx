@@ -490,9 +490,17 @@ export default function RoutineDetailScreen() {
     const counts = new Map<string, number>();
     for (const day of currentRoutine.days) {
       for (const ex of day.exercises) {
-        const group = ex.exercise?.muscle_group;
-        if (!group || group === 'full_body') continue;
-        counts.set(group, (counts.get(group) ?? 0) + (ex.sets?.length ?? ex.target_sets));
+        const sets = ex.sets?.length ?? ex.target_sets;
+        const primary = ex.exercise?.muscle_group;
+        const isFullBody = primary === 'full_body';
+        if (primary && !isFullBody && primary !== 'cardio') {
+          counts.set(primary, (counts.get(primary) ?? 0) + sets);
+        }
+        const secWeight = isFullBody ? 0.75 : 0.33;
+        for (const sec of ex.exercise?.secondary_muscles ?? []) {
+          if (!sec || sec === 'full_body') continue;
+          counts.set(sec, (counts.get(sec) ?? 0) + sets * secWeight);
+        }
       }
     }
     const total = [...counts.values()].reduce((a, b) => a + b, 0);

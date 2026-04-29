@@ -266,7 +266,14 @@ export function SetsTableEditor({
   const [valueEditorRir, setValueEditorRir] = useState<number | null>(null);
   const [valueEditorAnimateOpen, setValueEditorAnimateOpen] = useState(false);
   const [rowLayoutY, setRowLayoutY] = useState<Record<number, number>>({});
+  const [scrollEnabled, setScrollEnabled] = useState(false);
+  const scrollViewHeightRef = React.useRef(0);
+  const contentHeightRef = React.useRef(0);
   const rowsScrollRef = React.useRef<ScrollView | null>(null);
+
+  const updateScrollEnabled = useCallback(() => {
+    setScrollEnabled(contentHeightRef.current > scrollViewHeightRef.current);
+  }, []);
   const pendingOpenTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const config = getExerciseTypeConfig(exerciseType);
 
@@ -822,6 +829,15 @@ export function SetsTableEditor({
         style={styles.rowsScroll}
         contentContainerStyle={styles.rowsScrollContent}
         nestedScrollEnabled
+        scrollEnabled={scrollEnabled}
+        onLayout={(e) => {
+          scrollViewHeightRef.current = e.nativeEvent.layout.height;
+          updateScrollEnabled();
+        }}
+        onContentSizeChange={(_, h) => {
+          contentHeightRef.current = h;
+          updateScrollEnabled();
+        }}
       >
         {rows.map((row, i) => {
           const weightSugg = getSuggestion(rows, i, 'weight');
