@@ -58,12 +58,11 @@ export default function MeasurementsScreen() {
       subtitle="Final numbers. Accurate body metrics unlock cleaner trends and smarter progress tracking."
       footer={<Button title="Continue" onPress={handleContinue} variant="cta" size="lg" />}
     >
-      <View style={[styles.sectionCard, styles.sectionCardWeight]}>
+      <View style={styles.sectionCard}>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Weight</Text>
           <Text style={styles.sectionUnitBadge}>{isLbs ? 'LBS' : 'KG'}</Text>
         </View>
-        <Text style={styles.sectionHint}>Current body weight in {isLbs ? 'pounds' : 'kilograms'}.</Text>
         <View style={styles.pickerContainer}>
           <Picker
             selectedValue={weightValue}
@@ -78,12 +77,11 @@ export default function MeasurementsScreen() {
         </View>
       </View>
 
-      <View style={[styles.sectionCard, styles.sectionCardHeight]}>
+      <View style={styles.sectionCard}>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Height</Text>
           <Text style={styles.sectionUnitBadge}>{isInches ? 'FT/IN' : 'CM'}</Text>
         </View>
-        <Text style={styles.sectionHint}>Used as a profile baseline and for body metrics.</Text>
 
         {isInches ? (
           <View style={styles.heightRow}>
@@ -136,16 +134,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   sectionCard: {
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
-  sectionCardWeight: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentDim,
-  },
-  sectionCardHeight: {},
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -161,19 +154,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: 10,
     paddingVertical: 4,
     color: colors.textSecondary,
     fontSize: 11,
     letterSpacing: 0.4,
     fontFamily: fonts.semiBold,
-  },
-  sectionHint: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    fontFamily: fonts.regular,
-    marginBottom: spacing.sm,
   },
   pickerContainer: {
     borderRadius: 12,

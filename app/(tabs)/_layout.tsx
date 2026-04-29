@@ -4,6 +4,7 @@ import { createMaterialTopTabNavigator, type MaterialTopTabBarProps } from '@rea
 import { Text, Image, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts } from '../../src/constants';
+import { isLightTheme } from '../../src/constants/themes';
 import { HistoryViewProvider, useHistoryView } from '../../src/components/history/HistoryViewContext';
 import { useProfileStore } from '../../src/stores/profile.store';
 import { ChartInteractionProvider, useChartInteraction } from '../../src/components/charts';
@@ -48,7 +49,8 @@ function getFocusedLeafRouteName(route: { state?: unknown; name?: string }): str
 
 function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
   const { chromeHidden } = useWorkoutOverlay();
   const slideY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
@@ -116,7 +118,7 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
     >
       {state.routes.map((route, index) => {
         const focused = state.index === index;
-        const color = focused ? colors.text : colors.textMuted;
+        const color = focused ? colors.text : (isLight ? '#acaeb2' : colors.textMuted);
 
         return (
           <TouchableOpacity
@@ -150,7 +152,7 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
                 {TAB_ICONS[route.name] ?? '•'}
               </Text>
             )}
-            <Text style={[styles.tabLabel, { color }]}>
+            <Text style={[styles.tabLabel, focused && styles.tabLabelActive, { color }]}>
               {TAB_LABELS[route.name] ?? route.name}
             </Text>
           </TouchableOpacity>
@@ -275,5 +277,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: fonts.regular,
     marginTop: 2,
+  },
+  tabLabelActive: {
+    fontFamily: fonts.semiBold,
   },
 });

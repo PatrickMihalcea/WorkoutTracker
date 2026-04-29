@@ -9,6 +9,7 @@ import {
   BODY_MEASUREMENT_METRICS,
 } from '../models';
 import { cmToIn, kgToLbs } from '../utils/units';
+import { targetRepsForVolume } from '../utils/routineTargets';
 
 export interface PRRecord {
   exerciseName: string;
@@ -472,19 +473,12 @@ type RoutineDayTargetRow = {
   }[] | null;
 };
 
-function targetRepsForSet(
-  set: { target_reps_min: number; target_reps_max: number },
-  fallback: number,
-): number {
-  const min = set.target_reps_min > 0 ? set.target_reps_min : 0;
-  const max = set.target_reps_max > 0 ? set.target_reps_max : 0;
-  if (min > 0 && max > 0) return Math.round((min + max) / 2);
-  if (min > 0) return min;
-  if (max > 0) return max;
-  return fallback > 0 ? fallback : 0;
+function convertWeightForDisplay(weightKg: number, wUnit: WeightUnit): number {
+  if (wUnit === 'lbs') return Math.round(kgToLbs(weightKg) * 10) / 10;
+  return weightKg;
 }
 
-function computeRoutineDayMetricTargets(day: RoutineDayTargetRow): RoutineMetricTargets {
+function computeRoutineDayMetricTargets(day: RoutineDayTargetRow, wUnit: WeightUnit): RoutineMetricTargets {
   let reps = 0;
   let volume = 0;
   let duration = 0;
@@ -494,9 +488,9 @@ function computeRoutineDayMetricTargets(day: RoutineDayTargetRow): RoutineMetric
 
     if (setTemplates.length > 0) {
       for (const set of setTemplates) {
-        const targetReps = targetRepsForSet(set, ex.target_reps);
+        const targetReps = targetRepsForVolume(set, ex.target_reps);
         reps += targetReps;
-        volume += (set.target_weight ?? 0) * targetReps;
+        volume += convertWeightForDisplay(set.target_weight ?? 0, wUnit) * targetReps;
         duration += (set.target_duration ?? 0) / 60;
       }
       continue;
@@ -514,7 +508,7 @@ function computeRoutineDayMetricTargets(day: RoutineDayTargetRow): RoutineMetric
   };
 }
 
-async function fetchRoutineDayTargets(dayIds: string[]): Promise<Map<string, RoutineMetricTargets>> {
+async function fetchRoutineDayTargets(dayIds: string[], wUnit: WeightUnit): Promise<Map<string, RoutineMetricTargets>> {
   const uniqueDayIds = [...new Set(dayIds.filter(Boolean))];
   if (uniqueDayIds.length === 0) return new Map();
 
@@ -539,7 +533,7 @@ async function fetchRoutineDayTargets(dayIds: string[]): Promise<Map<string, Rou
 
   const out = new Map<string, RoutineMetricTargets>();
   for (const day of (data ?? []) as unknown as RoutineDayTargetRow[]) {
-    out.set(day.id, computeRoutineDayMetricTargets(day));
+    out.set(day.id, computeRoutineDayMetricTargets(day, wUnit));
   }
   return out;
 }
@@ -755,7 +749,7 @@ export const dashboardService = {
     const dayIds = days.map((d) => d.id);
     let dayTargetsById = new Map<string, RoutineMetricTargets>();
     try {
-      dayTargetsById = await fetchRoutineDayTargets(dayIds);
+      dayTargetsById = await fetchRoutineDayTargets(dayIds, wUnit);
     } catch {
       dayTargetsById = new Map();
     }
@@ -814,7 +808,7 @@ export const dashboardService = {
     if (error) throw error;
     let dayTargetsById = new Map<string, RoutineMetricTargets>();
     try {
-      dayTargetsById = await fetchRoutineDayTargets([dayId]);
+      dayTargetsById = await fetchRoutineDayTargets([dayId], wUnit);
     } catch {
       dayTargetsById = new Map();
     }

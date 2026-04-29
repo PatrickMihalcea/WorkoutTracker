@@ -64,7 +64,7 @@ export function Button({
     text_accent: { color: '#FFFFFF' },
     text_secondary: { color: colors.text },
     text_danger: { color: colors.text },
-    text_cta: { color: '#FFFFFF', fontFamily: fonts.bold },
+    text_cta: { color: '#000000', fontFamily: fonts.bold },
     text_ghost: { color: colors.textSecondary },
     text_dashed: { color: colors.textSecondary },
   }), [colors]);
@@ -100,7 +100,7 @@ export function Button({
       )}
       {loading ? (
         <ActivityIndicator
-          color={variant === 'ghost' || variant === 'dashed' ? colors.text : (variant === 'accent' || variant === 'cta') ? '#FFFFFF' : colors.background}
+          color={variant === 'ghost' || variant === 'dashed' ? colors.text : variant === 'accent' ? '#FFFFFF' : variant === 'cta' ? '#000000' : colors.background}
           size="small"
         />
       ) : (

@@ -13,8 +13,9 @@ import { useProfileStore } from '../src/stores/profile.store';
 import { useRoutineStore } from '../src/stores/routine.store';
 import { KeyboardDismiss } from '../src/components/ui/KeyboardDismiss';
 import { LaunchScreen } from '../src/components/ui/LaunchScreen';
+import { AppHeader } from '../src/components/ui';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
-import { DEFAULT_THEME } from '../src/constants/themes';
+import { DEFAULT_THEME, isLightTheme } from '../src/constants/themes';
 import { WorkoutFloatingPill, WorkoutOverlayProvider } from '../src/components/workout';
 import { notificationService } from '../src/services';
 
@@ -26,7 +27,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 function RootLayoutInner() {
-  const { colors, gradients } = useTheme();
+  const { colors, gradients, theme } = useTheme();
   const { session, initialized, initialize } = useAuthStore();
   const { profile, loading: profileLoading, resolved: profileResolved } = useProfileStore();
   const { fetchRoutines, fetchActiveRoutine, activeRoutineInitialized } = useRoutineStore();
@@ -180,17 +181,13 @@ function RootLayoutInner() {
 
   const exerciseHeaderOptions = useMemo<NativeStackNavigationOptions>(() => ({
     headerShown: false,
-    headerStyle: { backgroundColor: colors.background },
-    headerTintColor: colors.text,
     headerTitle: 'Exercise Details',
     headerTitleStyle: { fontFamily: 'Monospaceland-Bold' },
-    headerBackButtonDisplayMode: 'minimal' as const,
-    headerBackTitle: '',
-    headerLeftBackgroundVisible: false,
   }), [colors]);
 
   const exerciseHistoryHeaderOptions = useMemo<NativeStackNavigationOptions>(() => ({
     ...exerciseHeaderOptions,
+    header: (props) => <AppHeader {...props} />,
     headerShown: true,
     headerTitle: 'Exercise History',
   }), [exerciseHeaderOptions]);
@@ -203,7 +200,7 @@ function RootLayoutInner() {
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      <StatusBar style="light" />
+      <StatusBar style={isLightTheme(theme) ? 'dark' : 'light'} />
       {ready ? (
         <WorkoutOverlayProvider>
           <Stack

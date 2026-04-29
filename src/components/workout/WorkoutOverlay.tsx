@@ -75,7 +75,6 @@ const HEADER_DRAG_DISMISS_THRESHOLD_MAX = 400;
 const HEADER_DRAG_VELOCITY_PROJECTION = 0.12;
 const HEADER_DRAG_SETTLE_MS_MIN = 120;
 const HEADER_DRAG_SETTLE_MS_MAX = 240;
-const SESSION_ID_PATH_REGEX = /^\/profile\/[0-9a-fA-F-]{36}$/;
 type TooltipWarningVariant = 'empty-finish' | 'first-entry-walkthrough';
 type WorkoutTooltipKey = 'setToggleDemo' | 'setSwipeActions' | 'supersetMenu' | 'reorderLongPress';
 
@@ -237,7 +236,7 @@ export function WorkoutOverlay() {
     dismissRestTimer,
   } = useWorkoutStore();
 
-  const { expanded, minimize, setWorkoutRouteOpen } = useWorkoutOverlay();
+  const { expanded, minimize, setWorkoutRouteOpen, notifyWorkoutCompleted } = useWorkoutOverlay();
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
 
@@ -292,13 +291,11 @@ export function WorkoutOverlay() {
   }, [minimize, screenHeight, sheetTranslateY]);
 
   const openExerciseDetail = useCallback((exerciseId: string, paddingTop?: number) => {
-  const href = {
-    pathname: '/exercise/[exerciseId]',
-    params: {
-      exerciseId,
-      ...(paddingTop !== undefined ? { paddingTop: String(paddingTop) } : {}),
-    },
-  } as const;
+  const query = [
+    'fromWorkoutOverlay=1',
+    ...(paddingTop !== undefined ? [`paddingTop=${encodeURIComponent(String(paddingTop))}`] : []),
+  ].join('&');
+  const href = `/exercise/${exerciseId}${query ? `?${query}` : ''}` as const;
 
   if (pathname.startsWith('/exercise/')) {
     router.replace(href);
@@ -308,20 +305,8 @@ export function WorkoutOverlay() {
   router.push(href);
 }, [pathname, router]);
 
-const openWorkoutDetail = useCallback((sessionId: string, justCompleted?: boolean) => {
-  const suffix = justCompleted ? '?justCompleted=1' : '';
-  const href = `/(tabs)/profile/${sessionId}${suffix}` as const;
-
-  if (SESSION_ID_PATH_REGEX.test(pathname)) {
-    router.replace(href);
-    return;
-  }
-
-  router.push(href);
-}, [pathname, router]);
-
 const navigateToExerciseDetail = useCallback((exerciseId: string) => {
-  openExerciseDetail(exerciseId, 0);
+  openExerciseDetail(exerciseId);
 }, [openExerciseDetail]);
 
   useEffect(() => {
@@ -689,14 +674,14 @@ const navigateToExerciseDetail = useCallback((exerciseId: string) => {
     try {
       const completedSessionId = await completeWorkout(weightUnit);
       if (completedSessionId) {
-        openWorkoutDetail(completedSessionId, true);
+        notifyWorkoutCompleted(completedSessionId);
       }
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message || 'Failed to complete workout.');
     } finally {
       setIsCompleting(false);
     }
-  }, [completeWorkout, isCompleting, openWorkoutDetail, weightUnit]);
+  }, [completeWorkout, isCompleting, notifyWorkoutCompleted, weightUnit]);
 
   const handleComplete = useCallback(() => {
     if (isCompleting) return;
@@ -748,9 +733,10 @@ const navigateToExerciseDetail = useCallback((exerciseId: string) => {
     updateRowLocal(id, entryId, updates);
   };
 
-  const handleUpdate = async (id: string, entryId: string, updates: Record<string, string>) => {
-    try { await updateRow(id, entryId, updates); }
-    catch (error: unknown) { Alert.alert('Error', (error as Error).message); }
+  const handleUpdate = (id: string, entryId: string, updates: Record<string, string>) => {
+    void updateRow(id, entryId, updates).catch((error: unknown) => {
+      Alert.alert('Error', (error as Error).message);
+    });
   };
 
   const editableRows = useMemo(

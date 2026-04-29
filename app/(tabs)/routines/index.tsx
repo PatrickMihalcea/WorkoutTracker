@@ -13,11 +13,12 @@ import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { Button, Card, EmptyState, OverflowMenu, OverflowMenuItem } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
+import { isLightTheme } from '../../../src/constants/themes';
 import { Routine } from '../../../src/models';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -68,14 +69,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.textMuted,
   },
   routineMetaActive: {
-    color: colors.textSecondary,
+    color: isLight ? '#FFFFFF' : colors.textSecondary,
   },
 });
 
 export default function RoutineListScreen() {
   const router = useRouter();
-  const { colors, gradients } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, gradients, theme } = useTheme();
+  const isLight = isLightTheme(theme);
+  const styles = useMemo(() => createStyles(colors, isLight), [colors, isLight]);
   const { user } = useAuthStore();
   const { routines, fetchRoutines, setActive, deleteRoutine, duplicateRoutine, routinesLoaded } = useRoutineStore();
   const [refreshing, setRefreshing] = useState(false);
@@ -145,13 +147,14 @@ export default function RoutineListScreen() {
       >
         <View style={styles.routineHeader}>
           <View style={styles.routineInfo}>
-            <Text style={styles.routineName}>{item.name}</Text>
+            <Text style={[styles.routineName, item.is_active && isLight && { color: '#FFFFFF' }]}>{item.name}</Text>
             <Text style={[styles.routineMeta, item.is_active && styles.routineMetaActive]}>
               {item.week_count} {item.week_count === 1 ? 'week' : 'weeks'} · Current {item.current_week}
             </Text>
           </View>
           <View style={styles.menuWrap}>
             <OverflowMenu
+              triggerColor={item.is_active && isLight ? '#FFFFFF' : undefined}
               items={[
                 {
                   label: 'Set Active',

@@ -18,6 +18,7 @@ interface RoutineState {
   createRoutine: (name: string, userId: string, weekCount?: number) => Promise<Routine>;
   duplicateRoutine: (id: string, userId: string) => Promise<Routine>;
   setActive: (id: string, userId: string) => Promise<void>;
+  deactivate: (id: string) => Promise<void>;
   deleteRoutine: (id: string) => Promise<void>;
   removeExerciseReferences: (exerciseId: string) => void;
   updateExerciseReferences: (exercise: Exercise) => void;
@@ -81,14 +82,21 @@ export const useRoutineStore = create<RoutineState>((set) => ({
   setActive: async (id, userId) => {
     await routineService.setActive(id, userId);
     set((state) => ({
-      routines: state.routines.map((r) => ({
-        ...r,
-        is_active: r.id === id,
-      })),
+      routines: state.routines.map((r) => ({ ...r, is_active: r.id === id })),
+      currentRoutine: state.currentRoutine ? { ...state.currentRoutine, is_active: state.currentRoutine.id === id } : null,
     }));
     const routine = await routineService.getWithDays(id);
     set({ activeRoutine: routine });
     void notificationService.syncWorkoutDayReminder(useProfileStore.getState().profile);
+  },
+
+  deactivate: async (id) => {
+    await routineService.deactivate(id);
+    set((state) => ({
+      routines: state.routines.map((r) => r.id === id ? { ...r, is_active: false } : r),
+      currentRoutine: state.currentRoutine?.id === id ? { ...state.currentRoutine, is_active: false } : state.currentRoutine,
+      activeRoutine: state.activeRoutine?.id === id ? null : state.activeRoutine,
+    }));
   },
 
   deleteRoutine: async (id) => {

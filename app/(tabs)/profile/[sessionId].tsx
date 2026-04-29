@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useLocalSearchParams, usePathname, useRouter, Stack } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { HeaderBackButton } from '@react-navigation/elements';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { routineService, sessionService } from '../../../src/services';
 import type { SessionRecordAchieved, SessionRecordMetric } from '../../../src/services';
@@ -22,16 +22,17 @@ import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useWorkoutOverlay } from '../../../src/components/workout';
-import { Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle, ExerciseIconPreview } from '../../../src/components/ui';
+import { AppHeaderBackButton, AppHeaderButton, Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle, ExerciseIconPreview } from '../../../src/components/ui';
 import { SetsTableEditor, TemplateSetRow, buildSetsPayload } from '../../../src/components/routine/SetsTableEditor';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { MetricRing } from '../../../src/components/history/MetricRing';
 import { fonts, spacing } from '../../../src/constants';
-import { SessionWithSetsAndExercises, SetLogWithExercise, Exercise, RoutineDayExercise, RoutineDayWithExercises } from '../../../src/models';
+import { SessionWithSetsAndExercises, SetLogWithExercise, Exercise, RoutineDayExercise, RoutineDayWithExercises, WeightUnit } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
-import { formatWeight, formatDistance, formatDistanceValue, weightUnitLabel, distanceUnitLabel, milesToKm } from '../../../src/utils/units';
+import { formatWeight, formatDistance, formatDistanceValue, weightUnitLabel, distanceUnitLabel, milesToKm, kgToLbs, kmToMiles } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
 import { formatDurationValue } from '../../../src/utils/duration';
+import { targetRepsForVolume } from '../../../src/utils/routineTargets';
 import {
   autoCleanAfterDelete,
   getSupersetPosition,
@@ -41,7 +42,7 @@ import {
   type SupersetGroups,
 } from '../../../src/utils/superset';
 import { useTheme } from '../../../src/contexts/ThemeContext';
-import type { ThemeColors } from '../../../src/constants/themes';
+import { isLightTheme, type ThemeColors } from '../../../src/constants/themes';
 import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../../src/utils/exerciseMedia';
 import { PortalHost } from '../../../src/components/ui/PortalHost';
 
@@ -79,6 +80,15 @@ const DURATION_PICKER_HEIGHT = Platform.OS === 'ios' ? 200 : 56;
 const DURATION_HOURS = Array.from({ length: 24 }, (_, i) => i);
 const DURATION_MINUTES = Array.from({ length: 60 }, (_, i) => i);
 const DURATION_SECONDS = Array.from({ length: 60 }, (_, i) => i);
+const MIN_SESSION_EDIT_YEAR = 2000;
+
+function toLocalCalendarDate(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+}
+
+function toLocalClockDate(date: Date): Date {
+  return new Date(2000, 0, 1, date.getHours(), date.getMinutes(), 0, 0);
+}
 
 function formatMuscleGroupLabel(muscleGroup: string): string {
   if (!muscleGroup) return '';
@@ -184,6 +194,16 @@ function formatCompactStat(value: number): string {
   return formatStatNumber(value);
 }
 
+function weightForDisplayVolume(weightKg: number, unit: WeightUnit): number {
+  if (unit === 'lbs') return Math.round(kgToLbs(weightKg) * 10) / 10;
+  return weightKg;
+}
+
+function distanceForDisplay(distanceKm: number, unit: 'km' | 'miles'): number {
+  if (unit === 'miles') return kmToMiles(distanceKm);
+  return distanceKm;
+}
+
 function sessionRecordMetricLabel(metric: SessionRecordMetric): string {
   switch (metric) {
     case 'heaviest_weight': return 'Heaviest Weight';
@@ -201,7 +221,7 @@ function sessionRecordMetricLabel(metric: SessionRecordMetric): string {
   }
 }
 
-function computeTemplateTargets(day: RoutineDayWithExercises): {
+function computeTemplateTargets(day: RoutineDayWithExercises, weightUnit: WeightUnit): {
   exerciseTarget: number;
   setTarget: number;
   volumeTarget: number;
@@ -218,18 +238,8 @@ function computeTemplateTargets(day: RoutineDayWithExercises): {
 
     setTarget += templateSets.length;
     for (const set of templateSets) {
-      const min = set.target_reps_min > 0 ? set.target_reps_min : 0;
-      const max = set.target_reps_max > 0 ? set.target_reps_max : 0;
-      const reps = min > 0 && max > 0
-        ? Math.round((min + max) / 2)
-        : min > 0
-          ? min
-          : max > 0
-            ? max
-            : ex.target_reps > 0
-              ? ex.target_reps
-              : 0;
-      volumeTarget += (set.target_weight ?? 0) * reps;
+      const reps = targetRepsForVolume(set, ex.target_reps);
+      volumeTarget += weightForDisplayVolume(set.target_weight ?? 0, weightUnit) * reps;
     }
   }
 
@@ -243,9 +253,10 @@ function computeTemplateTargets(day: RoutineDayWithExercises): {
 export default function SessionDetailScreen() {
   const router = useRouter();
   const pathname = usePathname();
-  const { colors } = useTheme();
+  const { colors, gradients, theme } = useTheme();
+  const isLight = isLightTheme(theme);
   const androidPickerPopupTextColor = '#111111';
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, isLight), [colors, isLight]);
   const {
     sessionId,
     justCompleted,
@@ -258,10 +269,11 @@ export default function SessionDetailScreen() {
     exerciseId?: string;
   }>();
   const { profile } = useProfileStore();
+  const isCompletionView = justCompleted === '1';
   const weightUnit = profile?.weight_unit ?? 'kg';
   const distUnit = profile?.distance_unit ?? 'km';
   const user = useAuthStore((s) => s.user);
-  const { setChromeHidden } = useWorkoutOverlay();
+  const { setChromeHidden, expand: expandWorkout } = useWorkoutOverlay();
   const { session: activeSession, startWorkoutFromSession } = useWorkoutStore();
   const [session, setSession] = useState<SessionWithSetsAndExercises | null>(null);
   const [loading, setLoading] = useState(true);
@@ -437,6 +449,7 @@ export default function SessionDetailScreen() {
       try {
         setStarting(true);
         await startWorkoutFromSession(user.id, session);
+        expandWorkout();
       } catch (error: unknown) {
         Alert.alert('Error', (error as Error).message || 'Could not start workout.');
       } finally {
@@ -460,8 +473,8 @@ export default function SessionDetailScreen() {
   const openEditModal = () => {
     if (!session) return;
     const start = new Date(session.started_at);
-    setEditDate(start);
-    setEditTime(start);
+    setEditDate(toLocalCalendarDate(start));
+    setEditTime(toLocalClockDate(start));
     setEditDurationSeconds(computeDurationSeconds(session.started_at, session.completed_at));
     setShowDatePicker(false);
     setShowTimePicker(false);
@@ -475,14 +488,20 @@ export default function SessionDetailScreen() {
     return new Date(d.getTime() + editDurationSeconds * 1000);
   }, [editDate, editTime, editDurationSeconds]);
 
-  const handleDateChange = (_event: DateTimePickerEvent, date?: Date) => {
+  const handleDateChange = (event: DateTimePickerEvent, date?: Date) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
-    if (date) setEditDate(date);
+    if (!date) return;
+
+    const timestamp = event.nativeEvent?.timestamp ?? date.getTime();
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return;
+    if (date.getFullYear() < MIN_SESSION_EDIT_YEAR) return;
+
+    setEditDate(toLocalCalendarDate(date));
   };
 
   const handleTimeChange = (_event: DateTimePickerEvent, date?: Date) => {
     if (Platform.OS === 'android') setShowTimePicker(false);
-    if (date) setEditTime(date);
+    if (date) setEditTime(toLocalClockDate(date));
   };
 
   const durationHours = Math.floor(editDurationSeconds / 3600);
@@ -847,6 +866,14 @@ export default function SessionDetailScreen() {
   };
 
   const handleHeaderBack = useCallback(() => {
+    if (isCompletionView) {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)/profile');
+      }
+      return;
+    }
     if (from === 'exercise-history' && returnExerciseId) {
       router.replace(`/exercise/${returnExerciseId}/history`);
       return;
@@ -856,27 +883,27 @@ export default function SessionDetailScreen() {
       return;
     }
     router.replace('/(tabs)/profile');
-  }, [from, returnExerciseId, router]);
+  }, [from, isCompletionView, returnExerciseId, router]);
 
   const stackScreenOptions = {
     headerLeft: () => (
-      <HeaderBackButton
-        onPress={handleHeaderBack}
-        tintColor={colors.text}
-        displayMode="minimal"
-      />
+      isCompletionView ? (
+        <AppHeaderButton onPress={handleHeaderBack}>
+          <Ionicons name="close" size={20} color={colors.text} />
+        </AppHeaderButton>
+      ) : (
+        <AppHeaderBackButton onPress={handleHeaderBack} />
+      )
     ),
-    headerRight: () => (
-      <TouchableOpacity
+    headerRight: isCompletionView ? undefined : () => (
+      <AppHeaderButton
         onPress={handleStartWorkout}
         disabled={loading || starting}
-        hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-        style={styles.startBtn}
       >
         {starting
           ? <ActivityIndicator size="small" color="#4ECDC4" />
-          : <Text style={styles.startBtnText}>▶ Start</Text>}
-      </TouchableOpacity>
+          : <Text style={styles.startBtnText}>▶</Text>}
+      </AppHeaderButton>
     ),
   };
 
@@ -907,12 +934,15 @@ export default function SessionDetailScreen() {
   const supersetMap = buildSupersetGroupMap(groups);
   const actualExercises = groups.length;
   const actualSets = session.sets.length;
-  const actualVolume = session.sets.reduce((sum, set) => sum + ((set.weight ?? 0) * (set.reps_performed ?? 0)), 0);
+  const actualVolume = session.sets.reduce(
+    (sum, set) => sum + (weightForDisplayVolume(set.weight ?? 0, weightUnit) * (set.reps_performed ?? 0)),
+    0,
+  );
   const hasRoutineDayLink = !!session.routine_day_id;
   const waitingForTemplate = hasRoutineDayLink && !templateResolved;
   const hasRoutineTemplate = hasRoutineDayLink && !!routineDayTemplate;
   const targets = hasRoutineTemplate && routineDayTemplate
-    ? computeTemplateTargets(routineDayTemplate)
+    ? computeTemplateTargets(routineDayTemplate, weightUnit)
     : null;
 
   const exercisesProgress = waitingForTemplate
@@ -946,6 +976,10 @@ export default function SessionDetailScreen() {
     : '--';
 
   const formatSessionRecordValue = (record: SessionRecordAchieved): string => {
+    const currentExerciseSets = session.sets.filter(
+      (set) => !set.is_warmup && set.exercise_id === record.exerciseId,
+    );
+
     switch (record.metric) {
       case 'heaviest_weight':
       case 'best_est_1rm':
@@ -955,15 +989,31 @@ export default function SessionDetailScreen() {
       case 'best_session_reps':
         return `${Math.round(record.value)} reps`;
       case 'best_set_volume':
+        return `${formatCompactStat(Math.max(
+          0,
+          ...currentExerciseSets.map(
+            (set) => weightForDisplayVolume(set.weight ?? 0, weightUnit) * (set.reps_performed ?? 0),
+          ),
+        ))} vol`;
       case 'best_session_volume':
-        return `${formatCompactStat(record.value)} vol`;
+        return `${formatCompactStat(currentExerciseSets.reduce(
+          (sum, set) => sum + (weightForDisplayVolume(set.weight ?? 0, weightUnit) * (set.reps_performed ?? 0)),
+          0,
+        ))} vol`;
       case 'longest_duration':
       case 'best_session_duration':
         return formatDurationValue(record.value);
       case 'farthest_distance':
         return formatDistance(record.value, distUnit);
       case 'best_pace':
-        return `${record.value.toFixed(2)} ${distanceUnitLabel(distUnit)}/min`;
+        return `${Math.max(
+          0,
+          ...currentExerciseSets.map((set) => (
+            set.duration > 0 && set.distance > 0
+              ? distanceForDisplay(set.distance, distUnit) / (set.duration / 60)
+              : 0
+          )),
+        ).toFixed(2)} ${distanceUnitLabel(distUnit)}/min`;
       default:
         return formatStatNumber(record.value);
     }
@@ -1016,7 +1066,7 @@ export default function SessionDetailScreen() {
                 onPress={() => setShowCompletionBanner(false)}
                 hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
               >
-                <Text style={styles.completionDismissText}>X</Text>
+                <Ionicons name="close" size={16} color={colors.recordText} />
               </TouchableOpacity>
             </View>
             <Text style={styles.completionTitle}>Nice work. Session saved.</Text>
@@ -1075,7 +1125,7 @@ export default function SessionDetailScreen() {
         </View>
 
         {sessionRecords.length > 0 && (
-          <Card style={styles.recordsCard} gradientColors={['#122828', '#0a1a1a']}>
+          <Card style={styles.recordsCard} gradientColors={gradients.records}>
             <Text style={styles.recordsTitle}>
               {sessionRecords.length} {sessionRecords.length === 1 ? 'Record' : 'Records'} Achieved
             </Text>
@@ -1212,7 +1262,9 @@ export default function SessionDetailScreen() {
                   mode="date"
                   display="compact"
                   onChange={handleDateChange}
-                  themeVariant="dark"
+                  minimumDate={new Date(MIN_SESSION_EDIT_YEAR, 0, 1)}
+                  maximumDate={new Date()}
+                  themeVariant={isLight ? 'light' : 'dark'}
                 />
               ) : (
                 <TouchableOpacity style={styles.pickerValueButton} onPress={() => setShowDatePicker(true)} activeOpacity={0.7}>
@@ -1221,7 +1273,15 @@ export default function SessionDetailScreen() {
               )}
             </View>
             {Platform.OS === 'android' && showDatePicker && (
-              <DateTimePicker value={editDate} mode="date" display="default" onChange={handleDateChange} themeVariant="dark" />
+              <DateTimePicker
+                value={editDate}
+                mode="date"
+                display="default"
+                onChange={handleDateChange}
+                minimumDate={new Date(MIN_SESSION_EDIT_YEAR, 0, 1)}
+                maximumDate={new Date()}
+                themeVariant={isLight ? 'light' : 'dark'}
+              />
             )}
 
             <View style={styles.editRow}>
@@ -1232,7 +1292,7 @@ export default function SessionDetailScreen() {
                   mode="time"
                   display="compact"
                   onChange={handleTimeChange}
-                  themeVariant="dark"
+                  themeVariant={isLight ? 'light' : 'dark'}
                 />
               ) : (
                 <TouchableOpacity style={styles.pickerValueButton} onPress={() => setShowTimePicker(true)} activeOpacity={0.7}>
@@ -1241,7 +1301,7 @@ export default function SessionDetailScreen() {
               )}
             </View>
             {Platform.OS === 'android' && showTimePicker && (
-              <DateTimePicker value={editTime} mode="time" display="default" onChange={handleTimeChange} themeVariant="dark" />
+              <DateTimePicker value={editTime} mode="time" display="default" onChange={handleTimeChange} themeVariant={isLight ? 'light' : 'dark'} />
             )}
 
             <View style={styles.editRow}>
@@ -1374,7 +1434,7 @@ export default function SessionDetailScreen() {
   );
 }
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.create({
   flex: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1415,17 +1475,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   completionBadge: {
     fontSize: 11,
     fontFamily: fonts.bold,
-    color: '#8BE1B8',
+    color: colors.recordText,
     letterSpacing: 0.8,
   },
   completionDismissBtn: {
     paddingHorizontal: 4,
     paddingVertical: 2,
-  },
-  completionDismissText: {
-    color: '#9DD2B7',
-    fontSize: 14,
-    fontFamily: fonts.bold,
   },
   completionTitle: {
     fontSize: 20,
@@ -1523,7 +1578,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   recordValue: {
     fontSize: 13,
     fontFamily: fonts.bold,
-    color: '#8BE1B8',
+    color: colors.recordText,
   },
   exerciseCard: {
     marginBottom: 6,
@@ -1695,7 +1750,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   pickerButtonText: {
     fontSize: 16,
     fontFamily: fonts.regular,
-    color: colors.text,
+    color: isLight ? '#000000' : colors.text,
   },
   pickerValueButton: {
     backgroundColor: colors.surfaceLight,
@@ -1768,15 +1823,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 12,
   },
   startBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    minWidth: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
+    minWidth: 72,
   },
   startBtnText: {
     color: '#4ECDC4',
-    fontSize: 14,
+    fontSize: 22,
     fontFamily: fonts.semiBold,
   },
 });

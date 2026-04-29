@@ -48,11 +48,11 @@ export function InlineEditRow({
         onSubmitEditing={onSave}
         returnKeyType="done"
       />
-      <TouchableOpacity onPress={onSave} style={styles.btn}>
-        <Text style={styles.saveText}>Save</Text>
-      </TouchableOpacity>
       <TouchableOpacity onPress={onCancel} style={styles.btn}>
         <Text style={styles.cancelText}>Cancel</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onSave} style={styles.btn}>
+        <Text style={styles.saveText}>Save</Text>
       </TouchableOpacity>
     </View>
   );

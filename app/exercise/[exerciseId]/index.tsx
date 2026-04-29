@@ -39,6 +39,7 @@ import {
 import type { BarDataItem } from '../../../src/components/charts';
 
 import {
+  AppHeaderBackButton,
   BottomSheetModal,
   Button,
   ChipPicker,
@@ -222,7 +223,7 @@ function getMinYStep(metricKey: string): number {
 function ExerciseDetailContent() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
+  const { exerciseId, fromWorkoutOverlay } = useLocalSearchParams<{ exerciseId: string; fromWorkoutOverlay?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuthStore();
@@ -418,9 +419,12 @@ function ExerciseDetailContent() {
     if (!exerciseId) return;
     router.push({
       pathname: '/exercise/[exerciseId]/history',
-      params: { exerciseId },
+      params: {
+        exerciseId,
+        ...(fromWorkoutOverlay ? { fromWorkoutOverlay } : {}),
+      },
     });
-  }, [exerciseId, router]);
+  }, [exerciseId, fromWorkoutOverlay, router]);
 
   const points = data?.timeSeries?.[selectedMetric] ?? [];
   const secondaryMuscles = (data?.exercise.secondary_muscles ?? [])
@@ -562,9 +566,9 @@ function ExerciseDetailContent() {
         />
       }
     >
-      <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backButton}>
-        <Text style={styles.backButtonText}>‹ Back</Text>
-      </TouchableOpacity>
+      <View style={styles.backButtonWrap}>
+        <AppHeaderBackButton onPress={() => router.back()} />
+      </View>
       {/* Header */}
       <View style={styles.header}>
         {hasMedia && (
@@ -773,9 +777,18 @@ function ExerciseDetailContent() {
 }
 
 export default function ExerciseDetailScreen() {
+  const { fromWorkoutOverlay } = useLocalSearchParams<{
+    fromWorkoutOverlay?: string;
+  }>();
+
   return (
     <>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen
+        options={{
+          headerShown: false,
+          presentation: fromWorkoutOverlay === '1' ? 'fullScreenModal' : 'card',
+        }}
+      />
       <ChartInteractionProvider>
         <ExerciseDetailContent />
       </ChartInteractionProvider>
@@ -803,16 +816,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.textMuted,
   },
-  backButton: {
+  backButtonWrap: {
     alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingRight: 16,
     marginBottom: 4,
-  },
-  backButtonText: {
-    fontSize: 17,
-    fontFamily: fonts.regular,
-    color: colors.accent,
   },
   header: {
     paddingVertical: spacing.md,

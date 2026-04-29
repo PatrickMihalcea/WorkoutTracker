@@ -21,6 +21,33 @@ const SEX_OPTIONS: { value: Sex; label: string }[] = [
 
 const MIN_BIRTHDAY = new Date(1900, 0, 1);
 
+function formatBirthdayHeadline(date: Date): string {
+  return date.toLocaleDateString(undefined, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatBirthdayParts(date: Date): { month: string; day: string; year: string } {
+  return {
+    month: date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
+    day: String(date.getDate()),
+    year: String(date.getFullYear()),
+  };
+}
+
+function getAge(date: Date): number {
+  const today = new Date();
+  let age = today.getFullYear() - date.getFullYear();
+  const hasHadBirthdayThisYear = (
+    today.getMonth() > date.getMonth()
+    || (today.getMonth() === date.getMonth() && today.getDate() >= date.getDate())
+  );
+  if (!hasHadBirthdayThisYear) age -= 1;
+  return Math.max(0, age);
+}
+
 export default function DisplayNameScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -33,8 +60,12 @@ export default function DisplayNameScreen() {
   const defaultDate = new Date();
   defaultDate.setFullYear(defaultDate.getFullYear() - 25);
   const [birthday, setBirthday] = useState(defaultDate);
-  const [showDatePicker, setShowDatePicker] = useState(Platform.OS === 'ios');
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const birthdayHeadline = useMemo(() => formatBirthdayHeadline(birthday), [birthday]);
+  const birthdayParts = useMemo(() => formatBirthdayParts(birthday), [birthday]);
+  const birthdayAge = useMemo(() => getAge(birthday), [birthday]);
 
   const handleBirthdayChange = (_event: DateTimePickerEvent, next?: Date) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
@@ -117,6 +148,7 @@ export default function DisplayNameScreen() {
       totalSteps={5}
       title="Build your athlete profile"
       subtitle="Lock in your identity so your stats, records, and progress feel truly yours."
+      autoScrollToFocusedInput
       footer={<Button title="Continue" onPress={handleContinue} loading={loading} variant="cta" size="lg" />}
     >
       <View style={styles.sectionBlock}>
@@ -153,21 +185,43 @@ export default function DisplayNameScreen() {
 
       <View style={styles.sectionBlock}>
         <Text style={styles.fieldLabel}>Birthday</Text>
-        {Platform.OS === 'android' && (
-          <TouchableOpacity
-            style={styles.pickerButton}
-            onPress={() => setShowDatePicker(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.pickerButtonText}>{birthday.toLocaleDateString()}</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.birthdayCard}
+          onPress={() => setShowDatePicker((prev) => !prev)}
+          activeOpacity={0.85}
+        >
+          <View style={styles.birthdayTopRow}>
+            <Text style={styles.birthdayHeadline}>{birthdayHeadline}</Text>
+            <View style={styles.birthdayBadge}>
+              <Text style={styles.birthdayBadgeText}>{birthdayAge} yrs</Text>
+            </View>
+          </View>
+          <Text style={styles.birthdayHint}>
+            {showDatePicker ? 'Tap again to hide picker' : 'Tap to choose your date of birth'}
+          </Text>
+          <View style={styles.birthdayPartsRow}>
+            <View style={styles.birthdayPart}>
+              <Text style={styles.birthdayPartLabel}>Month</Text>
+              <Text style={styles.birthdayPartValue}>{birthdayParts.month}</Text>
+            </View>
+            <View style={styles.birthdayPartDivider} />
+            <View style={styles.birthdayPart}>
+              <Text style={styles.birthdayPartLabel}>Day</Text>
+              <Text style={styles.birthdayPartValue}>{birthdayParts.day}</Text>
+            </View>
+            <View style={styles.birthdayPartDivider} />
+            <View style={styles.birthdayPart}>
+              <Text style={styles.birthdayPartLabel}>Year</Text>
+              <Text style={styles.birthdayPartValue}>{birthdayParts.year}</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
         {showDatePicker && (
           <View style={styles.pickerCard}>
             <DateTimePicker
               value={birthday}
               mode="date"
-              display={Platform.OS === 'ios' ? 'compact' : 'default'}
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
               onChange={handleBirthdayChange}
               minimumDate={MIN_BIRTHDAY}
               maximumDate={new Date()}
@@ -216,26 +270,87 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   sexLabelSelected: {
     color: colors.text,
   },
+  birthdayCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  birthdayTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  birthdayHeadline: {
+    flex: 1,
+    fontSize: 20,
+    fontFamily: fonts.bold,
+    color: colors.text,
+  },
+  birthdayBadge: {
+    borderRadius: 999,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  birthdayBadgeText: {
+    fontSize: 12,
+    fontFamily: fonts.semiBold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  birthdayHint: {
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+  },
+  birthdayPartsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  birthdayPart: {
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  birthdayPartLabel: {
+    fontSize: 11,
+    fontFamily: fonts.semiBold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  birthdayPartValue: {
+    fontSize: 16,
+    fontFamily: fonts.bold,
+    color: colors.text,
+  },
+  birthdayPartDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+  },
   pickerCard: {
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
     alignItems: 'center',
-  },
-  pickerButton: {
-    backgroundColor: colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  pickerButtonText: {
-    fontSize: 16,
-    fontFamily: fonts.regular,
-    color: colors.text,
   },
 });

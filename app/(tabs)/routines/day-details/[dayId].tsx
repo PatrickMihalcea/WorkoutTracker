@@ -24,6 +24,8 @@ import { MuscleHeatmap } from '../../../../src/components/history/MuscleHeatmap'
 import { DayViewHeaderDropdown } from '../../../../src/components/routine/DayViewHeaderDropdown';
 import { useTheme } from '../../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../../src/constants/themes';
+import { targetRepsForVolume } from '../../../../src/utils/routineTargets';
+import { kgToLbs } from '../../../../src/utils/units';
 
 type RoutineMetric = 'volume' | 'reps' | 'duration';
 
@@ -38,6 +40,11 @@ const granularityToBackend = (mode: GranularityMode) => {
   if (mode === '3M' || mode === '6M') return 'week' as const;
   return 'month' as const;
 };
+
+function weightForDisplayVolume(weightKg: number, wUnit: 'kg' | 'lbs'): number {
+  if (wUnit === 'lbs') return Math.round(kgToLbs(weightKg) * 10) / 10;
+  return weightKg;
+}
 
 function DayDetailsContent() {
   const { colors } = useTheme();
@@ -182,15 +189,6 @@ function DayDetailsContent() {
   const targetValue = useMemo(() => {
     if (!day) return 0;
 
-    const repsForSet = (set: { target_reps_min: number; target_reps_max: number }, fallback: number) => {
-      const min = set.target_reps_min > 0 ? set.target_reps_min : 0;
-      const max = set.target_reps_max > 0 ? set.target_reps_max : 0;
-      if (min > 0 && max > 0) return Math.round((min + max) / 2);
-      if (min > 0) return min;
-      if (max > 0) return max;
-      return fallback;
-    };
-
     let totalVolume = 0;
     let totalReps = 0;
     let totalDurationMins = 0;
@@ -199,9 +197,9 @@ function DayDetailsContent() {
       const sets = ex.sets ?? [];
       if (sets.length > 0) {
         for (const set of sets) {
-          const reps = repsForSet(set, ex.target_reps);
+          const reps = targetRepsForVolume(set, ex.target_reps);
           totalReps += reps;
-          totalVolume += (set.target_weight ?? 0) * reps;
+          totalVolume += weightForDisplayVolume(set.target_weight ?? 0, wUnit) * reps;
           totalDurationMins += (set.target_duration ?? 0) / 60;
         }
       } else {
@@ -213,7 +211,7 @@ function DayDetailsContent() {
     if (metric === 'volume') return Math.round(totalVolume);
     if (metric === 'reps') return Math.round(totalReps);
     return Math.round(totalDurationMins);
-  }, [day, metric]);
+  }, [day, metric, wUnit]);
 
   const renderChart = (dimmed: boolean) => {
     if (!hasChartData) return null;

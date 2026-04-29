@@ -26,6 +26,7 @@ import { ChipPicker, MultiChipPicker } from './ChipPicker';
 import { FieldDropdown } from './FieldDropdown';
 import { ExerciseIconPreview } from './ExerciseIconPreview';
 import { useTheme } from '../../contexts/ThemeContext';
+import { isLightTheme } from '../../constants/themes';
 import { fonts } from '../../constants';
 import { confirmDeleteExercise } from '../../utils/confirmDeleteExercise';
 import { EXERCISE_TYPE_ITEMS } from '../../utils/exerciseType';
@@ -227,7 +228,8 @@ export function ExercisePickerModal({
   onExerciseDetails,
   selectedExerciseId,
 }: ExercisePickerModalProps) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
   const { user } = useAuthStore();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [search, setSearch] = useState('');
@@ -292,7 +294,7 @@ export function ExercisePickerModal({
       paddingVertical: 2,
       paddingHorizontal: 2,
       borderRadius: 10,
-      backgroundColor: 'rgba(26, 26, 26, 0.75)',
+      backgroundColor: isLight ? `${colors.surfaceLight}D9` : 'rgba(26, 26, 26, 0.75)',
       borderWidth: 1,
       borderColor: colors.border,
     },
@@ -395,7 +397,7 @@ export function ExercisePickerModal({
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
-  }), [colors]);
+  }), [colors, isLight]);
 
   useEffect(() => {
     if (visible) {

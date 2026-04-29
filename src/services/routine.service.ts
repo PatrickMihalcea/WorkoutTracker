@@ -531,6 +531,14 @@ export const routineService = {
     if (error) throw error;
   },
 
+  async deactivate(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('routines')
+      .update({ is_active: false })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
   async delete(id: string): Promise<void> {
     const { error } = await supabase
       .from('routines')

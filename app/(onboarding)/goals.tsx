@@ -89,9 +89,11 @@ export default function GoalsScreen() {
       onBack={() => router.back()}
       title="Set your goals"
       subtitle="Optional targets help shape your long-term trend lines. You can skip any field and edit later."
+      subtitleColor="#FFFFFF"
+      autoScrollToFocusedInput
       footer={<Button title="Continue" onPress={handleContinue} loading={saving} variant="cta" size="lg" />}
     >
-      <View style={[styles.goalCard, styles.goalCardPrimary]}>
+      <View style={styles.goalCard}>
         <View style={styles.goalTopRow}>
           <Text style={styles.goalTitle}>Body Weight Goal</Text>
           <Text style={styles.goalUnit}>{weightLabel}</Text>
@@ -108,7 +110,7 @@ export default function GoalsScreen() {
         />
       </View>
 
-      <View style={[styles.goalCard, styles.goalCardSecondary]}>
+      <View style={styles.goalCard}>
         <View style={styles.goalTopRow}>
           <Text style={styles.goalTitle}>Body Fat Goal</Text>
           <Text style={styles.goalUnit}>%</Text>
@@ -133,16 +135,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   goalCard: {
     borderRadius: 14,
     borderWidth: 1,
-    padding: spacing.sm + spacing.xs,
-    marginBottom: spacing.md,
-  },
-  goalCardPrimary: {
     borderColor: colors.accent,
     backgroundColor: colors.accentDim,
-  },
-  goalCardSecondary: {
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    padding: spacing.sm + spacing.xs,
+    marginBottom: spacing.md,
   },
   goalTopRow: {
     flexDirection: 'row',
@@ -167,7 +163,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     letterSpacing: 0.2,
   },
   goalHint: {
-    color: colors.textMuted,
+    color: '#FFFFFF',
     fontSize: 12,
     lineHeight: 17,
     fontFamily: fonts.regular,

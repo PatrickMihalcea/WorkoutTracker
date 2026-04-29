@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import Svg, { Line, Circle, Polyline, Text as SvgText } from 'react-native-svg';
 import { colors, fonts, spacing } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { isLightTheme } from '../../constants/themes';
 import {
   TimeSeriesPoint,
   YAxisInfo,
@@ -36,9 +38,10 @@ export interface SimpleLineChartProps {
 }
 
 function SectionTitle({ title, rightElement }: { title: string; rightElement?: React.ReactNode }) {
+  const { colors: tc } = useTheme();
   return (
     <View style={styles.sectionTitleRow}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={[styles.sectionTitle, { color: tc.text }]}>{title}</Text>
       {rightElement}
     </View>
   );
@@ -59,6 +62,11 @@ export function SimpleLineChart({
   yLabelFormatter,
 }: SimpleLineChartProps) {
   const { onChartTouchStart, onChartTouchEnd, pointerActiveRef } = useChartInteraction();
+  const { colors: tc, theme } = useTheme();
+  const isLight = isLightTheme(theme);
+  const chartStroke = isLight ? tc.textMuted : colors.border;
+  const axisStrokeOpacity = isLight ? 0.42 : 1;
+  const gridStrokeOpacity = isLight ? 0.34 : 0.7;
   const points = useMemo(() => data.filter((p) => p.value > 0), [data]);
   const hasTargetSeries = useMemo(
     () => points.some((point) => (point.target ?? 0) > 0),
@@ -283,8 +291,8 @@ export function SimpleLineChart({
       {headerContent}
       <View style={styles.chartHeaderArea}>
         <View style={{ opacity: (activeTooltip && tooltipReady) ? 0 : 1 }}>
-          <Text style={styles.dateRangeText}>{dateRange}</Text>
-          <Text style={styles.chartSubtitle}>{subtitle}</Text>
+          <Text style={[styles.dateRangeText, { color: tc.textSecondary }]}>{dateRange}</Text>
+          <Text style={[styles.chartSubtitle, { color: tc.textMuted }]}>{subtitle}</Text>
         </View>
         {activeTooltip && (() => {
           const tw = tooltipWidthRef.current;
@@ -306,11 +314,11 @@ export function SimpleLineChart({
                 }
               }}
             >
-              <Text style={styles.tooltipValue} numberOfLines={1}>{activeTooltip.value}</Text>
+              <Text style={[styles.tooltipValue, { color: tc.text }]} numberOfLines={1}>{activeTooltip.value}</Text>
               {activeTooltip.target ? (
-                <Text style={styles.tooltipTarget} numberOfLines={1}>{activeTooltip.target}</Text>
+                <Text style={[styles.tooltipTarget, { color: tc.textSecondary }]} numberOfLines={1}>{activeTooltip.target}</Text>
               ) : null}
-              <Text style={styles.tooltipDate} numberOfLines={1}>{activeTooltip.date}</Text>
+              <Text style={[styles.tooltipDate, { color: tc.textMuted }]} numberOfLines={1}>{activeTooltip.date}</Text>
             </View>
           );
         })()}
@@ -318,7 +326,7 @@ export function SimpleLineChart({
       <View style={styles.chartRow}>
         <View style={[styles.yAxisColumn, { width: fixedYAxisWidth, height: SVG_HEIGHT }]}>
           {[...yAxis.labels].reverse().map((label, i) => (
-            <Text key={i} style={styles.yAxisLabel}>{label}</Text>
+            <Text key={i} style={[styles.yAxisLabel, { color: tc.textMuted }]}>{label}</Text>
           ))}
         </View>
         <View
@@ -334,13 +342,13 @@ export function SimpleLineChart({
           <Svg width={chartWidth} height={SVG_HEIGHT}>
             <Line
               x1={0} y1={CHART_HEIGHT} x2={chartWidth} y2={CHART_HEIGHT}
-              stroke={colors.border} strokeWidth={1}
+              stroke={chartStroke} strokeWidth={1} opacity={axisStrokeOpacity}
             />
             {horizontalGridLines.map((y, i) => (
               <Line
                 key={`hg-${i}`}
                 x1={0} y1={y} x2={chartWidth} y2={y}
-                stroke={colors.border} strokeWidth={0.8} strokeDasharray="3 3" opacity={0.7}
+                stroke={chartStroke} strokeWidth={0.8} strokeDasharray="3 3" opacity={gridStrokeOpacity}
               />
             ))}
             {points.length > 1 && (
@@ -394,7 +402,7 @@ export function SimpleLineChart({
               <Line
                 x1={activeTooltip.ptX} y1={0}
                 x2={activeTooltip.ptX} y2={CHART_HEIGHT}
-                stroke={colors.border} strokeWidth={1}
+                stroke={chartStroke} strokeWidth={1} opacity={axisStrokeOpacity}
               />
             )}
             {xLabels.map((lbl, i) => (
@@ -403,7 +411,7 @@ export function SimpleLineChart({
                 x={lbl.x}
                 y={CHART_HEIGHT + 14}
                 fontSize={10}
-                fill={colors.textMuted}
+                fill={tc.textMuted}
                 textAnchor="middle"
                 fontFamily={fonts.regular}
               >

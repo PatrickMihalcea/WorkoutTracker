@@ -13,6 +13,13 @@ const BORDER_RADIUS = 22;
 const STROKE_WIDTH = 2.5;
 const PILL_DISMISS_FADE_MS = 220;
 
+function getMarkPhrase(msLeft: number): string | null {
+  if (msLeft > 5000) return null;
+  if (msLeft > 3500) return 'On Your Mark...';
+  if (msLeft > 2000) return 'Get Set...';
+  return 'Go!';
+}
+
 function formatCountdown(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
@@ -37,15 +44,21 @@ function buildPillPath(x: number, y: number, w: number, h: number, r: number): s
 
 export function WorkoutPill() {
   const { colors } = useTheme();
-  const { session, restTimer, cancelWorkout, exercises, rows } = useWorkoutStore();
+  const { session, restTimer, cancelWorkout, exercises, rows, tickRestTimer } = useWorkoutStore();
   const { expand } = useWorkoutOverlay();
   const { width: screenWidth } = useWindowDimensions();
   const pillWidth = screenWidth - PILL_MARGIN * 2;
   const [elapsed, setElapsed] = useState('');
   const [smoothProgress, setSmoothProgress] = useState(0);
+  const [displayRemaining, setDisplayRemaining] = useState(0);
   const endTimeRef = useRef(0);
   const pillOpacity = useRef(new Animated.Value(1)).current;
   const dismissingRef = useRef(false);
+  const markOpacity = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(restTimer ? 0 : 1)).current;
+  const [markPhrase, setMarkPhrase] = useState<string | null>(null);
+  const lastPhraseRef = useRef<string | null>(null);
+  const wasRestingRef = useRef(!!restTimer);
 
   useEffect(() => {
     if (!session) return;
@@ -59,15 +72,63 @@ export function WorkoutPill() {
 
   useEffect(() => {
     if (restTimer) {
-      endTimeRef.current = Date.now() + restTimer.remaining * 1000;
+      endTimeRef.current = restTimer.endsAt;
     }
-  }, [restTimer?.remaining, restTimer?.total]);
+  }, [restTimer?.endsAt]);
+
+  useEffect(() => {
+    if (!restTimer) return;
+    const id = setInterval(() => tickRestTimer(), 1000);
+    return () => clearInterval(id);
+  }, [restTimer !== null]);
+
+  useEffect(() => {
+    const isResting = !!restTimer;
+    if (isResting) {
+      setMarkPhrase(null);
+      lastPhraseRef.current = null;
+      markOpacity.setValue(0);
+      contentOpacity.stopAnimation();
+      contentOpacity.setValue(0);
+      wasRestingRef.current = true;
+      return;
+    }
+
+    if (wasRestingRef.current) {
+      contentOpacity.setValue(0);
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      contentOpacity.setValue(1);
+    }
+
+    wasRestingRef.current = false;
+  }, [contentOpacity, markOpacity, restTimer !== null]);
 
   useEffect(() => {
     if (!restTimer) { setSmoothProgress(0); return; }
     const tick = () => {
       const msLeft = Math.max(0, endTimeRef.current - Date.now());
       setSmoothProgress(msLeft / (restTimer.total * 1000));
+      setDisplayRemaining(Math.ceil(msLeft / 1000));
+      const newPhrase = getMarkPhrase(msLeft);
+      if (newPhrase !== lastPhraseRef.current) {
+        const prevPhrase = lastPhraseRef.current;
+        lastPhraseRef.current = newPhrase;
+        if (prevPhrase === null && newPhrase !== null) {
+          setMarkPhrase(newPhrase);
+          Animated.timing(markOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+        } else if (prevPhrase !== null && newPhrase !== null) {
+          Animated.timing(markOpacity, { toValue: 0, duration: 250, useNativeDriver: true }).start(({ finished }) => {
+            if (!finished) return;
+            setMarkPhrase(newPhrase);
+            Animated.timing(markOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+          });
+        }
+      }
     };
     tick();
     const id = setInterval(tick, 50);
@@ -88,6 +149,7 @@ export function WorkoutPill() {
     },
     chevron: { color: colors.text, fontSize: 13 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    centerCopy: { alignItems: 'center', justifyContent: 'center' },
     dotRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CAF50' },
     dotBlue: { backgroundColor: '#4A90D9' },
@@ -165,14 +227,36 @@ export function WorkoutPill() {
             <Text style={styles.chevron}>&#x25B2;</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={expand} style={styles.center} activeOpacity={0.7}>
-            <View style={styles.dotRow}>
-              <View style={[styles.dot, isResting && styles.dotBlue]} />
-              <Text style={styles.label} numberOfLines={1}>
-                {isResting ? `Rest: ${formatCountdown(restTimer.remaining)}` : `Workout ${elapsed}`}
-              </Text>
-            </View>
-            {currentExerciseName !== '' && (
-              <Text style={styles.exerciseName} numberOfLines={1}>{currentExerciseName}</Text>
+            {isResting ? (
+              <>
+                <View style={styles.dotRow}>
+                  <View style={[styles.dot, styles.dotBlue]} />
+                  <Text style={styles.label} numberOfLines={1}>
+                    {`Rest: ${formatCountdown(displayRemaining)}`}
+                  </Text>
+                </View>
+                {markPhrase !== null ? (
+                  <Animated.Text style={[styles.exerciseName, { opacity: markOpacity }]} numberOfLines={1}>
+                    {markPhrase}
+                  </Animated.Text>
+                ) : (
+                  currentExerciseName !== '' ? (
+                    <Text style={styles.exerciseName} numberOfLines={1}>{currentExerciseName}</Text>
+                  ) : null
+                )}
+              </>
+            ) : (
+              <Animated.View style={[styles.centerCopy, { opacity: contentOpacity }]}>
+                <View style={styles.dotRow}>
+                  <View style={styles.dot} />
+                  <Text style={styles.label} numberOfLines={1}>
+                    {`Workout ${elapsed}`}
+                  </Text>
+                </View>
+                {currentExerciseName !== '' ? (
+                  <Text style={styles.exerciseName} numberOfLines={1}>{currentExerciseName}</Text>
+                ) : null}
+              </Animated.View>
             )}
           </TouchableOpacity>
           <TouchableOpacity onPress={handleCancel} style={styles.iconBtn} activeOpacity={0.7}>

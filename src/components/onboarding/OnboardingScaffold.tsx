@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Dimensions,
   Keyboard,
   KeyboardAvoidingView,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   ScrollView,
   StyleSheet,
@@ -23,13 +26,17 @@ interface OnboardingScaffoldProps {
   totalSteps?: number;
   title: string;
   subtitle: string;
+  subtitleColor?: string;
   onBack?: () => void;
   footer: ReactNode;
   children: ReactNode;
+  autoScrollToFocusedInput?: boolean;
   showStepProgress?: boolean;
   footerFloating?: boolean;
   backgroundVariant?: 'gradient' | 'solid';
   solidBackgroundColor?: string;
+  paddingBottom?: number;
+  appearance?: 'theme' | 'dark';
 }
 
 export function OnboardingScaffold({
@@ -37,21 +44,59 @@ export function OnboardingScaffold({
   totalSteps = 4,
   title,
   subtitle,
+  subtitleColor,
   onBack,
   footer,
   children,
+  autoScrollToFocusedInput = false,
   showStepProgress = true,
   footerFloating = true,
   backgroundVariant = 'gradient',
   solidBackgroundColor,
+  paddingBottom,
+  appearance = 'theme',
 }: OnboardingScaffoldProps) {
   const { colors } = useTheme();
-  const resolvedBg = solidBackgroundColor ?? colors.background;
+  const isDarkAppearance = appearance === 'dark';
+  const resolvedBg = solidBackgroundColor ?? (isDarkAppearance ? '#000000' : colors.background);
   const insets = useSafeAreaInsets();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const heroAnim = useRef(new Animated.Value(0)).current;
   const bodyAnim = useRef(new Animated.Value(0)).current;
   const footerAnim = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollOffsetYRef = useRef(0);
+  const windowHeight = Dimensions.get('window').height;
+
+  const scrollFocusedInputIntoView = useCallback((keyboardTopY?: number) => {
+    if (!autoScrollToFocusedInput) return;
+    const focused = TextInput.State.currentlyFocusedInput?.();
+    if (!focused || typeof (focused as { measureInWindow?: Function }).measureInWindow !== 'function') return;
+
+    requestAnimationFrame(() => {
+      (focused as { measureInWindow: (cb: (x: number, y: number, width: number, height: number) => void) => void })
+        .measureInWindow((_x, y, _width, height) => {
+          const visibleTop = 118;
+          const footerClearance = footerFloating ? 112 : 28;
+          const visibleBottom = (keyboardTopY ?? windowHeight) - footerClearance;
+          const inputTop = y;
+          const inputBottom = y + height;
+
+          let delta = 0;
+          if (inputBottom > visibleBottom) {
+            delta = inputBottom - visibleBottom + 18;
+          } else if (inputTop < visibleTop) {
+            delta = inputTop - visibleTop - 12;
+          }
+
+          if (Math.abs(delta) < 2) return;
+          scrollRef.current?.scrollTo({
+            y: Math.max(0, scrollOffsetYRef.current + delta),
+            animated: true,
+          });
+        });
+    });
+  }, [autoScrollToFocusedInput, footerFloating, windowHeight]);
 
   useEffect(() => {
     heroAnim.setValue(0);
@@ -83,6 +128,9 @@ export function OnboardingScaffold({
 
     const showSub = Keyboard.addListener(showEvent, (event) => {
       setKeyboardHeight(event.endCoordinates.height);
+      setTimeout(() => {
+        scrollFocusedInputIntoView(event.endCoordinates.screenY);
+      }, Platform.OS === 'ios' ? 40 : 80);
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardHeight(0);
@@ -92,7 +140,7 @@ export function OnboardingScaffold({
       showSub.remove();
       hideSub.remove();
     };
-  }, []);
+  }, [scrollFocusedInputIntoView]);
 
   useEffect(() => {
     const blurFocusedInput = () => {
@@ -156,12 +204,14 @@ export function OnboardingScaffold({
     [footerAnim],
   );
   const safeBottom = Math.max(insets.bottom, spacing.md);
-  const floatingBottom = keyboardHeight > 0 ? keyboardHeight + spacing.sm : safeBottom;
+  const floatingBottom = keyboardHeight > 0
+    ? (Platform.OS === 'ios' ? 0 : keyboardHeight)
+    : safeBottom;
 
   const styles = useMemo(() => StyleSheet.create({
     root: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: isDarkAppearance ? '#000000' : colors.background,
     },
     safeArea: {
       flex: 1,
@@ -175,7 +225,7 @@ export function OnboardingScaffold({
     content: {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
-      paddingBottom: spacing.xl,
+      paddingBottom: spacing.bottom,
     },
     headerRow: {
       minHeight: 30,
@@ -202,7 +252,7 @@ export function OnboardingScaffold({
     },
     stepText: {
       fontSize: 12,
-      color: colors.textMuted,
+      color: isDarkAppearance ? '#8FA8A8' : colors.textMuted,
       fontFamily: fonts.semiBold,
       letterSpacing: 0.4,
       textTransform: 'uppercase',
@@ -218,17 +268,17 @@ export function OnboardingScaffold({
     progressFill: {
       height: '100%',
       borderRadius: 999,
-      backgroundColor: colors.accent,
+      backgroundColor: isDarkAppearance ? '#43E0D3' : colors.accent,
     },
     title: {
-      color: colors.text,
+      color: isDarkAppearance ? '#FFFFFF' : colors.text,
       fontFamily: fonts.bold,
       fontSize: 34,
       lineHeight: 40,
       marginBottom: spacing.xs,
     },
     subtitle: {
-      color: '#B1C4C4',
+      color: subtitleColor ?? (isDarkAppearance ? '#B1C4C4' : '#B1C4C4'),
       fontFamily: fonts.regular,
       fontSize: 15,
       lineHeight: 22,
@@ -243,7 +293,7 @@ export function OnboardingScaffold({
     inlineCtaWrap: {
       marginTop: spacing.md,
     },
-  }), [colors]);
+  }), [colors, isDarkAppearance, subtitleColor]);
 
   return (
     <View style={[styles.root, { backgroundColor: resolvedBg }]}>
@@ -263,13 +313,18 @@ export function OnboardingScaffold({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
+            ref={scrollRef}
             style={styles.scroll}
             contentContainerStyle={[
               styles.content,
-              { paddingBottom: footerFloating ? safeBottom + 92 : safeBottom + spacing.lg },
+              { paddingBottom: footerFloating ? safeBottom + 92 : safeBottom + (paddingBottom ?? spacing.lg) },
             ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+              scrollOffsetYRef.current = event.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
           >
             <View style={styles.headerRow}>
               {onBack ? (

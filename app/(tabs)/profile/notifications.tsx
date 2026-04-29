@@ -11,6 +11,7 @@ import {
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { fonts } from '../../../src/constants';
+import { isLightTheme } from '../../../src/constants/themes';
 import { notificationService } from '../../../src/services';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
@@ -80,7 +81,8 @@ function ToggleRow({
 }
 
 export default function NotificationsSettingsScreen() {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { profile, updateProfile } = useProfileStore();
 
@@ -198,7 +200,8 @@ export default function NotificationsSettingsScreen() {
             mode="time"
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
             onChange={handleTimeChange}
-            themeVariant="dark"
+            textColor={Platform.OS === 'ios' ? colors.textSecondary : undefined}
+            themeVariant={isLight ? 'light' : 'dark'}
           />
         </View>
       )}

@@ -9,6 +9,7 @@ import { useWorkoutOverlay } from '../../../src/components/workout';
 import { Button, Card, EmptyState, BottomSheetModal, RirCircle, SupersetBracket, ChipPicker } from '../../../src/components/ui';
 import { getSupersetPosition, type SupersetGroups } from '../../../src/utils/superset';
 import { fonts, spacing } from '../../../src/constants';
+import { isLightTheme } from '../../../src/constants/themes';
 import { getCurrentDayOfWeek, formatDuration } from '../../../src/utils/date';
 import { weightUnitLabel, distanceUnitLabel, formatWeight, formatDistance } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
@@ -18,7 +19,7 @@ import { routineService } from '../../../src/services';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -42,7 +43,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingBottom: spacing.bottom,
   },
   heroCard: {
-    marginBottom: 14,
+    marginBottom: 8,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
   },
@@ -55,24 +56,24 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   greeting: {
     fontSize: 13,
     fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
+    color: isLight ? '#FFFFFF' : colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   routineName: {
     fontSize: 30,
     fontFamily: fonts.bold,
-    color: colors.text,
+    color: isLight ? '#FFFFFF' : colors.text,
     marginTop: 2,
   },
   heroSubtext: {
     fontSize: 13,
     marginTop: 6,
-    color: colors.textSecondary,
+    color: isLight ? '#FFFFFF' : colors.textSecondary,
     fontFamily: fonts.regular,
   },
   workoutCard: {
-    marginBottom: 18,
+    marginBottom: 8,
     paddingHorizontal: spacing.md,
   },
   dayLabel: {
@@ -298,8 +299,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { colors, gradients } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, gradients, theme } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isLightTheme(theme)), [colors, theme]);
   const { user } = useAuthStore();
   const { activeRoutine, activeRoutineInitialized, fetchActiveRoutine } = useRoutineStore();
   const { session: activeSession, startWorkout, resumeWorkout } = useWorkoutStore();

@@ -16,13 +16,15 @@ import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { fonts, spacing } from '../../../src/constants';
 import { useTheme } from '../../../src/contexts/ThemeContext';
+import { isLightTheme } from '../../../src/constants/themes';
 import type { ThemeColors } from '../../../src/constants/themes';
 
 type ViewMode = 'month' | 'week';
 const FILTER_BAR_HEIGHT = 40;
 
 export default function ActivityScreen() {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { initialRange } = useLocalSearchParams<{ initialRange?: string }>();
   const { user } = useAuthStore();
@@ -73,11 +75,17 @@ export default function ActivityScreen() {
     outputRange: [0, FILTER_BAR_HEIGHT],
   });
   const activityScrollKey = `${viewMode}:${selectedRange}`;
+  const filterBlurTint = isLight ? 'light' : 'dark';
+  const filterBlurIntensity = isLight ? 40 : 60;
 
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.filterBarOuter, { height: filterBarHeight }]}>
-        <BlurView intensity={60} tint="dark" style={styles.filterBar}>
+        <BlurView
+          intensity={filterBlurIntensity}
+          tint={filterBlurTint}
+          style={[styles.filterBar, isLight && styles.filterBarLight]}
+        >
           <TimeRangeDropdown selected={selectedRange} onChange={setSelectedRange} />
           <View style={styles.toggleRow}>
             <TouchableOpacity
@@ -148,6 +156,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: spacing.sm,
+  },
+  filterBarLight: {
+    backgroundColor: `${colors.surfaceLight}D9`,
   },
   toggleRow: {
     flexDirection: 'row',

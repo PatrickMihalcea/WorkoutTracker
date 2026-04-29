@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
+import { useLocalSearchParams, usePathname, useRouter, useNavigation } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
@@ -22,7 +22,7 @@ import { useWorkoutOverlay } from '../../../src/components/workout';
 import { routineService, notificationService } from '../../../src/services';
 import { MAX_ROUTINE_WEEKS, type AddWeekMode } from '../../../src/services/routine.service';
 import { confirmDeleteExercise } from '../../../src/utils/confirmDeleteExercise';
-import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast, ExercisePickerModal, SupersetBracket, ChipPicker, ExerciseIconPreview } from '../../../src/components/ui';
+import { Button, Input, Card, DayOfWeekPicker, SwipeToDeleteRow, BottomSheetModal, AddRowButton, InlineEditRow, OverflowMenu, Toast, ExercisePickerModal, SupersetBracket, ChipPicker, ExerciseIconPreview, AppHeaderBackButton, AppHeaderButton } from '../../../src/components/ui';
 import type { OverflowMenuItem } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
 import {
@@ -281,11 +281,12 @@ export default function RoutineDetailScreen() {
   const { colors, gradients } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { scrollEnabled } = useChartInteraction();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, fromOnboarding } = useLocalSearchParams<{ id: string; fromOnboarding?: string }>();
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuthStore();
-  const { routines, currentRoutine, fetchRoutineDetail } = useRoutineStore();
+  const navigation = useNavigation();
+  const { routines, currentRoutine, fetchRoutineDetail, setActive, deactivate } = useRoutineStore();
   const { profile, updateProfile } = useProfileStore();
   const { expand: expandWorkout, setChromeHidden } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
@@ -316,6 +317,7 @@ export default function RoutineDetailScreen() {
   const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
   const [addExerciseDayId, setAddExerciseDayId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState('');
+  const [optimisticActive, setOptimisticActive] = useState<boolean | null>(null);
 
   const perfExpanded = profile?.show_routine_performance ?? true;
   const [reorderingDayId, setReorderingDayId] = useState<string | null>(null);
@@ -691,6 +693,44 @@ export default function RoutineDetailScreen() {
     if (id) fetchRoutineDetail(id);
   };
 
+  const handleToggleActive = useCallback(async () => {
+    if (!currentRoutine || !user) return;
+    const nextActive = !currentRoutine.is_active;
+    setOptimisticActive(nextActive);
+    if (nextActive) {
+      await setActive(currentRoutine.id, user.id);
+      setToastMessage('Routine now active');
+    } else {
+      await deactivate(currentRoutine.id);
+      setToastMessage('Routine no longer Active');
+    }
+    setOptimisticActive(null);
+  }, [currentRoutine, user, setActive, deactivate]);
+
+  useEffect(() => {
+    const isActive = optimisticActive ?? currentRoutine?.is_active ?? false;
+    navigation.setOptions({
+      headerRight: () => (
+        <AppHeaderButton
+          onPress={handleToggleActive}
+          style={isActive ? { backgroundColor: colors.accent, borderColor: colors.accent } : undefined}
+        >
+          <Text style={{ fontSize: 20, fontFamily: fonts.bold, color: isActive ? '#FFFFFF' : colors.text }}>A</Text>
+        </AppHeaderButton>
+      ),
+    });
+  }, [optimisticActive, currentRoutine?.is_active, handleToggleActive, colors.accent, colors.text]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: fromOnboarding === '1'
+        ? () => (
+            <AppHeaderBackButton onPress={() => router.replace('/(tabs)/routines')} />
+          )
+        : undefined,
+    });
+  }, [fromOnboarding, navigation, router]);
+
   const handleStartEditName = () => {
     if (!currentRoutine) return;
     setNameDraft(currentRoutine.name);
@@ -873,12 +913,16 @@ export default function RoutineDetailScreen() {
     if (currentRoutine.current_week === selectedWeek) return;
     try {
       await routineService.setCurrentWeek(id, selectedWeek);
+      if (!currentRoutine.is_active && user) {
+        await setActive(id, user.id);
+        setToastMessage('Routine now active');
+      }
       await fetchRoutineDetail(id);
       void notificationService.syncWorkoutDayReminder(profile);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
-  }, [currentRoutine, id, selectedWeek, fetchRoutineDetail, profile]);
+  }, [currentRoutine, id, selectedWeek, fetchRoutineDetail, profile, user, setActive]);
 
   const executeCopyWeek = useCallback(async (sourceWeek: number, targetWeek: number, toast: string) => {
     if (!currentRoutine || !id || updatingWeeks) return;
@@ -1685,10 +1729,26 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 10,
     marginBottom: 20,
   },
+  titlePressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 1,
+  },
+  activateBadge: {
+    fontSize: 20,
+    fontFamily: fonts.bold,
+    color: colors.text,
+  },
+  activateBadgeActive: {
+    color: colors.accent,
+  },
   title: {
     fontSize: 26,
     fontFamily: fonts.bold,
     color: colors.text,
+    flexShrink: 1,
+    flexWrap: 'wrap',
   },
   editHintIcon: {
     width: 18,

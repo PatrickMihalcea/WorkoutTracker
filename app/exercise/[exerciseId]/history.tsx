@@ -9,6 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { exerciseDetailService } from '../../../src/services';
 import type { ExerciseHistoryData, ExerciseHistorySession } from '../../../src/services';
 import { useAuthStore } from '../../../src/stores/auth.store';
@@ -17,7 +18,7 @@ import { formatDate, formatTime } from '../../../src/utils/date';
 import { formatDurationValue } from '../../../src/utils/duration';
 import { formatWeight, formatDistance, weightUnitLabel, distanceUnitLabel } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
-import { Card, RirCircle } from '../../../src/components/ui';
+import { AppHeaderBackButton, Card, RirCircle } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
@@ -26,7 +27,8 @@ export default function ExerciseHistoryScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
-  const { exerciseId } = useLocalSearchParams<{ exerciseId: string }>();
+  const insets = useSafeAreaInsets();
+  const { exerciseId, fromWorkoutOverlay } = useLocalSearchParams<{ exerciseId: string; fromWorkoutOverlay?: string }>();
   const { user } = useAuthStore();
   const { profile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
@@ -36,6 +38,7 @@ export default function ExerciseHistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const resolvedPaddingTop = insets.top;
 
   const loadHistory = useCallback(async () => {
     if (!user?.id || !exerciseId) return;
@@ -142,22 +145,23 @@ export default function ExerciseHistoryScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
-          headerTitle: 'Exercise History',
-          headerTitleStyle: { fontFamily: 'Monospaceland-Bold' },
-          headerBackButtonDisplayMode: 'minimal',
-          headerBackTitle: '',
+          headerShown: false,
+          presentation: fromWorkoutOverlay === '1' ? 'fullScreenModal' : 'card',
         }}
       />
 
       {loading && !historyData ? (
-        <View style={styles.centered}>
+        <View style={[styles.centered, { paddingTop: resolvedPaddingTop }]}>
+          <View style={styles.backButtonWrap}>
+            <AppHeaderBackButton onPress={() => router.back()} />
+          </View>
           <ActivityIndicator size="large" color={colors.textSecondary} />
         </View>
       ) : errorMessage ? (
-        <View style={styles.centered}>
+        <View style={[styles.centered, { paddingTop: resolvedPaddingTop }]}>
+          <View style={styles.backButtonWrap}>
+            <AppHeaderBackButton onPress={() => router.back()} />
+          </View>
           <Text style={styles.emptyTitle}>Couldn’t load history</Text>
           <Text style={styles.emptyText}>{errorMessage}</Text>
         </View>
@@ -168,6 +172,7 @@ export default function ExerciseHistoryScreen() {
           renderItem={renderItem}
           contentContainerStyle={[
             styles.listContent,
+            { paddingTop: resolvedPaddingTop },
             (historyData?.sessions.length ?? 0) === 0 ? styles.listContentEmpty : null,
           ]}
           refreshControl={
@@ -179,6 +184,9 @@ export default function ExerciseHistoryScreen() {
           }
           ListHeaderComponent={historyData ? (
             <View style={styles.headerBlock}>
+              <View style={styles.backButtonWrap}>
+                <AppHeaderBackButton onPress={() => router.back()} />
+              </View>
               <Text style={styles.exerciseName}>{historyData.exercise.name}</Text>
               <Text style={styles.headerSubtitle}>Completed sessions for this exercise</Text>
             </View>
@@ -202,7 +210,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: spacing.sm,
-    paddingTop: spacing.sm,
     paddingBottom: spacing.bottom,
     gap: spacing.sm,
   },
@@ -212,8 +219,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   centered: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: spacing.lg,
+  },
+  backButtonWrap: {
+    alignSelf: 'flex-start',
+    marginBottom: spacing.md,
   },
   centeredInline: {
     alignItems: 'center',

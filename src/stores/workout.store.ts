@@ -483,16 +483,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     }));
   },
 
-  updateRow: async (id, entryId, updates) => {
+  updateRow: async (id, _entryId, updates) => {
     await workoutRowService.updateRow(id, updates);
-    set((state) => ({
-      rows: {
-        ...state.rows,
-        [entryId]: (state.rows[entryId] ?? []).map((r) =>
-          r.id === id ? { ...r, ...updates } : r,
-        ),
-      },
-    }));
+    // Local state is already updated optimistically by updateRowLocal on every keystroke.
+    // No store update here — avoids a full WorkoutOverlay re-render after every DB round-trip.
   },
 
   toggleRow: async (id, entryId) => {

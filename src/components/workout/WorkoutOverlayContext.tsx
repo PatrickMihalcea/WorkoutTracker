@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { usePathname, useRouter } from 'expo-router';
 import { useWorkoutStore } from '../../stores/workout.store';
 
@@ -9,6 +9,7 @@ interface WorkoutOverlayContextType {
   minimize: () => void;
   setChromeHidden: (hidden: boolean) => void;
   setWorkoutRouteOpen: (open: boolean) => void;
+  notifyWorkoutCompleted: (sessionId: string) => void;
 }
 
 const WorkoutOverlayContext = createContext<WorkoutOverlayContextType>({
@@ -18,6 +19,7 @@ const WorkoutOverlayContext = createContext<WorkoutOverlayContextType>({
   minimize: () => {},
   setChromeHidden: () => {},
   setWorkoutRouteOpen: () => {},
+  notifyWorkoutCompleted: () => {},
 });
 
 export function WorkoutOverlayProvider({ children }: { children: React.ReactNode }) {
@@ -26,6 +28,7 @@ export function WorkoutOverlayProvider({ children }: { children: React.ReactNode
   const session = useWorkoutStore((s) => s.session);
   const [workoutRouteOpen, setWorkoutRouteOpen] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false);
+  const pendingCompletedSessionId = useRef<string | null>(null);
   const isWorkoutRoute = pathname === '/workout';
   const expanded = workoutRouteOpen || isWorkoutRoute;
 
@@ -35,13 +38,23 @@ export function WorkoutOverlayProvider({ children }: { children: React.ReactNode
     }
   }, [session?.id]);
 
+  // Once the workout modal is dismissed, navigate to the completed session detail.
+  useEffect(() => {
+    if (!pendingCompletedSessionId.current) return;
+    if (isWorkoutRoute) return;
+    const sessionId = pendingCompletedSessionId.current;
+    pendingCompletedSessionId.current = null;
+    router.push(`/(tabs)/profile/${sessionId}?justCompleted=1`);
+  }, [isWorkoutRoute, router]);
+
   const expand = useCallback(() => {
-    if (!session?.id) return;
+    const activeSession = useWorkoutStore.getState().session;
+    if (!activeSession?.id) return;
     setWorkoutRouteOpen(true);
     if (!isWorkoutRoute) {
       router.push('/workout');
     }
-  }, [isWorkoutRoute, router, session?.id]);
+  }, [isWorkoutRoute, router]);
 
   const minimize = useCallback(() => {
     setWorkoutRouteOpen(false);
@@ -49,6 +62,11 @@ export function WorkoutOverlayProvider({ children }: { children: React.ReactNode
       router.back();
     }
   }, [isWorkoutRoute, router]);
+
+  const notifyWorkoutCompleted = useCallback((sessionId: string) => {
+    pendingCompletedSessionId.current = sessionId;
+    minimize();
+  }, [minimize]);
 
   const value = useMemo(
     () => ({
@@ -58,8 +76,9 @@ export function WorkoutOverlayProvider({ children }: { children: React.ReactNode
       minimize,
       setChromeHidden,
       setWorkoutRouteOpen,
+      notifyWorkoutCompleted,
     }),
-    [expanded, chromeHidden, expand, minimize, setChromeHidden, setWorkoutRouteOpen],
+    [expanded, chromeHidden, expand, minimize, setChromeHidden, setWorkoutRouteOpen, notifyWorkoutCompleted],
   );
 
   return (

@@ -12,6 +12,7 @@ import type { LayoutAnimationConfig } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { RoutineDayExercise, WorkoutRow, SetLog, WeightUnit, DistanceUnit } from '../../models';
 import { fonts } from '../../constants';
+import { isLightTheme } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Card } from '../ui/Card';
 import { ExerciseIconPreview } from '../ui/ExerciseIconPreview';
@@ -106,8 +107,9 @@ export function ExerciseCard({
   onBeginEditCell,
   onRowLayout,
 }: ExerciseCardProps) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const { setCompletion } = useThemeColors();
+  const warmupActionColor = isLightTheme(theme) ? '#B8860B' : '#FFD93D';
   const exerciseName = entry.exercise?.name ?? 'Unknown Exercise';
   const muscleGroup = (entry.exercise?.muscle_group ?? '').replace(/_/g, ' ');
   const exType = entry.exercise?.exercise_type;
@@ -128,6 +130,8 @@ export function ExerciseCard({
 
   const canAnimate = setCompletion !== 'transparent';
   const [thumbnailLoadFailed, setThumbnailLoadFailed] = useState(false);
+  const [nameBlockWidth, setNameBlockWidth] = useState<number | null>(null);
+  const [nameMaxWidth, setNameMaxWidth] = useState<number | null>(null);
 
   const thumbnailUri = useMemo(() => {
     return getExerciseThumbnailUrl(entry.exercise);
@@ -164,6 +168,10 @@ export function ExerciseCard({
     setThumbnailLoadFailed(false);
   }, [entry.exercise?.id, thumbnailUri]);
 
+  useEffect(() => {
+    setNameBlockWidth(null);
+  }, [exerciseName]);
+
   /** Overlay that fades in over the card gradient when all sets are done. */
   const completionOverlay = canAnimate ? (
     <Animated.View
@@ -172,8 +180,10 @@ export function ExerciseCard({
     />
   ) : null;
 
-  const doneTextColor = (allDone && canAnimate) ? '#000000' : undefined;
-  const menuTriggerColor = allDone ? '#000000' : '#FFFFFF';
+  const completedForegroundColor = isLightTheme(theme) ? '#FFFFFF' : '#000000';
+  const defaultMenuTriggerColor = isLightTheme(theme) ? '#000000' : '#FFFFFF';
+  const doneTextColor = (allDone && canAnimate) ? completedForegroundColor : undefined;
+  const menuTriggerColor = allDone ? completedForegroundColor : defaultMenuTriggerColor;
 
   const handleToggle = () => {
     LayoutAnimation.configureNext(collapseLayout);
@@ -195,10 +205,30 @@ export function ExerciseCard({
     onLongPress?.();
   };
 
+  const handleNameLayout = (event: { nativeEvent: { lines: Array<{ width: number }> } }) => {
+    const lines = event.nativeEvent.lines;
+    if (!lines || lines.length === 0) return;
+    const widest = Math.ceil(Math.max(...lines.map((line) => line.width)));
+    setNameBlockWidth((prev) => (prev != null && Math.abs(prev - widest) < 1 ? prev : widest));
+  };
+
+  const handleNameContainerLayout = (event: { nativeEvent: { layout: { width: number } } }) => {
+    const nextWidth = Math.floor(event.nativeEvent.layout.width);
+    if (!Number.isFinite(nextWidth) || nextWidth <= 0) return;
+    setNameMaxWidth((prev) => (prev != null && Math.abs(prev - nextWidth) < 1 ? prev : nextWidth));
+  };
+
+  const resolvedNameWidth = useMemo(() => {
+    if (nameBlockWidth == null) return null;
+    if (nameMaxWidth == null) return nameBlockWidth;
+    return Math.min(nameBlockWidth, nameMaxWidth);
+  }, [nameBlockWidth, nameMaxWidth]);
+
   const renderExerciseName = (done?: string) => {
     if (!onDetails) {
       return (
         <Text
+          onTextLayout={handleNameLayout}
           style={[styles.exerciseName, done && { color: done }]}
         >
           {exerciseName}
@@ -206,19 +236,14 @@ export function ExerciseCard({
       );
     }
     return (
-      <TouchableOpacity
+      <Text
         onPress={handleDetailsPress}
         onLongPress={handleNameLongPress}
-        activeOpacity={0.7}
-        style={styles.exerciseNameTapTarget}
+        onTextLayout={handleNameLayout}
+        style={[styles.exerciseName, styles.exerciseNameLink, done && { color: done }]}
       >
-        <Text
-          suppressHighlighting
-          style={[styles.exerciseName, styles.exerciseNameLink, done && { color: done }]}
-        >
-          {exerciseName}
-        </Text>
-      </TouchableOpacity>
+        {exerciseName}
+      </Text>
     );
   };
 
@@ -285,7 +310,10 @@ export function ExerciseCard({
       fontSize: 17,
       fontFamily: fonts.bold,
       color: colors.text,
+      lineHeight: 22,
+      includeFontPadding: false,
       flexShrink: 1,
+      alignSelf: 'flex-start',
     },
     exerciseIdentity: {
       flex: 1,
@@ -308,6 +336,18 @@ export function ExerciseCard({
     exerciseIdentityText: {
       flex: 1,
       minWidth: 0,
+      paddingRight: 10,
+    },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      maxWidth: '100%',
+    },
+    nameTextBlock: {
+      alignSelf: 'flex-start',
+      flexShrink: 1,
+      maxWidth: '100%',
     },
     headerRight: {
       flexDirection: 'row',
@@ -318,10 +358,6 @@ export function ExerciseCard({
     },
     exerciseNameLink: {
       color: colors.accent,
-    },
-    exerciseNameTapTarget: {
-      alignSelf: 'flex-start',
-      maxWidth: '100%',
     },
     muscleGroup: {
       fontSize: 13,
@@ -371,11 +407,11 @@ export function ExerciseCard({
       fontFamily: fonts.semiBold,
     },
     addWarmupText: {
-      color: '#FFD93D',
+      color: warmupActionColor,
       fontSize: 14,
       fontFamily: fonts.semiBold,
     },
-  }), [colors]);
+  }), [colors, warmupActionColor]);
 
   if (reorderCollapsed) {
     return (
@@ -385,8 +421,12 @@ export function ExerciseCard({
           <View style={styles.headerCollapsed}>
             <View style={styles.exerciseIdentity}>
               {renderExerciseThumb()}
-              <View style={styles.exerciseIdentityText}>
-                {renderExerciseName(doneTextColor)}
+              <View style={styles.exerciseIdentityText} onLayout={handleNameContainerLayout}>
+                <View style={styles.nameRow}>
+                  <View style={[styles.nameTextBlock, resolvedNameWidth ? { width: resolvedNameWidth } : null]}>
+                    {renderExerciseName(doneTextColor)}
+                  </View>
+                </View>
                 <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
               </View>
             </View>
@@ -415,8 +455,12 @@ export function ExerciseCard({
             <View style={styles.headerCollapsed}>
               <View style={styles.exerciseIdentity}>
                 {renderExerciseThumb()}
-                <View style={styles.exerciseIdentityText}>
-                  {renderExerciseName(doneTextColor)}
+                <View style={styles.exerciseIdentityText} onLayout={handleNameContainerLayout}>
+                  <View style={styles.nameRow}>
+                    <View style={[styles.nameTextBlock, resolvedNameWidth ? { width: resolvedNameWidth } : null]}>
+                      {renderExerciseName(doneTextColor)}
+                    </View>
+                  </View>
                   <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
                 </View>
               </View>
@@ -455,8 +499,12 @@ export function ExerciseCard({
         <View style={styles.header}>
           <View style={styles.exerciseIdentity}>
             {renderExerciseThumb()}
-            <View style={styles.exerciseIdentityText}>
-              {renderExerciseName(doneTextColor)}
+            <View style={styles.exerciseIdentityText} onLayout={handleNameContainerLayout}>
+              <View style={styles.nameRow}>
+                <View style={[styles.nameTextBlock, resolvedNameWidth ? { width: resolvedNameWidth } : null]}>
+                  {renderExerciseName(doneTextColor)}
+                </View>
+              </View>
               <Text style={[styles.muscleGroup, doneTextColor && { color: doneTextColor }]}>{muscleGroup}</Text>
             </View>
           </View>

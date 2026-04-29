@@ -8,6 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { fonts } from '../../constants';
+import { isLightTheme } from '../../constants/themes';
 import { useTheme } from '../../contexts/ThemeContext';
 import { WeightUnit, DistanceUnit, ExerciseType } from '../../models';
 import { weightUnitLabel, distanceUnitLabel, parseWeightToKg } from '../../utils/units';
@@ -258,7 +259,8 @@ export function SetsTableEditor({
   valueEditorAnimateDoneExit = false,
   getValueEditorOpenDelayMs,
 }: SetsTableEditorProps) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const warmupActionColor = isLightTheme(theme) ? '#B8860B' : '#D4A017';
   const [valueEditorVisible, setValueEditorVisible] = useState(false);
   const [valueEditorCell, setValueEditorCell] = useState<TableEditorCell | null>(null);
   const [valueEditorNumeric, setValueEditorNumeric] = useState('');
@@ -757,7 +759,7 @@ export function SetsTableEditor({
     addWarmupText: {
       fontSize: 13,
       fontFamily: fonts.semiBold,
-      color: '#D4A017',
+      color: warmupActionColor,
     },
     durationTouchable: {
       justifyContent: 'center',
@@ -792,7 +794,7 @@ export function SetsTableEditor({
       fontFamily: fonts.bold,
       color: '#fff',
     },
-  }), [colors]);
+  }), [colors, warmupActionColor]);
 
   return (
     <View style={styles.container}>

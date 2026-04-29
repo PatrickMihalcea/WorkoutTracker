@@ -28,6 +28,7 @@ import { getMeasurementGoalFromProfile, measurementGoalToDisplay } from '../../u
 import { weightUnitLabel } from '../../utils/units';
 import { fonts, spacing } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
+import { isLightTheme } from '../../constants/themes';
 import type { ThemeColors } from '../../constants/themes';
 
 import {
@@ -105,9 +106,9 @@ const MEASUREMENT_OPTIONS = BODY_MEASUREMENT_METRICS.map((m) => ({
 }));
 
 function useDashboardStyles() {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  return { colors, styles };
+  return { colors, styles, isLight: isLightTheme(theme) };
 }
 
 /* ── Main Dashboard ── */
@@ -121,7 +122,7 @@ export function Dashboard({
   chartMode = 'abs',
   onChangeChartMode,
 }: Dashboard2Props) {
-  const { colors, styles } = useDashboardStyles();
+  const { colors, styles, isLight } = useDashboardStyles();
   const router = useRouter();
   const pathname = usePathname();
   const { profile } = useProfileStore();
@@ -237,6 +238,8 @@ export function Dashboard({
     inputRange: [0, 1],
     outputRange: [0, FILTER_BAR_HEIGHT],
   });
+  const filterBlurTint = isLight ? 'light' : 'dark';
+  const filterBlurIntensity = isLight ? 40 : 60;
 
   return (
     <View style={styles.container}>
@@ -308,7 +311,11 @@ export function Dashboard({
         />
       </ScrollView>
       <Animated.View style={[styles.filterBarOuter, { height: filterBarHeight }]}>
-        <BlurView intensity={60} tint="dark" style={styles.filterBar}>
+        <BlurView
+          intensity={filterBlurIntensity}
+          tint={filterBlurTint}
+          style={[styles.filterBar, isLight && styles.filterBarLight]}
+        >
           <TimeRangeDropdown selected={selectedRange} onChange={handleRangeChange} />
           <ChartModeToggle selected={chartMode} onChange={(m) => onChangeChartMode?.(m)} />
           {chartMode === 'abs' && (
@@ -321,7 +328,11 @@ export function Dashboard({
         style={styles.chevronBox}
         activeOpacity={0.7}
       >
-        <BlurView intensity={60} tint="dark" style={styles.chevronBlur}>
+        <BlurView
+          intensity={filterBlurIntensity}
+          tint={filterBlurTint}
+          style={[styles.chevronBlur, isLight && styles.filterBarLight]}
+        >
           <Text style={styles.chevronText}>{filtersOpen ? '▴' : '▾'}</Text>
         </BlurView>
       </TouchableOpacity>
@@ -1135,6 +1146,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: spacing.sm,
+  },
+  filterBarLight: {
+    backgroundColor: `${colors.surfaceLight}D9`,
   },
   chevronBox: {
     position: 'absolute',

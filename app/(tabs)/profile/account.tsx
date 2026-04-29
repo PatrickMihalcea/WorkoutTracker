@@ -44,8 +44,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   deleteAccount: {
     marginTop: 12,
-    borderColor: '#7F2A2A',
-    backgroundColor: '#2B1616',
+    borderColor: 'rgba(200, 40, 40, 0.4)',
+    backgroundColor: 'rgba(200, 40, 40, 0.08)',
     borderWidth: 1,
   },
 });

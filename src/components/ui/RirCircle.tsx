@@ -1,16 +1,16 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, ViewStyle } from 'react-native';
 import { fonts } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const COLORS = {
-  empty: '#2a2a2a',
   red: '#FF6B6B',
   yellow: '#FFD93D',
   green: '#6BCB77',
 } as const;
 
-export function getRirColor(value: number | null): string {
-  if (value === null) return COLORS.empty;
+export function getRirColor(value: number | null, emptyColor: string): string {
+  if (value === null) return emptyColor;
   if (value <= 1) return COLORS.red;
   if (value <= 3) return COLORS.yellow;
   return COLORS.green;
@@ -32,14 +32,23 @@ interface RirCircleProps {
 }
 
 export function RirCircle({ value, size = 32, onPress, style, textColorOverride }: RirCircleProps) {
-  const bg = getRirColor(value);
-  const textColor = textColorOverride ?? (value === null ? '#666666' : '#000000');
+  const { colors } = useTheme();
+  const isEmpty = value === null;
+  const bg = getRirColor(value, colors.surfaceLight);
+  const textColor = textColorOverride ?? (isEmpty ? colors.textMuted : '#000000');
 
   const circle = (
     <TouchableOpacity
       style={[
         styles.circle,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: bg },
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: bg,
+          borderWidth: isEmpty ? 1 : 0,
+          borderColor: isEmpty ? colors.border : 'transparent',
+        },
         style,
       ]}
       onPress={onPress}

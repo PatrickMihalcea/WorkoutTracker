@@ -6,6 +6,8 @@ import {
   StyleSheet,
   TextInputProps,
   ViewStyle,
+  TextStyle,
+  StyleProp,
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { fonts } from '../../constants';
@@ -13,10 +15,12 @@ import { fonts } from '../../constants';
 interface InputProps extends TextInputProps {
   label?: string;
   error?: string;
-  containerStyle?: ViewStyle;
+  containerStyle?: StyleProp<ViewStyle>;
+  labelStyle?: StyleProp<TextStyle>;
+  inputStyle?: StyleProp<TextStyle>;
 }
 
-export function Input({ label, error, containerStyle, ...props }: InputProps) {
+export function Input({ label, error, containerStyle, labelStyle, inputStyle, ...props }: InputProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => StyleSheet.create({
     container: { marginBottom: 16 },
@@ -48,9 +52,9 @@ export function Input({ label, error, containerStyle, ...props }: InputProps) {
 
   return (
     <View style={[styles.container, containerStyle]}>
-      {label && <Text style={styles.label}>{label}</Text>}
+      {label && <Text style={[styles.label, labelStyle]}>{label}</Text>}
       <TextInput
-        style={[styles.input, error && styles.inputError]}
+        style={[styles.input, error && styles.inputError, inputStyle]}
         placeholderTextColor={colors.textMuted}
         {...props}
       />

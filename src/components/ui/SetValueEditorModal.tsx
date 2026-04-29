@@ -12,6 +12,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import { fonts } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
+import { isLightTheme } from '../../constants/themes';
 import {
   EditorDirection,
   EditableFieldKind,
@@ -114,7 +115,8 @@ export function SetValueEditorModal({
   onDurationValueChange,
   onRirValueChange,
 }: SetValueEditorModalProps) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
   const androidPickerPopupTextColor = '#111111';
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const sheetTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -310,7 +312,7 @@ export function SetValueEditorModal({
     enterIcon: {
       width: 18,
       height: 18,
-      tintColor: '#000000',
+      tintColor: isLight ? '#FFFFFF' : '#000000',
       resizeMode: 'contain',
     },
     center: {
@@ -370,7 +372,7 @@ export function SetValueEditorModal({
     backspaceIcon: {
       width: 18,
       height: 18,
-      tintColor: '#FFFFFF',
+      tintColor: isLight ? '#000000' : '#FFFFFF',
       resizeMode: 'contain',
     },
     durationLabels: {
@@ -447,7 +449,7 @@ export function SetValueEditorModal({
       fontSize: 15,
       fontFamily: fonts.bold,
     },
-  }), [colors]);
+  }), [colors, isLight]);
 
   const itemStyle = Platform.OS === 'ios'
     ? {

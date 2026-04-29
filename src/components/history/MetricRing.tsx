@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, G, LinearGradient, Stop } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, Defs, G, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { fonts } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -29,7 +30,7 @@ export function MetricRing({
   muted = false,
   compact = false,
 }: MetricRingProps) {
-  const { colors } = useTheme();
+  const { colors, gradients } = useTheme();
   const size = 92;
   const strokeWidth = 9;
   const radius = (size - strokeWidth) / 2;
@@ -59,28 +60,36 @@ export function MetricRing({
   });
 
   const styles = useMemo(() => StyleSheet.create({
-    container: {
+    shadow: {
       flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#161B23',
       borderRadius: 16,
-      borderWidth: 1,
-      borderColor: '#2A303A',
-      paddingVertical: 12,
-      paddingHorizontal: 6,
       shadowColor: '#000',
       shadowOpacity: 0.2,
       shadowRadius: 8,
       shadowOffset: { width: 0, height: 3 },
+      elevation: 4,
+    },
+    shadowFull: {
+      shadowOpacity: 0.34,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 16,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.metricCardBorder,
+      paddingVertical: 12,
+      paddingHorizontal: 6,
     },
     containerMuted: {
-      borderColor: '#2A2F38',
+      borderColor: colors.metricCardBorder,
     },
     containerFull: {
       borderColor: '#4A617F',
-      shadowOpacity: 0.34,
-      shadowRadius: 12,
     },
     centerText: {
       position: 'absolute',
@@ -109,7 +118,7 @@ export function MetricRing({
     separator: {
       fontSize: 12,
       fontFamily: fonts.semiBold,
-      color: '#8E98AA',
+      color: colors.textMuted,
     },
     separatorCompact: {
       fontSize: 11,
@@ -117,7 +126,7 @@ export function MetricRing({
     target: {
       fontSize: 13,
       fontFamily: fonts.semiBold,
-      color: '#B7C0CF',
+      color: colors.textSecondary,
     },
     targetCompact: {
       fontSize: 12,
@@ -126,7 +135,7 @@ export function MetricRing({
       marginTop: 12,
       fontSize: 12,
       fontFamily: fonts.semiBold,
-      color: '#98A5BA',
+      color: colors.textMuted,
     },
     fullBadge: {
       position: 'absolute',
@@ -148,13 +157,20 @@ export function MetricRing({
   }), [colors]);
 
   return (
+    <View style={[styles.shadow, isFull && styles.shadowFull]}>
     <View style={[styles.container, muted && styles.containerMuted, isFull && styles.containerFull]}>
+      <LinearGradient
+        colors={gradients.metricCard}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
       <Svg width={size} height={size}>
         <Defs>
-          <LinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <SvgLinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
             <Stop offset="0%" stopColor={color} />
             <Stop offset="100%" stopColor={gradientToColor ?? '#E0F2FF'} />
-          </LinearGradient>
+          </SvgLinearGradient>
         </Defs>
         <G rotation="-90" origin={`${size / 2}, ${size / 2}`}>
           {isFull && (
@@ -181,7 +197,7 @@ export function MetricRing({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke={stylesVars.track}
+            stroke={colors.metricCardBorder}
             strokeWidth={strokeWidth}
             fill="transparent"
           />
@@ -218,9 +234,7 @@ export function MetricRing({
         </View>
       )}
     </View>
+    </View>
   );
 }
 
-const stylesVars = {
-  track: '#2A303A',
-};

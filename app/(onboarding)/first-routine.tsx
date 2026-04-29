@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   StyleSheet,
   Text,
@@ -11,7 +12,7 @@ import { useRouter } from 'expo-router';
 
 import { OnboardingScaffold } from '../../src/components/onboarding/OnboardingScaffold';
 import { RoutineCreationLoadingOverlay } from '../../src/components/routine/RoutineCreationLoadingOverlay';
-import { Button, ChipPicker } from '../../src/components/ui';
+import { ChipPicker } from '../../src/components/ui';
 import { fonts, spacing } from '../../src/constants';
 import {
   OnboardingEquipmentPreference,
@@ -23,15 +24,28 @@ import {
 } from '../../src/models';
 import { onboardingService } from '../../src/services';
 import { useProfileStore } from '../../src/stores/profile.store';
-import { useTheme } from '../../src/contexts/ThemeContext';
-import type { ThemeColors } from '../../src/constants/themes';
+
+const SCREEN_COLORS = {
+  card: '#121A1F',
+  cardActive: '#183338',
+  cardBorder: '#2C3A42',
+  cardBorderActive: '#43E0D3',
+  text: '#FFFFFF',
+  textMuted: '#9EB0B9',
+  textLabel: '#B9CBCE',
+  chip: '#182126',
+  chipSelected: '#43E0D3',
+  chipBorder: '#28373F',
+  chipText: '#EEF8F8',
+  chipTextSelected: '#041416',
+  ctaBackground: '#43E0D3',
+  ctaText: '#041416',
+} as const;
 
 export default function FirstRoutineScreen() {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const { updateProfile } = useProfileStore();
-  const [mode, setMode] = useState<OnboardingRoutineGenerationMode>('template');
+  const [mode, setMode] = useState<OnboardingRoutineGenerationMode>('ai');
   const [daysPerWeek, setDaysPerWeek] = useState<3 | 4 | 5>(4);
   const [sessionMinutes, setSessionMinutes] = useState<30 | 60 | 90>(60);
   const [weekCount, setWeekCount] = useState<RoutineWeekCount>(4);
@@ -64,7 +78,7 @@ export default function FirstRoutineScreen() {
 
       await updateProfile({ onboarding_complete: true });
 
-      router.replace(`/(tabs)/routines/${result.routine_id}`);
+      router.replace(`/(tabs)/routines/${result.routine_id}?fromOnboarding=1`);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message || 'Could not create your first routine.');
     } finally {
@@ -77,23 +91,13 @@ export default function FirstRoutineScreen() {
       <OnboardingScaffold
         step={5}
         totalSteps={5}
+        appearance="dark"
         onBack={() => router.back()}
         title="Build your first routine"
         subtitle="Choose a quick setup now. You can edit everything later."
-        footer={<Button title="Create My Routine" onPress={handleContinue} loading={loading} variant="cta" size="lg" />}
+        footer={<OnboardingActionButton title="Create My Routine" onPress={handleContinue} loading={loading} />}
       >
         <View style={styles.modeRow}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.modeCard, mode === 'template' && styles.modeCardActive]}
-            onPress={() => handleModeChange('template')}
-          >
-            <Text style={[styles.modeTitle, mode === 'template' && styles.modeTitleActive]}>Fast Start</Text>
-            <Text style={[styles.modeHint, mode === 'template' && styles.modeHintActive]}>
-              Use a proven template.
-            </Text>
-          </TouchableOpacity>
-
           <TouchableOpacity
             activeOpacity={0.8}
             style={[styles.modeCard, mode === 'ai' && styles.modeCardActive]}
@@ -104,10 +108,25 @@ export default function FirstRoutineScreen() {
               Tailored to your setup.
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[styles.modeCard, mode === 'template' && styles.modeCardActive]}
+            onPress={() => handleModeChange('template')}
+          >
+            <Text style={[styles.modeTitle, mode === 'template' && styles.modeTitleActive]}>Fast Start</Text>
+            <Text style={[styles.modeHint, mode === 'template' && styles.modeHintActive]}>
+              Use a proven template.
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <QuestionBlock label="Days per week">
           <ChipPicker
+            chipStyle={styles.selectionChip}
+            chipSelectedStyle={styles.selectionChipSelected}
+            chipTextStyle={styles.selectionChipText}
+            chipTextSelectedStyle={styles.selectionChipTextSelected}
             allowDeselect={false}
             selected={daysPerWeek}
             onChange={(value) => setDaysPerWeek((value ?? 4) as 3 | 4 | 5)}
@@ -122,6 +141,10 @@ export default function FirstRoutineScreen() {
 
         <QuestionBlock label="Session length">
           <ChipPicker
+            chipStyle={styles.selectionChip}
+            chipSelectedStyle={styles.selectionChipSelected}
+            chipTextStyle={styles.selectionChipText}
+            chipTextSelectedStyle={styles.selectionChipTextSelected}
             allowDeselect={false}
             selected={sessionMinutes}
             onChange={(value) => setSessionMinutes((value ?? 60) as 30 | 60 | 90)}
@@ -136,6 +159,10 @@ export default function FirstRoutineScreen() {
 
         <QuestionBlock label="Plan length">
           <ChipPicker
+            chipStyle={styles.selectionChip}
+            chipSelectedStyle={styles.selectionChipSelected}
+            chipTextStyle={styles.selectionChipText}
+            chipTextSelectedStyle={styles.selectionChipTextSelected}
             allowDeselect={false}
             selected={weekCount}
             onChange={(value) => setWeekCount((value ?? 4) as RoutineWeekCount)}
@@ -153,6 +180,10 @@ export default function FirstRoutineScreen() {
 
         <QuestionBlock label="Primary goal">
           <ChipPicker
+            chipStyle={styles.selectionChip}
+            chipSelectedStyle={styles.selectionChipSelected}
+            chipTextStyle={styles.selectionChipText}
+            chipTextSelectedStyle={styles.selectionChipTextSelected}
             allowDeselect={false}
             selected={goal}
             onChange={(value) => setGoal((value ?? 'muscle_gain') as OnboardingGoal)}
@@ -167,6 +198,10 @@ export default function FirstRoutineScreen() {
 
         <QuestionBlock label="Experience level">
           <ChipPicker
+            chipStyle={styles.selectionChip}
+            chipSelectedStyle={styles.selectionChipSelected}
+            chipTextStyle={styles.selectionChipText}
+            chipTextSelectedStyle={styles.selectionChipTextSelected}
             allowDeselect={false}
             selected={experience}
             onChange={(value) => setExperience((value ?? 'beginner') as OnboardingExperience)}
@@ -181,6 +216,10 @@ export default function FirstRoutineScreen() {
 
         <QuestionBlock label="Equipment">
           <ChipPicker
+            chipStyle={styles.selectionChip}
+            chipSelectedStyle={styles.selectionChipSelected}
+            chipTextStyle={styles.selectionChipText}
+            chipTextSelectedStyle={styles.selectionChipTextSelected}
             allowDeselect={false}
             selected={equipment}
             onChange={(value) => setEquipment((value ?? 'full_gym') as OnboardingEquipmentPreference)}
@@ -195,6 +234,10 @@ export default function FirstRoutineScreen() {
 
         <QuestionBlock label="Slight muscle focus (optional)">
           <ChipPicker
+            chipStyle={styles.selectionChip}
+            chipSelectedStyle={styles.selectionChipSelected}
+            chipTextStyle={styles.selectionChipText}
+            chipTextSelectedStyle={styles.selectionChipTextSelected}
             allowDeselect={false}
             selected={focusMuscle}
             onChange={(value) => setFocusMuscle((value ?? 'none') as OnboardingFocusMuscle)}
@@ -220,10 +263,27 @@ export default function FirstRoutineScreen() {
   );
 }
 
-function QuestionBlock({ label, children }: { label: string; children: ReactNode }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+function OnboardingActionButton({
+  title,
+  onPress,
+  loading,
+}: {
+  title: string;
+  onPress: () => void;
+  loading: boolean;
+}) {
+  return (
+    <TouchableOpacity style={[styles.ctaButton, loading && styles.ctaButtonDisabled]} onPress={onPress} disabled={loading} activeOpacity={0.85}>
+      {loading ? (
+        <ActivityIndicator color={SCREEN_COLORS.ctaText} size="small" />
+      ) : (
+        <Text style={styles.ctaButtonText}>{title}</Text>
+      )}
+    </TouchableOpacity>
+  );
+}
 
+function QuestionBlock({ label, children }: { label: string; children: ReactNode }) {
   return (
     <View style={styles.block}>
       <Text style={styles.blockLabel}>{label}</Text>
@@ -232,7 +292,7 @@ function QuestionBlock({ label, children }: { label: string; children: ReactNode
   );
 }
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const styles = StyleSheet.create({
   modeRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -242,41 +302,73 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: SCREEN_COLORS.cardBorder,
+    backgroundColor: SCREEN_COLORS.card,
     paddingHorizontal: spacing.sm + spacing.xs,
     paddingVertical: spacing.sm + spacing.xs,
   },
   modeCardActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentDim,
+    borderColor: SCREEN_COLORS.cardBorderActive,
+    backgroundColor: SCREEN_COLORS.cardActive,
   },
   modeTitle: {
-    color: colors.text,
+    color: SCREEN_COLORS.text,
     fontFamily: fonts.semiBold,
     fontSize: 14,
   },
   modeTitleActive: {
-    color: colors.text,
+    color: SCREEN_COLORS.text,
   },
   modeHint: {
     marginTop: 4,
-    color: colors.textMuted,
+    color: SCREEN_COLORS.textMuted,
     fontFamily: fonts.regular,
     fontSize: 12,
   },
   modeHintActive: {
-    color: colors.textSecondary,
+    color: SCREEN_COLORS.text,
   },
   block: {
     marginBottom: spacing.xs,
   },
   blockLabel: {
     marginBottom: 8,
-    color: colors.textSecondary,
+    color: SCREEN_COLORS.textLabel,
     fontFamily: fonts.semiBold,
     fontSize: 13,
     letterSpacing: 0.2,
     textTransform: 'uppercase',
+  },
+  selectionChip: {
+    backgroundColor: SCREEN_COLORS.chip,
+    borderWidth: 1,
+    borderColor: SCREEN_COLORS.chipBorder,
+    borderRadius: 16,
+    paddingVertical: 10,
+  },
+  selectionChipSelected: {
+    backgroundColor: SCREEN_COLORS.chipSelected,
+    borderColor: SCREEN_COLORS.chipSelected,
+  },
+  selectionChipText: {
+    color: SCREEN_COLORS.chipText,
+  },
+  selectionChipTextSelected: {
+    color: SCREEN_COLORS.chipTextSelected,
+  },
+  ctaButton: {
+    minHeight: 56,
+    borderRadius: 16,
+    backgroundColor: SCREEN_COLORS.ctaBackground,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaButtonDisabled: {
+    opacity: 0.72,
+  },
+  ctaButtonText: {
+    color: SCREEN_COLORS.ctaText,
+    fontFamily: fonts.bold,
+    fontSize: 16,
   },
 });

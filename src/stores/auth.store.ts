@@ -1,9 +1,26 @@
 import { create } from 'zustand';
 import { Session, User } from '@supabase/supabase-js';
-import { accountService, authService } from '../services';
+import { accountService, authService, sessionService, workoutRowService } from '../services';
 import { supabase } from '../services/supabase';
 import { useProfileStore } from './profile.store';
 import { notificationService } from '../services/notification.service';
+import { useWorkoutStore } from './workout.store';
+
+async function cancelActiveWorkout(userId: string | undefined): Promise<void> {
+  const workoutStore = useWorkoutStore.getState();
+  if (workoutStore.session) {
+    await workoutStore.cancelWorkout();
+    return;
+  }
+
+  if (!userId) return;
+
+  const activeSession = await sessionService.getActiveSession(userId);
+  if (!activeSession) return;
+
+  await workoutRowService.deleteBySession(activeSession.id);
+  await sessionService.cancel(activeSession.id);
+}
 
 interface AuthState {
   session: Session | null;
@@ -21,7 +38,7 @@ interface AuthState {
   updatePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   user: null,
   loading: false,
@@ -58,6 +75,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         await useProfileStore.getState().fetchProfile(typedSession.user.id);
       } else {
         useProfileStore.getState().setProfile(null);
+        useWorkoutStore.getState().reset();
         void notificationService.cancelRestTimerNotification();
         void notificationService.cancelWorkoutDayReminderNotifications();
       }
@@ -92,8 +110,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   signOut: async () => {
+    await cancelActiveWorkout(get().user?.id);
     await authService.signOut();
     useProfileStore.getState().setProfile(null);
+    useWorkoutStore.getState().reset();
     void notificationService.cancelRestTimerNotification();
     void notificationService.cancelWorkoutDayReminderNotifications();
     set({ session: null, user: null });
@@ -109,6 +129,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         // User may already be invalidated after deletion.
       }
       useProfileStore.getState().setProfile(null);
+      useWorkoutStore.getState().reset();
       void notificationService.cancelRestTimerNotification();
       void notificationService.cancelWorkoutDayReminderNotifications();
       set({ session: null, user: null });

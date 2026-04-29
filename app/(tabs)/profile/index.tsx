@@ -4,15 +4,16 @@ import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { sessionService } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useSessionStore } from '../../../src/stores/session.store';
-import { Card, EmptyState } from '../../../src/components/ui';
+import { AppHeaderButton, Card, EmptyState } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
+import { isLightTheme } from '../../../src/constants/themes';
 import { WorkoutSessionWithRoutine } from '../../../src/models';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 import { formatHeight } from '../../../src/utils/units';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -66,12 +67,19 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  quickActionCardAccent: {
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceLight,
+  quickActionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  quickActionIcon: {
+    width: 24,
+    height: 24,
+    tintColor: colors.text,
   },
   quickActionTitle: {
     fontSize: 15,
@@ -163,8 +171,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(93, 196, 122, 0.16)',
-    borderColor: '#5DC47A',
+    backgroundColor: isLight ? 'rgba(39, 122, 64, 0.18)' : 'rgba(93, 196, 122, 0.16)',
+    borderColor: isLight ? '#277A40' : '#5DC47A',
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 9,
@@ -174,12 +182,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#5DC47A',
+    backgroundColor: isLight ? '#277A40' : '#5DC47A',
   },
   recordBadgeText: {
     fontSize: 11,
     fontFamily: fonts.bold,
-    color: '#89E6A2',
+    color: isLight ? '#184F2A' : '#89E6A2',
   },
   sessionMetaRow: {
     flexDirection: 'row',
@@ -190,8 +198,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   weekPill: {
     borderWidth: 1,
-    borderColor: '#2E6FBF',
-    backgroundColor: 'rgba(46, 111, 191, 0.16)',
+    borderColor: isLight ? '#225A9E' : '#2E6FBF',
+    backgroundColor: isLight ? 'rgba(34, 90, 158, 0.18)' : 'rgba(46, 111, 191, 0.16)',
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -199,7 +207,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   weekPillText: {
     fontSize: 11,
     fontFamily: fonts.semiBold,
-    color: '#88BBF0',
+    color: isLight ? '#163C6A' : '#88BBF0',
   },
   sessionDuration: {
     fontSize: 14,
@@ -221,8 +229,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { colors, gradients } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, gradients, theme } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isLightTheme(theme)), [colors, theme]);
   const { profile } = useProfileStore();
 
   const { sessions, recordCounts: sessionRecordCounts, sessionsLoaded: historyLoaded, fetchSessions, removeSession } = useSessionStore();
@@ -326,17 +334,13 @@ export default function ProfileScreen() {
   };
 
   const renderHeaderRight = useCallback(() => (
-    <TouchableOpacity
-      onPress={() => router.push('/(tabs)/profile/settings')}
-      activeOpacity={0.7}
-      style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', }}
-    >
+    <AppHeaderButton onPress={() => router.push('/(tabs)/profile/settings')}>
       <Image
         source={require('../../../assets/icons/setting.png')}
-        style={{ width: 20, height: 20, tintColor: '#FFFFFF' }}
+        style={{ width: 20, height: 20, tintColor: colors.text }}
       />
-    </TouchableOpacity>
-  ), [router]);
+    </AppHeaderButton>
+  ), [router, colors]);
 
   return (
     <View style={styles.container}>
@@ -377,18 +381,20 @@ export default function ProfileScreen() {
                 onPress={() => router.push('/(tabs)/profile/measurements')}
                 activeOpacity={0.8}
               >
-                <Text style={styles.quickActionTitle}>Measurements</Text>
-                <Text style={styles.quickActionSub}>Track body metrics</Text>
-                <Text style={styles.quickActionArrow}>›</Text>
+                <View style={styles.quickActionContent}>
+                  <Image source={require('../../../assets/icons/measurements.png')} style={styles.quickActionIcon} />
+                  <Text style={styles.quickActionTitle}>Measurements</Text>
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.quickActionCard, styles.quickActionCardAccent]}
+                style={styles.quickActionCard}
                 onPress={() => router.push('/(tabs)/profile/goals')}
                 activeOpacity={0.8}
               >
-                <Text style={styles.quickActionTitle}>Goals</Text>
-                <Text style={styles.quickActionSub}>Set your targets</Text>
-                <Text style={styles.quickActionArrow}>›</Text>
+                <View style={styles.quickActionContent}>
+                  <Image source={require('../../../assets/icons/goals.png')} style={styles.quickActionIcon} />
+                  <Text style={styles.quickActionTitle}>Goals</Text>
+                </View>
               </TouchableOpacity>
             </View>
 

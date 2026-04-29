@@ -7,11 +7,14 @@ import {
   Platform,
   Animated,
 } from 'react-native';
+import { useSegments } from 'expo-router';
 import { useTheme } from '../../contexts/ThemeContext';
 
 export function KeyboardDismiss() {
   const { colors } = useTheme();
+  const segments = useSegments();
   const isSupportedPlatform = Platform.OS === 'ios';
+  const inOnboarding = segments[0] === '(onboarding)';
   const [visible, setVisible] = useState(false);
   const [bottom] = useState(new Animated.Value(0));
 
@@ -62,7 +65,7 @@ export function KeyboardDismiss() {
     arrow: { fontSize: 16, lineHeight: 18, color: colors.text },
   }), [colors]);
 
-  if (!isSupportedPlatform || !visible) return null;
+  if (!isSupportedPlatform || inOnboarding || !visible) return null;
 
   return (
     <Animated.View style={[styles.container, { bottom }]} pointerEvents="box-none">

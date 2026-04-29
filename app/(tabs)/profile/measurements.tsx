@@ -18,6 +18,7 @@ import { measurementService } from '../../../src/services';
 import { profileService } from '../../../src/services/profile.service';
 import { Button, Card, Input } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
+import { isLightTheme } from '../../../src/constants/themes';
 import { cmToIn, inToCm, kgToLbs, lbsToKg } from '../../../src/utils/units';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
@@ -72,7 +73,8 @@ function areSnapshotsEqual(a: FormSnapshot | null, b: FormSnapshot | null): bool
 }
 
 export default function MeasurementsScreen() {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const user = useAuthStore((s) => s.user);
@@ -496,7 +498,7 @@ export default function MeasurementsScreen() {
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 onChange={handleDateChange}
                 maximumDate={new Date()}
-                themeVariant="dark"
+                themeVariant={isLight ? 'light' : 'dark'}
               />
             )}
 

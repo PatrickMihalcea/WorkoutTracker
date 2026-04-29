@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { Button, Input } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
+import { isLightTheme } from '../../../src/constants/themes';
 import { Sex } from '../../../src/models/profile';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
@@ -39,7 +40,8 @@ const HEIGHT_INCHES_RANGE = generateRange(0, 11);
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { profile, updateProfile } = useProfileStore();
   const heightUnit = profile?.height_unit ?? 'cm';
@@ -128,35 +130,24 @@ export default function EditProfileScreen() {
 
       <Text style={styles.sectionLabel}>Birthday</Text>
       <View style={styles.editRow}>
-        {Platform.OS === 'ios' ? (
-          <DateTimePicker
-            value={birthday}
-            mode="date"
-            display="compact"
-            onChange={handleDateChange}
-            minimumDate={MIN_BIRTHDAY}
-            maximumDate={new Date()}
-            themeVariant="dark"
-          />
-        ) : (
-          <TouchableOpacity
-            style={styles.pickerValueButton}
-            onPress={() => setShowDatePicker(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.pickerButtonText}>{birthday.toLocaleDateString()}</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.pickerValueButton}
+          onPress={() => setShowDatePicker((prev) => (Platform.OS === 'ios' ? !prev : true))}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.pickerButtonText, { color: colors.textSecondary }]}>{birthday.toLocaleDateString()}</Text>
+        </TouchableOpacity>
       </View>
-      {Platform.OS === 'android' && showDatePicker && (
+      {showDatePicker && (
         <DateTimePicker
           value={birthday}
           mode="date"
-          display="default"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={handleDateChange}
           minimumDate={MIN_BIRTHDAY}
           maximumDate={new Date()}
-          themeVariant="dark"
+          textColor={Platform.OS === 'ios' ? colors.textSecondary : undefined}
+          themeVariant={isLight ? 'light' : 'dark'}
         />
       )}
 

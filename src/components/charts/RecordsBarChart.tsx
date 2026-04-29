@@ -10,6 +10,7 @@ import {
 import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
 import { fonts, spacing } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
+import { isLightTheme } from '../../constants/themes';
 import { computeYAxisInfo, CHART_HEIGHT, SVG_HEIGHT, YAxisInfo } from './chartUtils';
 
 export interface BarDataItem {
@@ -44,7 +45,11 @@ export function RecordsBarChart({
   onToggle,
   yLabelFormatter,
 }: RecordsBarChartProps) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
+  const chartStroke = isLight ? colors.textMuted : colors.border;
+  const axisStrokeOpacity = isLight ? 0.42 : 1;
+  const gridStrokeOpacity = isLight ? 0.34 : 0.7;
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
 
   const handleLayout = useCallback((e: LayoutChangeEvent) => {
@@ -172,9 +177,9 @@ export function RecordsBarChart({
 
   const svgContent = (
     <Svg width={totalContentWidth} height={SVG_HEIGHT}>
-      <Line x1={0} y1={CHART_HEIGHT} x2={totalContentWidth} y2={CHART_HEIGHT} stroke={colors.border} strokeWidth={1} />
+      <Line x1={0} y1={CHART_HEIGHT} x2={totalContentWidth} y2={CHART_HEIGHT} stroke={chartStroke} strokeWidth={1} opacity={axisStrokeOpacity} />
       {horizontalGridLines.map((y, i) => (
-        <Line key={`hg-${i}`} x1={0} y1={y} x2={totalContentWidth} y2={y} stroke={colors.border} strokeWidth={0.8} strokeDasharray="3 3" opacity={0.7} />
+        <Line key={`hg-${i}`} x1={0} y1={y} x2={totalContentWidth} y2={y} stroke={chartStroke} strokeWidth={0.8} strokeDasharray="3 3" opacity={gridStrokeOpacity} />
       ))}
       {bars.map((b, i) => (
         <React.Fragment key={i}>

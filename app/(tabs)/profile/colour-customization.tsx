@@ -9,10 +9,10 @@ import {
   Dimensions,
 } from 'react-native';
 import { useProfileStore } from '../../../src/stores/profile.store';
-import { fonts } from '../../../src/constants';
+import { fonts, spacing } from '../../../src/constants';
 import { ColorPreferences } from '../../../src/models/profile';
 import { useTheme } from '../../../src/contexts/ThemeContext';
-import { THEMES, type ThemeColors } from '../../../src/constants/themes';
+import { THEMES, isLightTheme, type ThemeColors } from '../../../src/constants/themes';
 
 const CARD_GAP = 12;
 const SCREEN_PADDING = 24;
@@ -32,6 +32,7 @@ const createStyles = (colors: ThemeColors) =>
     },
     contentInner: {
       padding: SCREEN_PADDING,
+      paddingBottom: spacing.bottom,
     },
     sectionLabel: {
       fontSize: 13,
@@ -123,16 +124,31 @@ export default function ColourCustomizationScreen() {
         <View style={styles.grid}>
           {THEMES.map((theme) => {
             const isActive = activeId === theme.id;
+            const sampleIsLight = isLightTheme(theme);
             const accentColor = theme.colors.accent;
             const accentDeepColor = theme.gradients.accent[1];
+            const cardBackgroundColor = isActive
+              ? theme.colors.surfaceLight
+              : theme.colors.surface;
+            const cardBorderColor = isActive
+              ? theme.colors.accent
+              : theme.colors.border;
+            const labelColor = isActive
+              ? accentColor
+              : sampleIsLight
+                ? theme.colors.textSecondary
+                : '#FFFFFF';
 
             return (
               <TouchableOpacity
                 key={theme.id}
                 style={[
                   styles.card,
-                  { width: cardWidth },
-                  isActive && styles.cardActive,
+                  {
+                    width: cardWidth,
+                    backgroundColor: cardBackgroundColor,
+                    borderColor: cardBorderColor,
+                  },
                 ]}
                 onPress={() => handleThemeSelect(theme.id)}
                 activeOpacity={0.75}
@@ -160,7 +176,7 @@ export default function ColourCustomizationScreen() {
                 <Text
                   style={[
                     styles.themeName,
-                    { color: isActive ? accentColor : colors.textMuted },
+                    { color: labelColor },
                   ]}
                   numberOfLines={1}
                 >

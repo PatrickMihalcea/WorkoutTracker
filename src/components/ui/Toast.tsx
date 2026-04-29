@@ -16,22 +16,22 @@ export function Toast({ message, visible, onDismiss, duration = 2000 }: ToastPro
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (visible) {
-      Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }).start(() => {
-        timerRef.current = setTimeout(() => {
-          Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(({ finished }) => {
-            if (finished) onDismiss();
-          });
-        }, duration);
-      });
-    } else {
+    if (!visible) {
       opacity.setValue(0);
+      return;
     }
-
+    if (timerRef.current) clearTimeout(timerRef.current);
+    Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }).start(() => {
+      timerRef.current = setTimeout(() => {
+        Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(({ finished }) => {
+          if (finished) onDismiss();
+        });
+      }, duration);
+    });
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [visible]);
+  }, [visible, message]);
 
   const styles = useMemo(() => StyleSheet.create({
     container: {

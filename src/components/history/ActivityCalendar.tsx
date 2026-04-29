@@ -1,8 +1,6 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  FlatList,
   ScrollView,
-  SectionList,
   StyleSheet,
   Text,
   View,
@@ -38,6 +36,79 @@ function useActivityCalendarStyles() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return { styles };
+}
+
+function useScrollViewStartAtEnd(autoScrollToEndKey?: string) {
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const [isReady, setIsReady] = useState(!autoScrollToEndKey);
+  const positionedKeyRef = useRef<string | undefined>(undefined);
+  const rafRef = useRef<number | null>(null);
+  const contentHeightRef = useRef(0);
+  const viewportHeightRef = useRef(0);
+
+  const finishPositioning = useCallback((key?: string) => {
+    if (!key) {
+      setIsReady(true);
+      return;
+    }
+
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+    }
+
+    rafRef.current = requestAnimationFrame(() => {
+      positionedKeyRef.current = key;
+      setIsReady(true);
+      rafRef.current = null;
+    });
+  }, []);
+
+  const positionToEnd = useCallback(() => {
+    if (!autoScrollToEndKey) {
+      setIsReady(true);
+      return;
+    }
+
+    if (contentHeightRef.current <= 0 || viewportHeightRef.current <= 0) {
+      return;
+    }
+
+    if (positionedKeyRef.current === autoScrollToEndKey) {
+      if (!isReady) {
+        setIsReady(true);
+      }
+      return;
+    }
+
+    scrollViewRef.current?.scrollToEnd({ animated: false });
+    finishPositioning(autoScrollToEndKey);
+  }, [autoScrollToEndKey, finishPositioning, isReady]);
+
+  useEffect(() => {
+    positionedKeyRef.current = undefined;
+    contentHeightRef.current = 0;
+    setIsReady(!autoScrollToEndKey);
+  }, [autoScrollToEndKey]);
+
+  useEffect(() => () => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+    }
+  }, []);
+
+  return {
+    scrollViewRef,
+    isReady,
+    onContentSizeChange: (_width: number, height: number) => {
+      contentHeightRef.current = height;
+      positionToEnd();
+    },
+    onLayout: (height: number) => {
+      viewportHeightRef.current = height;
+      positionToEnd();
+    },
+    positionToEnd,
+  };
 }
 
 function startOfDay(d: Date): Date {
@@ -244,7 +315,6 @@ export function MonthCalendarGrid({
   compact,
   tallCells,
   scrollEnabled = true,
-  virtualized = true,
   style,
   contentContainerStyle,
   autoScrollToEndKey,
@@ -262,80 +332,34 @@ export function MonthCalendarGrid({
   autoScrollToEndKey?: string;
 }) {
   const { styles } = useActivityCalendarStyles();
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const flatListRef = useRef<FlatList<MonthCalendar> | null>(null);
-
-  const scrollToEnd = useMemo(() => () => {
-    requestAnimationFrame(() => {
-      if (virtualized) {
-        flatListRef.current?.scrollToEnd({ animated: false });
-        return;
-      }
-      scrollViewRef.current?.scrollToEnd({ animated: false });
-    });
-  }, [virtualized]);
-
-  useEffect(() => {
-    if (!autoScrollToEndKey || months.length === 0) return;
-    scrollToEnd();
-  }, [autoScrollToEndKey, months.length, scrollToEnd]);
-
-  if (!virtualized) {
-    return (
-      <ScrollView
-        ref={scrollViewRef}
-        style={style}
-        scrollEnabled={scrollEnabled}
-        nestedScrollEnabled
-        contentContainerStyle={[styles.monthListContent, contentContainerStyle]}
-        onContentSizeChange={() => {
-          if (autoScrollToEndKey) scrollToEnd();
-        }}
-      >
-        <View style={styles.monthCardsWrap}>
-          {months.map((item) => (
-            <View key={item.key} style={[styles.monthCardWrap, { width: `${100 / numColumns}%` }]}>
-              <MonthCard
-                item={item}
-                filledDays={filledDays}
-                cardHeight={cardHeight}
-                compact={compact}
-                tallCells={tallCells}
-                styles={styles}
-              />
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-    );
-  }
+  const { scrollViewRef, isReady, onContentSizeChange, onLayout } = useScrollViewStartAtEnd(autoScrollToEndKey);
 
   return (
-    <FlatList
-      ref={flatListRef}
-      data={months}
-      keyExtractor={(item) => item.key}
-      numColumns={numColumns}
-      style={style}
+    <ScrollView
+      ref={scrollViewRef}
+      key={`month-scroll-${autoScrollToEndKey ?? 'default'}`}
+      style={[style, !isReady && styles.hiddenScroll]}
       scrollEnabled={scrollEnabled}
       nestedScrollEnabled
       contentContainerStyle={[styles.monthListContent, contentContainerStyle]}
-      onContentSizeChange={() => {
-        if (autoScrollToEndKey) scrollToEnd();
-      }}
-      renderItem={({ item }) => (
-        <View style={[styles.monthCardWrap, { width: `${100 / numColumns}%` }]}>
-          <MonthCard
-            item={item}
-            filledDays={filledDays}
-            cardHeight={cardHeight}
-            compact={compact}
-            tallCells={tallCells}
-            styles={styles}
-          />
-        </View>
-      )}
-    />
+      onContentSizeChange={onContentSizeChange}
+      onLayout={(event) => onLayout(event.nativeEvent.layout.height)}
+    >
+      <View style={styles.monthCardsWrap}>
+        {months.map((item) => (
+          <View key={item.key} style={[styles.monthCardWrap, { width: `${100 / numColumns}%` }]}>
+            <MonthCard
+              item={item}
+              filledDays={filledDays}
+              cardHeight={cardHeight}
+              compact={compact}
+              tallCells={tallCells}
+              styles={styles}
+            />
+          </View>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -351,7 +375,7 @@ export function WeekCalendarList({
   autoScrollToEndKey?: string;
 }) {
   const { styles } = useActivityCalendarStyles();
-  const sectionListRef = useRef<any>(null);
+  const { scrollViewRef, isReady, onContentSizeChange, onLayout } = useScrollViewStartAtEnd(autoScrollToEndKey);
   const sections = useMemo(() => {
     const map = new Map<string, WeekRow[]>();
     for (const row of rows) {
@@ -368,51 +392,42 @@ export function WeekCalendarList({
     });
   }, [rows]);
 
-  const scrollToEnd = useMemo(() => () => {
-    requestAnimationFrame(() => {
-      sectionListRef.current?.scrollToEnd({ animated: false });
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!autoScrollToEndKey || rows.length === 0) return;
-    scrollToEnd();
-  }, [autoScrollToEndKey, rows.length, scrollToEnd]);
-
   return (
-    <SectionList
-      ref={sectionListRef}
-      sections={sections}
-      keyExtractor={(item) => item.key}
+    <ScrollView
+      ref={scrollViewRef}
+      key={`week-list-${autoScrollToEndKey ?? 'default'}`}
+      style={!isReady ? styles.hiddenScroll : undefined}
       contentContainerStyle={[styles.weekListContent, contentContainerStyle]}
-      stickySectionHeadersEnabled={false}
-      onContentSizeChange={() => {
-        if (autoScrollToEndKey) scrollToEnd();
-      }}
-      ListHeaderComponent={
-        <View style={styles.weekHeaderRowWide}>
-          {DAY_HEADERS.map((h, idx) => (
-            <Text key={`w-hdr-${idx}-${h}`} style={styles.weekHeaderWide}>
-              {h}
-            </Text>
+      onContentSizeChange={onContentSizeChange}
+      onLayout={(event) => onLayout(event.nativeEvent.layout.height)}
+    >
+      <View style={styles.weekHeaderRowWide}>
+        {DAY_HEADERS.map((h, idx) => (
+          <Text key={`w-hdr-${idx}-${h}`} style={styles.weekHeaderWide}>
+            {h}
+          </Text>
+        ))}
+      </View>
+      {sections.map((section) => (
+        <View key={section.title}>
+          <Text style={styles.weekMonthTitle}>{section.title}</Text>
+          {section.data.map((item) => (
+            <View key={item.key} style={styles.weekRow}>
+              {item.dayKeys.map((k, idx) => (
+                <DayCell key={k ?? `${item.key}-b${idx}`} dayKey={k} filledDays={filledDays} styles={styles} />
+              ))}
+            </View>
           ))}
         </View>
-      }
-      renderSectionHeader={({ section }) => (
-        <Text style={styles.weekMonthTitle}>{section.title}</Text>
-      )}
-      renderItem={({ item }) => (
-        <View style={styles.weekRow}>
-          {item.dayKeys.map((k, idx) => (
-            <DayCell key={k ?? `${item.key}-b${idx}`} dayKey={k} filledDays={filledDays} styles={styles} />
-          ))}
-        </View>
-      )}
-    />
+      ))}
+    </ScrollView>
   );
 }
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  hiddenScroll: {
+    opacity: 0,
+  },
   monthListContent: {
     paddingBottom: spacing.sm,
   },

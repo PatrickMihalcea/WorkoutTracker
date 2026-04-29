@@ -42,7 +42,7 @@ export function ChipPicker<T extends string | number>({
   horizontal = true,
   maxHeight,
 }: ChipPickerProps<T>) {
-  const { colors, gradients } = useTheme();
+  const { colors } = useTheme();
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [tooltipContent, setTooltipContent] = useState('');
 
@@ -59,14 +59,14 @@ export function ChipPicker<T extends string | number>({
       overflow: 'hidden',
     },
     chipWithTooltip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    chipSelected: { backgroundColor: colors.text },
+    chipSelected: { backgroundColor: '#111111' },
     chipText: {
       color: colors.textSecondary,
       fontSize: 13,
       fontFamily: fonts.semiBold,
       textTransform: 'capitalize',
     },
-    chipTextSelected: { color: colors.background },
+    chipTextSelected: { color: '#FFFFFF' },
     tooltipBtn: {
       width: 16,
       height: 16,
@@ -154,9 +154,9 @@ export function ChipPicker<T extends string | number>({
               }
             }}
           >
-            {isSelected && (
+            {isSelected && getChipGradientColors?.(item, isSelected) != null && (
               <LinearGradient
-                colors={getChipGradientColors?.(item, isSelected) ?? gradients.chipSelected}
+                colors={getChipGradientColors!(item, isSelected)!}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFillObject}
@@ -272,14 +272,14 @@ export function MultiChipPicker<T extends string | number>({
       backgroundColor: colors.surfaceLight,
       overflow: 'hidden',
     },
-    chipSelected: { backgroundColor: colors.text },
+    chipSelected: { backgroundColor: '#111111' },
     chipText: {
       color: colors.textSecondary,
       fontSize: 13,
       fontFamily: fonts.semiBold,
       textTransform: 'capitalize',
     },
-    chipTextSelected: { color: colors.background },
+    chipTextSelected: { color: '#FFFFFF' },
   }), [colors]);
 
   return (

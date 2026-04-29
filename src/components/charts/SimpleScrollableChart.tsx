@@ -11,7 +11,9 @@ import {
   LayoutChangeEvent,
 } from 'react-native';
 import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
-import { colors, fonts, spacing } from '../../constants';
+import { fonts, spacing } from '../../constants';
+import { useTheme } from '../../contexts/ThemeContext';
+import { isLightTheme } from '../../constants/themes';
 import {
   TimeSeriesPoint,
   GranularityMode,
@@ -45,9 +47,10 @@ export interface SimpleScrollableChartProps {
 }
 
 function SectionTitle({ title, rightElement }: { title: string; rightElement?: React.ReactNode }) {
+  const { colors: tc } = useTheme();
   return (
     <View style={styles.sectionTitleRow}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={[styles.sectionTitle, { color: tc.text }]}>{title}</Text>
       {rightElement}
     </View>
   );
@@ -65,6 +68,11 @@ export function SimpleScrollableChart({
   minYStep,
 }: SimpleScrollableChartProps) {
   const { onChartTouchStart, onChartTouchEnd, pointerActiveRef, scrollEnabled } = useChartInteraction();
+  const { colors: tc, theme } = useTheme();
+  const isLight = isLightTheme(theme);
+  const chartStroke = isLight ? tc.textMuted : tc.border;
+  const axisStrokeOpacity = isLight ? 0.42 : 1;
+  const gridStrokeOpacity = isLight ? 0.34 : 0.7;
   const vp = viewportPoints(mode);
   const yMinStep = minYStep ?? 1;
   const slots = totalSlotsForRange(weeks, mode);
@@ -539,8 +547,8 @@ export function SimpleScrollableChart({
       {headerContent}
       <View style={styles.chartHeaderArea}>
         <View style={{ opacity: (activeTooltip && tooltipReady) ? 0 : 1 }}>
-          <Text style={styles.dateRangeText}>{dateRange}</Text>
-          <Text style={styles.chartSubtitle}>{subtitle}</Text>
+          <Text style={[styles.dateRangeText, { color: tc.textSecondary }]}>{dateRange}</Text>
+          <Text style={[styles.chartSubtitle, { color: tc.textMuted }]}>{subtitle}</Text>
         </View>
         {activeTooltip && (() => {
           const tw = tooltipWidthRef.current;
@@ -562,8 +570,8 @@ export function SimpleScrollableChart({
                 }
               }}
             >
-              <Text style={styles.tooltipValue} numberOfLines={1}>{activeTooltip.value}</Text>
-              <Text style={styles.tooltipDate} numberOfLines={1}>{activeTooltip.date}</Text>
+              <Text style={[styles.tooltipValue, { color: tc.text }]} numberOfLines={1}>{activeTooltip.value}</Text>
+              <Text style={[styles.tooltipDate, { color: tc.textMuted }]} numberOfLines={1}>{activeTooltip.date}</Text>
             </View>
           );
         })()}
@@ -571,7 +579,7 @@ export function SimpleScrollableChart({
       <View style={styles.chartRow}>
           <View style={[styles.yAxisColumn, { width: fixedYAxisWidth, height: SVG_HEIGHT }]}>
             {[...yAxis.labels].reverse().map((label, i) => (
-              <Text key={i} style={styles.yAxisLabel}>{label}</Text>
+              <Text key={i} style={[styles.yAxisLabel, { color: tc.textMuted }]}>{label}</Text>
             ))}
           </View>
           <ScrollView
@@ -597,27 +605,27 @@ export function SimpleScrollableChart({
             <Svg width={totalContentWidth} height={SVG_HEIGHT}>
               <Line
                 x1={0} y1={CHART_HEIGHT} x2={totalContentWidth} y2={CHART_HEIGHT}
-                stroke={colors.border} strokeWidth={1}
+                stroke={chartStroke} strokeWidth={1} opacity={axisStrokeOpacity}
               />
               {horizontalGridLines.map((y, i) => (
                 <Line
                   key={`hg-${i}`}
                   x1={0} y1={y} x2={totalContentWidth} y2={y}
-                  stroke={colors.border} strokeWidth={0.8} strokeDasharray="3 3" opacity={0.7}
+                  stroke={chartStroke} strokeWidth={0.8} strokeDasharray="3 3" opacity={gridStrokeOpacity}
                 />
               ))}
               {filteredVerticalGridLines.map((x, i) => (
                 <Line
                   key={`vg-${i}`}
                   x1={x} y1={0} x2={x} y2={CHART_HEIGHT}
-                  stroke={colors.border} strokeWidth={0.8} strokeDasharray="3 3" opacity={0.7}
+                  stroke={chartStroke} strokeWidth={0.8} strokeDasharray="3 3" opacity={gridStrokeOpacity}
                 />
               ))}
               {pageBoundaryLines.map((x, i) => (
                 <Line
                   key={`pb-${i}`}
                   x1={x} y1={0} x2={x} y2={CHART_HEIGHT}
-                  stroke={colors.border} strokeWidth={1} opacity={0.9}
+                  stroke={chartStroke} strokeWidth={1} opacity={isLight ? 0.5 : 0.9}
                 />
               ))}
               {bars.map((b) => (
@@ -636,7 +644,7 @@ export function SimpleScrollableChart({
                 <Line
                   x1={activeTooltip.slotX} y1={0}
                   x2={activeTooltip.slotX} y2={CHART_HEIGHT}
-                  stroke={colors.border} strokeWidth={1}
+                  stroke={chartStroke} strokeWidth={1} opacity={axisStrokeOpacity}
                 />
               )}
               {xLabels.map((lbl, i) => (
@@ -645,7 +653,7 @@ export function SimpleScrollableChart({
                   x={lbl.x}
                   y={CHART_HEIGHT + 14}
                   fontSize={10}
-                  fill={colors.textMuted}
+                  fill={tc.textMuted}
                   textAnchor="middle"
                   fontFamily={fonts.regular}
                 >
@@ -675,7 +683,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontFamily: fonts.bold,
-    color: colors.text,
     marginBottom: 4,
     textTransform: 'capitalize',
   },
@@ -687,13 +694,11 @@ const styles = StyleSheet.create({
   dateRangeText: {
     fontSize: 13,
     fontFamily: fonts.semiBold,
-    color: colors.textSecondary,
     marginBottom: 2,
   },
   chartSubtitle: {
     fontSize: 12,
     fontFamily: fonts.regular,
-    color: colors.textMuted,
   },
   tooltipBubble: {
     position: 'absolute',
@@ -704,12 +709,10 @@ const styles = StyleSheet.create({
   tooltipValue: {
     fontSize: 14,
     fontFamily: fonts.bold,
-    color: colors.text,
   },
   tooltipDate: {
     fontSize: 10,
     fontFamily: fonts.regular,
-    color: colors.textMuted,
   },
   chartRow: {
     flexDirection: 'row',
@@ -724,7 +727,6 @@ const styles = StyleSheet.create({
   yAxisLabel: {
     fontSize: 10,
     fontFamily: fonts.light,
-    color: colors.textMuted,
     textAlign: 'right',
     paddingRight: 2,
   },
