@@ -179,8 +179,11 @@ function TabLayoutInner() {
     || segment === 'history'
     || segment === 'profile'
   ));
-  const hideTabBar = currentTab === 'routines' && segments.includes('create');
-  const isCreateRoutine = hideTabBar;
+  const hideTabBar = (currentTab === 'routines' && segments.includes('create'))
+    || (currentTab === 'profile' && segments.includes('subscription'));
+  const isCreateRoutine = currentTab === 'routines' && segments.includes('create');
+  const isSubscription = currentTab === 'profile' && segments.includes('subscription');
+  const hideTopSafeArea = isCreateRoutine || isSubscription;
   const hasActiveChart = chartActive || (currentTab === 'history' && chartMode === 'abs');
 
   useEffect(() => {
@@ -201,7 +204,7 @@ function TabLayoutInner() {
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: colors.background }]}
-      edges={isCreateRoutine ? [] : ['top']}
+      edges={hideTopSafeArea ? [] : ['top']}
     >
       <SwipeableTabs
         tabBar={(props) => <BottomTabBar {...props} hidden={hideTabBar} />}
