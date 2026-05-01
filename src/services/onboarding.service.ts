@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   GenerateOnboardingRoutineRequest,
   GenerateOnboardingRoutineResponse,
@@ -12,8 +13,23 @@ const DEFAULT_WEEK_COUNT_BY_MODE: Record<OnboardingRoutineGenerationMode, number
 };
 
 const MAX_AI_NEW_CALL_ATTEMPTS = 2;
+const PENDING_ROUTINE_GENERATION_KEY = 'pending_routine_generation';
+const ROUTINE_GENERATION_POLL_INTERVAL_MS = 2500;
 
 type RepairContext = NonNullable<GenerateOnboardingRoutineRequest['repair_context']>;
+type RoutineGenerationContext = 'onboarding' | 'routine';
+
+interface PendingRoutineGeneration {
+  jobId: string;
+  context: RoutineGenerationContext;
+  payload: GenerateOnboardingRoutineRequest;
+  createdAt: string;
+}
+
+type RoutineGenerationJobStatus =
+  | { status: 'queued' | 'running' }
+  | { status: 'failed'; error: string }
+  | { status: 'completed'; result: GenerateOnboardingRoutineResponse };
 
 class RoutineGenerationInvokeError extends Error {
   repairContext: RepairContext | null;
@@ -113,6 +129,71 @@ function isRetryableAiError(message: string): boolean {
   );
 }
 
+function getTargetWeekCount(payload: GenerateOnboardingRoutineRequest): number {
+  return payload.week_count ?? DEFAULT_WEEK_COUNT_BY_MODE[payload.mode];
+}
+
+function isValidPendingRoutineGeneration(value: unknown): value is PendingRoutineGeneration {
+  if (!value || typeof value !== 'object') return false;
+
+  const candidate = value as {
+    jobId?: unknown;
+    context?: unknown;
+    payload?: unknown;
+    createdAt?: unknown;
+  };
+
+  if (typeof candidate.jobId !== 'string' || candidate.jobId.length === 0) return false;
+  if (candidate.context !== 'onboarding' && candidate.context !== 'routine') return false;
+  if (typeof candidate.createdAt !== 'string' || candidate.createdAt.length === 0) return false;
+
+  const payload = candidate.payload as Partial<GenerateOnboardingRoutineRequest> | undefined;
+  if (!payload || typeof payload !== 'object') return false;
+  if (payload.mode !== 'ai' && payload.mode !== 'template') return false;
+  if (!payload.answers || typeof payload.answers !== 'object') return false;
+
+  return true;
+}
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('You must be signed in to create a routine.');
+  }
+
+  return {
+    Authorization: `Bearer ${session.access_token}`,
+  };
+}
+
+async function readPendingRoutineGeneration(): Promise<PendingRoutineGeneration | null> {
+  const raw = await AsyncStorage.getItem(PENDING_ROUTINE_GENERATION_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isValidPendingRoutineGeneration(parsed)) {
+      await AsyncStorage.removeItem(PENDING_ROUTINE_GENERATION_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    await AsyncStorage.removeItem(PENDING_ROUTINE_GENERATION_KEY);
+    return null;
+  }
+}
+
+async function writePendingRoutineGeneration(pending: PendingRoutineGeneration): Promise<void> {
+  await AsyncStorage.setItem(PENDING_ROUTINE_GENERATION_KEY, JSON.stringify(pending));
+}
+
+async function clearPendingRoutineGeneration(): Promise<void> {
+  await AsyncStorage.removeItem(PENDING_ROUTINE_GENERATION_KEY);
+}
+
 async function invokeGenerateRoutine(args: {
   payload: GenerateOnboardingRoutineRequest;
   headers: Record<string, string>;
@@ -153,6 +234,123 @@ async function invokeGenerateRoutine(args: {
   return data as GenerateOnboardingRoutineResponse;
 }
 
+async function invokeFastFallbackRoutine(args: {
+  payload: GenerateOnboardingRoutineRequest;
+  headers: Record<string, string>;
+}): Promise<GenerateOnboardingRoutineResponse> {
+  const { payload, headers } = args;
+
+  const generated = await invokeGenerateRoutine({
+    payload: {
+      ...payload,
+      mode: 'template',
+      week_count: 1,
+      repair_context: undefined,
+    },
+    headers,
+  });
+
+  return {
+    ...generated,
+    generation_mode_used: 'fallback_template',
+  };
+}
+
+async function invokeStartRoutineGenerationJob(args: {
+  payload: GenerateOnboardingRoutineRequest;
+  headers: Record<string, string>;
+}): Promise<{ job_id: string; status: 'queued' | 'running' }> {
+  const { payload, headers } = args;
+  const { data, error } = await supabase.functions.invoke('generate-onboarding-routine', {
+    body: {
+      action: 'start',
+      mode: payload.mode,
+      answers: payload.answers,
+      week_count: getTargetWeekCount(payload),
+    },
+    headers,
+  });
+
+  if (error) {
+    const contextPayload = await readContextPayload(error);
+    const contextMessage = await readContextErrorMessage(error);
+    const payloadMessage = extractMessageFromPayload(data ?? contextPayload);
+    throw new Error(
+      contextMessage ?? payloadMessage ?? error.message ?? 'Could not start routine generation.',
+    );
+  }
+
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    !('job_id' in data) ||
+    typeof data.job_id !== 'string' ||
+    !('status' in data) ||
+    (data.status !== 'queued' && data.status !== 'running')
+  ) {
+    throw new Error('Routine generation job returned an unexpected response.');
+  }
+
+  return {
+    job_id: data.job_id,
+    status: data.status,
+  };
+}
+
+async function invokeRoutineGenerationJobStatus(args: {
+  jobId: string;
+  headers: Record<string, string>;
+}): Promise<RoutineGenerationJobStatus> {
+  const { jobId, headers } = args;
+  const { data, error } = await supabase.functions.invoke('generate-onboarding-routine', {
+    body: {
+      action: 'status',
+      job_id: jobId,
+    },
+    headers,
+  });
+
+  if (error) {
+    const contextPayload = await readContextPayload(error);
+    const contextMessage = await readContextErrorMessage(error);
+    const payloadMessage = extractMessageFromPayload(data ?? contextPayload);
+    throw new Error(
+      contextMessage ?? payloadMessage ?? error.message ?? 'Could not check routine generation status.',
+    );
+  }
+
+  if (!data || typeof data !== 'object' || !('status' in data)) {
+    throw new Error('Routine generation status returned an unexpected response.');
+  }
+
+  if (data.status === 'queued' || data.status === 'running') {
+    return { status: data.status };
+  }
+
+  if (data.status === 'failed') {
+    return {
+      status: 'failed',
+      error: extractMessageFromPayload(data) ?? 'Routine generation failed.',
+    };
+  }
+
+  if (
+    data.status === 'completed' &&
+    'routine_id' in data &&
+    typeof data.routine_id === 'string' &&
+    'routine_name' in data &&
+    typeof data.routine_name === 'string' &&
+    'generation_mode_used' in data
+  ) {
+    return {
+      status: 'completed',
+      result: data as GenerateOnboardingRoutineResponse,
+    };
+  }
+
+  throw new Error('Routine generation status returned an unexpected response.');
+}
+
 async function ensureAdditionalWeeks(args: {
   routineId: string;
   targetWeekCount: number;
@@ -167,72 +365,219 @@ async function ensureAdditionalWeeks(args: {
   });
 }
 
-export const onboardingService = {
-  async generateFirstRoutine(
-    payload: GenerateOnboardingRoutineRequest,
-  ): Promise<GenerateOnboardingRoutineResponse> {
-    const targetWeekCount = payload.week_count ?? DEFAULT_WEEK_COUNT_BY_MODE[payload.mode];
+async function finalizeCompletedRoutineGeneration(args: {
+  pending: PendingRoutineGeneration;
+  result: GenerateOnboardingRoutineResponse;
+}): Promise<GenerateOnboardingRoutineResponse> {
+  const { pending, result } = args;
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+  await ensureAdditionalWeeks({
+    routineId: result.routine_id,
+    targetWeekCount: getTargetWeekCount(pending.payload),
+  });
 
-    if (!session?.access_token) {
-      throw new Error('You must be signed in to create a routine.');
+  await clearPendingRoutineGeneration();
+  return result;
+}
+
+async function waitForRoutineGenerationCompletion(args: {
+  pending: PendingRoutineGeneration;
+  headers: Record<string, string>;
+}): Promise<GenerateOnboardingRoutineResponse> {
+  const { pending, headers } = args;
+
+  for (;;) {
+    const status = await invokeRoutineGenerationJobStatus({
+      jobId: pending.jobId,
+      headers,
+    });
+
+    if (status.status === 'queued' || status.status === 'running') {
+      await new Promise((resolve) => setTimeout(resolve, ROUTINE_GENERATION_POLL_INTERVAL_MS));
+      continue;
     }
 
-    const headers = {
-      Authorization: `Bearer ${session.access_token}`,
-    };
+    if (status.status === 'failed') {
+      await clearPendingRoutineGeneration();
+      throw new Error(status.error);
+    }
 
-    const maxAttempts = payload.mode === 'ai' ? MAX_AI_NEW_CALL_ATTEMPTS : 1;
-    let generated: GenerateOnboardingRoutineResponse | null = null;
-    let lastError: Error | null = null;
-    let repairContext: RepairContext | null = payload.repair_context ?? null;
+    if (status.status !== 'completed') {
+      throw new Error('Routine generation status returned an unexpected response.');
+    }
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        generated = await invokeGenerateRoutine({
-          payload: {
-            ...payload,
-            week_count: 1,
-            repair_context: repairContext ?? undefined,
-          },
-          headers,
-        });
+    return finalizeCompletedRoutineGeneration({
+      pending,
+      result: status.result,
+    });
+  }
+}
+
+async function generateFirstRoutineForeground(
+  payload: GenerateOnboardingRoutineRequest,
+): Promise<GenerateOnboardingRoutineResponse> {
+  const targetWeekCount = getTargetWeekCount(payload);
+  const headers = await getAuthHeaders();
+
+  const maxAttempts = payload.mode === 'ai' ? MAX_AI_NEW_CALL_ATTEMPTS : 1;
+  let generated: GenerateOnboardingRoutineResponse | null = null;
+  let lastError: Error | null = null;
+  let repairContext: RepairContext | null = payload.repair_context ?? null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      generated = await invokeGenerateRoutine({
+        payload: {
+          ...payload,
+          week_count: 1,
+          repair_context: repairContext ?? undefined,
+        },
+        headers,
+      });
+      break;
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      lastError = err;
+
+      if (error instanceof RoutineGenerationInvokeError && error.repairContext) {
+        repairContext = error.repairContext;
+      }
+
+      const shouldRetry =
+        payload.mode === 'ai' &&
+        attempt < maxAttempts &&
+        isRetryableAiError(err.message);
+
+      if (!shouldRetry) {
         break;
-      } catch (error: unknown) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        lastError = err;
+      }
 
-        if (error instanceof RoutineGenerationInvokeError && error.repairContext) {
-          repairContext = error.repairContext;
-        }
+      console.warn(
+        `[onboarding] AI generation attempt ${attempt}/${maxAttempts} failed; retrying as a new call: ${err.message}`,
+      );
+    }
+  }
 
-        const shouldRetry =
-          payload.mode === 'ai' &&
-          attempt < maxAttempts &&
-          isRetryableAiError(err.message);
+  if (!generated) {
+    if (payload.mode === 'ai' && !__DEV__) {
+      console.warn(
+        `[onboarding] AI routine generation failed after ${maxAttempts} attempt(s); falling back to fast generation: ${lastError?.message ?? 'unknown error'}`,
+      );
+      generated = await invokeFastFallbackRoutine({ payload, headers });
+    } else {
+      throw lastError ?? new Error('Routine generation failed.');
+    }
+  }
 
-        if (!shouldRetry) {
-          throw err;
-        }
+  await ensureAdditionalWeeks({
+    routineId: generated.routine_id,
+    targetWeekCount,
+  });
 
+  return generated;
+}
+
+async function generateFirstRoutineInBackground(args: {
+  payload: GenerateOnboardingRoutineRequest;
+  context: RoutineGenerationContext;
+}): Promise<GenerateOnboardingRoutineResponse> {
+  const { payload, context } = args;
+  const headers = await getAuthHeaders();
+  const started = await invokeStartRoutineGenerationJob({ payload, headers });
+  const pending: PendingRoutineGeneration = {
+    jobId: started.job_id,
+    context,
+    payload,
+    createdAt: new Date().toISOString(),
+  };
+
+  await writePendingRoutineGeneration(pending);
+  return waitForRoutineGenerationCompletion({ pending, headers });
+}
+
+export const onboardingService = {
+  async getPendingRoutineGeneration(): Promise<PendingRoutineGeneration | null> {
+    return readPendingRoutineGeneration();
+  },
+
+  async waitForPendingRoutineGenerationCompletion(args?: {
+    pending?: PendingRoutineGeneration;
+  }): Promise<GenerateOnboardingRoutineResponse> {
+    const pending = args?.pending ?? await readPendingRoutineGeneration();
+    if (!pending) {
+      throw new Error('No routine generation is currently in progress.');
+    }
+
+    const headers = await getAuthHeaders();
+    return waitForRoutineGenerationCompletion({ pending, headers });
+  },
+
+  async resumePendingRoutineGeneration(): Promise<
+    | { status: 'none' }
+    | { status: 'running'; pending: PendingRoutineGeneration }
+    | { status: 'failed'; pending: PendingRoutineGeneration; error: Error }
+    | { status: 'completed'; pending: PendingRoutineGeneration; result: GenerateOnboardingRoutineResponse }
+  > {
+    const pending = await readPendingRoutineGeneration();
+    if (!pending) return { status: 'none' };
+
+    const headers = await getAuthHeaders();
+    const status = await invokeRoutineGenerationJobStatus({
+      jobId: pending.jobId,
+      headers,
+    });
+
+    if (status.status === 'queued' || status.status === 'running') {
+      return {
+        status: 'running',
+        pending,
+      };
+    }
+
+    if (status.status === 'failed') {
+      await clearPendingRoutineGeneration();
+      return {
+        status: 'failed',
+        pending,
+        error: new Error(status.error),
+      };
+    }
+
+    if (status.status !== 'completed') {
+      throw new Error('Routine generation status returned an unexpected response.');
+    }
+
+    const result = await finalizeCompletedRoutineGeneration({
+      pending,
+      result: status.result,
+    });
+
+    return {
+      status: 'completed',
+      pending,
+      result,
+    };
+  },
+
+  async generateFirstRoutine(
+    payload: GenerateOnboardingRoutineRequest,
+    options?: { context?: RoutineGenerationContext },
+  ): Promise<GenerateOnboardingRoutineResponse> {
+    const context = options?.context ?? 'routine';
+
+    if (payload.mode === 'ai' && !__DEV__) {
+      try {
+        return await generateFirstRoutineInBackground({
+          payload,
+          context,
+        });
+      } catch (error) {
         console.warn(
-          `[onboarding] AI generation attempt ${attempt}/${maxAttempts} failed; retrying as a new call: ${err.message}`,
+          `[onboarding] Falling back to foreground generation after background job setup failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
 
-    if (!generated) {
-      throw lastError ?? new Error('Routine generation failed.');
-    }
-
-    await ensureAdditionalWeeks({
-      routineId: generated.routine_id,
-      targetWeekCount,
-    });
-
-    return generated;
+    return generateFirstRoutineForeground(payload);
   },
 };

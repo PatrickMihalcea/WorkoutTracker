@@ -28,7 +28,7 @@ function titleForMode(mode: RoutineCreationMode): string {
 }
 
 function subtitleForMode(mode: RoutineCreationMode, context: RoutineCreationContext): string {
-  if (mode === 'ai') return 'Our coach engine is tuning your plan to your goals. This may take a few minutes.';
+  if (mode === 'ai') return 'Tuning your plan to your goals. This may take a few minutes.';
   if (mode === 'template') return 'Setting up a balanced starter routine from your picks.';
   if (context === 'onboarding') return 'Finishing setup so you can start training right away.';
   return 'Setting up your custom routine shell.';

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -60,6 +60,47 @@ export default function FirstRoutineScreen() {
     setWeekCount(nextMode === 'ai' ? 2 : 4);
   };
 
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      const pending = await onboardingService.getPendingRoutineGeneration();
+      if (!active || !pending || pending.context !== 'onboarding') return;
+
+      setMode(pending.payload.mode);
+      setDaysPerWeek(pending.payload.answers.days_per_week);
+      setSessionMinutes(pending.payload.answers.session_minutes);
+      setGoal(pending.payload.answers.goal);
+      setExperience(pending.payload.answers.experience);
+      setEquipment(pending.payload.answers.equipment);
+      setFocusMuscle(pending.payload.answers.focus_muscle);
+      setWeekCount((pending.payload.week_count ?? (pending.payload.mode === 'ai' ? 2 : 4)) as RoutineWeekCount);
+      setLoading(true);
+
+      try {
+        const result = await onboardingService.waitForPendingRoutineGenerationCompletion({ pending });
+        if (!active) return;
+
+        await updateProfile({ onboarding_complete: true });
+        router.replace(`/(tabs)/routines/${result.routine_id}?fromOnboarding=1`);
+      } catch (error: unknown) {
+        if (__DEV__) {
+          Alert.alert('Error', (error as Error).message || 'Could not create your first routine.');
+        } else {
+          console.warn(
+            `[onboarding] Pending routine generation did not complete cleanly: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        if (!active) return;
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [router, updateProfile]);
+
   const handleContinue = async () => {
     setLoading(true);
     try {
@@ -74,13 +115,21 @@ export default function FirstRoutineScreen() {
           equipment,
           focus_muscle: focusMuscle,
         },
+      }, {
+        context: 'onboarding',
       });
 
       await updateProfile({ onboarding_complete: true });
 
       router.replace(`/(tabs)/routines/${result.routine_id}?fromOnboarding=1`);
     } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message || 'Could not create your first routine.');
+      if (__DEV__ || mode !== 'ai') {
+        Alert.alert('Error', (error as Error).message || 'Could not create your first routine.');
+      } else {
+        console.warn(
+          `[onboarding] Routine generation returned without a user-visible error: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     } finally {
       setLoading(false);
     }

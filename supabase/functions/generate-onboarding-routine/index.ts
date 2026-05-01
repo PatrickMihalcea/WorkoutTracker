@@ -438,13 +438,44 @@ async function processRoutineJob(args: ProcessJobArgs): Promise<void> {
     .eq('user_id', userId);
 
   try {
-    const generated = await generateAndPersistRoutine({
-      supabase,
-      userId,
-      mode,
-      answers,
-      weekCount,
-    });
+    let generated: GenerateOnboardingRoutineResponse;
+
+    try {
+      generated = await generateAndPersistRoutine({
+        supabase,
+        userId,
+        mode,
+        answers,
+        weekCount,
+      });
+    } catch (error: unknown) {
+      if (mode !== 'ai') {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        JSON.stringify({
+          event: 'routine_generation_job_ai_fallback',
+          user_id: userId,
+          job_id: jobId,
+          error_message: message,
+        }),
+      );
+
+      const fallbackGenerated = await generateAndPersistRoutine({
+        supabase,
+        userId,
+        mode: 'template',
+        answers,
+        weekCount,
+      });
+
+      generated = {
+        ...fallbackGenerated,
+        generation_mode_used: 'fallback_template',
+      };
+    }
 
     const completedAt = new Date().toISOString();
     await supabase

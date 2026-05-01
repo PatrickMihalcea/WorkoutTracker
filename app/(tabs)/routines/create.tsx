@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -68,6 +68,45 @@ export default function CreateRoutineScreen() {
     return 'Build Routine';
   }, [mode]);
 
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      const pending = await onboardingService.getPendingRoutineGeneration();
+      if (!active || !pending || pending.context !== 'routine') return;
+
+      setMode(pending.payload.mode);
+      setDaysPerWeek(pending.payload.answers.days_per_week);
+      setSessionMinutes(pending.payload.answers.session_minutes);
+      setGoal(pending.payload.answers.goal);
+      setExperience(pending.payload.answers.experience);
+      setEquipment(pending.payload.answers.equipment);
+      setFocusMuscle(pending.payload.answers.focus_muscle);
+      setWeekCount((pending.payload.week_count ?? (pending.payload.mode === 'ai' ? 2 : 4)) as RoutineWeekCount);
+      setLoading(true);
+
+      try {
+        const result = await onboardingService.waitForPendingRoutineGenerationCompletion({ pending });
+        if (!active) return;
+        router.replace(`/(tabs)/routines/${result.routine_id}`);
+      } catch (error: unknown) {
+        if (__DEV__) {
+          Alert.alert('Error', (error as Error).message || 'Could not create routine.');
+        } else {
+          console.warn(
+            `[routine-create] Pending routine generation did not complete cleanly: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        if (!active) return;
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
   const handleCreate = async () => {
     setLoading(true);
     try {
@@ -97,11 +136,19 @@ export default function CreateRoutineScreen() {
           equipment,
           focus_muscle: focusMuscle,
         },
+      }, {
+        context: 'routine',
       });
 
       router.replace(`/(tabs)/routines/${generated.routine_id}`);
     } catch (error: unknown) {
-      Alert.alert('Error', (error as Error).message || 'Could not create routine.');
+      if (__DEV__ || mode !== 'ai') {
+        Alert.alert('Error', (error as Error).message || 'Could not create routine.');
+      } else {
+        console.warn(
+          `[routine-create] Routine generation returned without a user-visible error: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     } finally {
       setLoading(false);
     }

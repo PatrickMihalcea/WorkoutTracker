@@ -616,11 +616,11 @@ export const exerciseDetailService = {
       const rawDistance = (row.distance as number) ?? 0;
       return {
         set_number: (row.set_number as number) ?? 1,
-        weight: wUnit === 'lbs' ? Math.round(kgToLbs(rawWeight) * 10) / 10 : rawWeight,
+        weight: rawWeight,
         reps_performed: (row.reps_performed as number) ?? 0,
         rir: row.rir as number | null,
         duration: (row.duration as number) ?? 0,
-        distance: dUnit === 'miles' ? Math.round(kmToMiles(rawDistance) * 100) / 100 : rawDistance,
+        distance: rawDistance,
         session: row.session as { id: string; started_at: string; completed_at: string | null },
       };
     });

@@ -17,7 +17,7 @@ import { AppHeader } from '../src/components/ui';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { DEFAULT_THEME, isLightTheme } from '../src/constants/themes';
 import { WorkoutFloatingPill, WorkoutOverlayProvider } from '../src/components/workout';
-import { notificationService } from '../src/services';
+import { notificationService, onboardingService } from '../src/services';
 
 
 const HAS_OPENED_KEY = 'has_opened_before';
@@ -29,7 +29,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
 function RootLayoutInner() {
   const { colors, gradients, theme } = useTheme();
   const { session, initialized, initialize } = useAuthStore();
-  const { profile, loading: profileLoading, resolved: profileResolved } = useProfileStore();
+  const { profile, loading: profileLoading, resolved: profileResolved, updateProfile } = useProfileStore();
   const { fetchRoutines, fetchActiveRoutine, activeRoutineInitialized } = useRoutineStore();
   const segments = useSegments();
   const router = useRouter();
@@ -37,6 +37,8 @@ function RootLayoutInner() {
   const [initTimedOut, setInitTimedOut] = useState(false);
   const [launchVisible, setLaunchVisible] = useState(true);
   const [launchExiting, setLaunchExiting] = useState(false);
+  const [routineGenerationRecoveryResolved, setRoutineGenerationRecoveryResolved] = useState(false);
+  const [pendingRoutineGenerationContext, setPendingRoutineGenerationContext] = useState<'onboarding' | 'routine' | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -81,10 +83,80 @@ function RootLayoutInner() {
     void notificationService.initialize();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    if (!session?.user) {
+      setPendingRoutineGenerationContext(null);
+      setRoutineGenerationRecoveryResolved(true);
+      return () => {
+        active = false;
+      };
+    }
+
+    if (!profileResolved) {
+      setRoutineGenerationRecoveryResolved(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setRoutineGenerationRecoveryResolved(false);
+
+    void (async () => {
+      try {
+        const resumed = await onboardingService.resumePendingRoutineGeneration();
+        if (!active) return;
+
+        if (resumed.status === 'none') {
+          setPendingRoutineGenerationContext(null);
+          return;
+        }
+
+        if (resumed.status === 'running') {
+          setPendingRoutineGenerationContext(resumed.pending.context);
+          return;
+        }
+
+        setPendingRoutineGenerationContext(null);
+
+        if (
+          resumed.status === 'completed' &&
+          resumed.pending.context === 'onboarding' &&
+          profile &&
+          !profile.onboarding_complete
+        ) {
+          await updateProfile({ onboarding_complete: true });
+        }
+
+        if (resumed.status === 'completed') {
+          await fetchRoutines();
+          await fetchActiveRoutine();
+        }
+      } catch (error) {
+        console.warn(
+          `[startup] Failed to recover pending routine generation: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        if (!active) return;
+        setPendingRoutineGenerationContext(null);
+      } finally {
+        if (active) {
+          setRoutineGenerationRecoveryResolved(true);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, profileResolved]);
+
   const launchScreenReady = hasOpenedBefore !== null;
   const profileReady = !session?.user || profileResolved;
+  const routineGenerationReady = !session?.user || routineGenerationRecoveryResolved;
   const routineBootstrapReady = !session?.user || !profile?.onboarding_complete || activeRoutineInitialized;
-  const ready = (fontsLoaded && initialized && !profileLoading && profileReady && routineBootstrapReady && launchScreenReady) || initTimedOut;
+  const ready = (fontsLoaded && initialized && !profileLoading && profileReady && routineGenerationReady && routineBootstrapReady && launchScreenReady) || initTimedOut;
 
   useEffect(() => {
     if (!ready) return;
@@ -127,21 +199,24 @@ function RootLayoutInner() {
     const inOnboarding = segments[0] === '(onboarding)';
     const currentSegment = segments[segments.length - 1];
     const inOnboardingFinalStep = inOnboarding && currentSegment === 'first-routine';
+    const shouldResumeOnboardingRoutineGeneration = pendingRoutineGenerationContext === 'onboarding';
 
     if (!session && !inAuthGroup) {
       router.replace(hasOpenedBefore ? '/(auth)/login' : '/(auth)/signup');
     } else if (session && inAuthGroup) {
       if (!profile || !profile.onboarding_complete) {
-        router.replace('/(onboarding)/display-name');
+        router.replace(shouldResumeOnboardingRoutineGeneration ? '/(onboarding)/first-routine' : '/(onboarding)/display-name');
       } else {
         router.replace('/(tabs)/today');
       }
     } else if (session && !inOnboarding && !inAuthGroup && (!profile || !profile.onboarding_complete)) {
-      router.replace('/(onboarding)/display-name');
+      router.replace(shouldResumeOnboardingRoutineGeneration ? '/(onboarding)/first-routine' : '/(onboarding)/display-name');
+    } else if (session && inOnboarding && !profile?.onboarding_complete && shouldResumeOnboardingRoutineGeneration && !inOnboardingFinalStep) {
+      router.replace('/(onboarding)/first-routine');
     } else if (session && inOnboarding && profile?.onboarding_complete && !inOnboardingFinalStep) {
       router.replace('/(tabs)/today');
     }
-  }, [session, profile, profileResolved, ready, segments, router]);
+  }, [hasOpenedBefore, pendingRoutineGenerationContext, profile, profileResolved, ready, router, segments, session]);
 
   useEffect(() => {
     if (!ready) return;
