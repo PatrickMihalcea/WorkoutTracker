@@ -7,7 +7,6 @@ import { useWorkoutOverlay } from './WorkoutOverlayContext';
 import { WorkoutPill } from './WorkoutPill';
 
 const TAB_BAR_HEIGHT = 60;
-const PROFILE_SESSION_PATH_REGEX = /^\/profile\/[^/]+$/;
 
 export function WorkoutFloatingPill() {
   const pathname = usePathname();
@@ -15,8 +14,7 @@ export function WorkoutFloatingPill() {
   const session = useWorkoutStore((state) => state.session);
   const { expanded, chromeHidden } = useWorkoutOverlay();
 
-  const hasBottomTabs = /^\/(today|routines|history|profile)(\/|$)/.test(pathname)
-    && !PROFILE_SESSION_PATH_REGEX.test(pathname);
+  const hasBottomTabs = /^\/(today|routines|history|profile)(\/|$)/.test(pathname);
   const pillBottomOffset = (hasBottomTabs ? TAB_BAR_HEIGHT : 0) + Math.max(insets.bottom, 8);
 
   const styles = useMemo(() => StyleSheet.create({

@@ -19,6 +19,7 @@ import { formatDurationValue } from '../../../src/utils/duration';
 import { formatWeight, formatDistance, weightUnitLabel, distanceUnitLabel } from '../../../src/utils/units';
 import { getExerciseTypeConfig, getWeightLabel } from '../../../src/utils/exerciseType';
 import { AppHeaderBackButton, Card, RirCircle } from '../../../src/components/ui';
+import { useWorkoutOverlay } from '../../../src/components/workout';
 import { fonts, spacing } from '../../../src/constants';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
@@ -29,6 +30,7 @@ export default function ExerciseHistoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { exerciseId, fromWorkoutOverlay } = useLocalSearchParams<{ exerciseId: string; fromWorkoutOverlay?: string }>();
+  const { minimize } = useWorkoutOverlay();
   const { user } = useAuthStore();
   const { profile } = useProfileStore();
   const weightUnit = profile?.weight_unit ?? 'kg';
@@ -65,6 +67,18 @@ export default function ExerciseHistoryScreen() {
   }, [loadHistory]);
 
   const handleOpenSession = useCallback((sessionId: string) => {
+    if (fromWorkoutOverlay === '1') {
+      minimize();
+      router.dismissAll();
+      setTimeout(() => {
+        router.push({
+          pathname: '/(tabs)/profile/[sessionId]',
+          params: { sessionId },
+        });
+      }, 0);
+      return;
+    }
+
     if (!exerciseId) return;
     router.push({
       pathname: '/(tabs)/profile/[sessionId]',
@@ -74,7 +88,7 @@ export default function ExerciseHistoryScreen() {
         exerciseId,
       },
     });
-  }, [exerciseId, router]);
+  }, [exerciseId, fromWorkoutOverlay, minimize, router]);
 
   const renderItem = useCallback(({ item }: { item: ExerciseHistorySession }) => {
     const exerciseType = historyData?.exercise.exercise_type ?? 'weight_reps';
@@ -106,36 +120,50 @@ export default function ExerciseHistoryScreen() {
             {cfg.showRir && <Text style={[styles.tableCol, styles.colRir]}>RIR</Text>}
           </View>
 
-          {item.setRows.map((setRow, index) => (
-            <View key={`${item.sessionId}-${setRow.setNumber}-${index}`} style={styles.tableRow}>
-              <Text style={[styles.tableCell, styles.colSet]}>{setRow.setNumber}</Text>
-              {showWeight && (
-                <Text style={[styles.tableCell, styles.colFlex]}>
-                  {setRow.weight > 0 ? formatWeight(setRow.weight, weightUnit) : '-'}
-                </Text>
-              )}
-              {showReps && (
-                <Text style={[styles.tableCell, styles.colFlex]}>
-                  {setRow.repsPerformed > 0 ? setRow.repsPerformed : '-'}
-                </Text>
-              )}
-              {showDuration && (
-                <Text style={[styles.tableCell, styles.colFlex]}>
-                  {setRow.duration > 0 ? formatDurationValue(setRow.duration) : '-'}
-                </Text>
-              )}
-              {showDistance && (
-                <Text style={[styles.tableCell, styles.colFlex]}>
-                  {setRow.distance > 0 ? formatDistance(setRow.distance, distanceUnit) : '-'}
-                </Text>
-              )}
-              {cfg.showRir && (
-                <View style={[styles.tableCellBox, styles.colRir]}>
-                  <RirCircle value={setRow.rir} size={24} />
+          {(() => {
+            let workingCount = 0;
+            return item.setRows.map((setRow, index) => {
+              if (!setRow.isWarmup) workingCount += 1;
+              return (
+                <View key={`${item.sessionId}-${setRow.setNumber}-${index}`} style={styles.tableRow}>
+                  <View style={[styles.setCellStack, styles.colSet]}>
+                    {setRow.isWarmup ? (
+                      <View style={styles.warmupCircle}>
+                        <Text style={styles.warmupText}>W</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.tableCell}>{workingCount}</Text>
+                    )}
+                  </View>
+                  {showWeight && (
+                    <Text style={[styles.tableCell, styles.colFlex]}>
+                      {setRow.weight > 0 ? formatWeight(setRow.weight, weightUnit) : '-'}
+                    </Text>
+                  )}
+                  {showReps && (
+                    <Text style={[styles.tableCell, styles.colFlex]}>
+                      {setRow.repsPerformed > 0 ? setRow.repsPerformed : '-'}
+                    </Text>
+                  )}
+                  {showDuration && (
+                    <Text style={[styles.tableCell, styles.colFlex]}>
+                      {setRow.duration > 0 ? formatDurationValue(setRow.duration) : '-'}
+                    </Text>
+                  )}
+                  {showDistance && (
+                    <Text style={[styles.tableCell, styles.colFlex]}>
+                      {setRow.distance > 0 ? formatDistance(setRow.distance, distanceUnit) : '-'}
+                    </Text>
+                  )}
+                  {cfg.showRir && (
+                    <View style={[styles.tableCellBox, styles.colRir]}>
+                      <RirCircle value={setRow.rir} size={24} />
+                    </View>
+                  )}
                 </View>
-              )}
-            </View>
-          ))}
+              );
+            });
+          })()}
         </Card>
       </TouchableOpacity>
     );
@@ -314,6 +342,23 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   tableCellBox: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  setCellStack: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warmupCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#D4A017',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warmupText: {
+    fontSize: 11,
+    fontFamily: fonts.bold,
+    color: '#fff',
   },
   colSet: {
     width: 28,

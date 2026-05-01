@@ -54,10 +54,7 @@ function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
   const { chromeHidden } = useWorkoutOverlay();
   const slideY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
-  const focusedTab = state.routes[state.index];
-  const focusedLeafRoute = getFocusedLeafRouteName(focusedTab as any);
-  const navHidden = focusedTab?.name === 'profile' && focusedLeafRoute === '[sessionId]';
-  const shouldHide = chromeHidden || navHidden;
+  const shouldHide = chromeHidden;
   const [renderChrome, setRenderChrome] = useState(!shouldHide);
 
   useEffect(() => {

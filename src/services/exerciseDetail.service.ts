@@ -54,6 +54,7 @@ export interface ExerciseHistorySession {
 
 export interface ExerciseHistorySetRow {
   setNumber: number;
+  isWarmup: boolean;
   weight: number;
   repsPerformed: number;
   rir: number | null;
@@ -81,6 +82,7 @@ interface RawSet {
 
 interface RawHistorySet {
   set_number: number;
+  is_warmup: boolean;
   weight: number;
   reps_performed: number;
   rir: number | null;
@@ -514,6 +516,7 @@ function computeHistorySessions(sets: RawHistorySet[]): ExerciseHistorySession[]
     existing.bestSetReps = Math.max(existing.bestSetReps, Math.max(0, set.reps_performed));
     existing.setRows.push({
       setNumber: Math.max(1, set.set_number ?? existing.setRows.length + 1),
+      isWarmup: set.is_warmup ?? false,
       weight: Math.max(0, set.weight),
       repsPerformed: Math.max(0, set.reps_performed),
       rir: set.rir,
@@ -602,11 +605,10 @@ export const exerciseDetailService = {
 
     const { data: rawSets, error: setsErr } = await supabase
       .from('set_logs')
-      .select('set_number, weight, reps_performed, rir, duration, distance, session:workout_sessions!inner(id, started_at, completed_at)')
+      .select('set_number, is_warmup, weight, reps_performed, rir, duration, distance, session:workout_sessions!inner(id, started_at, completed_at)')
       .eq('exercise_id', exerciseId)
       .eq('session.user_id', userId)
       .eq('session.status', 'completed')
-      .eq('is_warmup', false)
       .order('session(started_at)', { ascending: false });
 
     if (setsErr) throw setsErr;
@@ -616,6 +618,7 @@ export const exerciseDetailService = {
       const rawDistance = (row.distance as number) ?? 0;
       return {
         set_number: (row.set_number as number) ?? 1,
+        is_warmup: (row.is_warmup as boolean) ?? false,
         weight: rawWeight,
         reps_performed: (row.reps_performed as number) ?? 0,
         rir: row.rir as number | null,

@@ -1225,20 +1225,34 @@ export default function SessionDetailScreen() {
                         {cfg.showRir && <Text style={[styles.tableCol, styles.colRir]}>RIR</Text>}
                       </View>
 
-                      {group.sets.map((set) => (
-                        <View key={set.id} style={styles.tableRow}>
-                          <Text style={[styles.tableCell, styles.colSet]}>{set.set_number}</Text>
-                          {showWeight && <Text style={[styles.tableCell, styles.colFlex]}>{formatWeight(set.weight, weightUnit)}</Text>}
-                          {showReps && <Text style={[styles.tableCell, styles.colFlex]}>{set.reps_performed}</Text>}
-                          {showDuration && <Text style={[styles.tableCell, styles.colFlex]}>{set.duration > 0 ? formatDurationValue(set.duration) : '-'}</Text>}
-                          {showDistance && <Text style={[styles.tableCell, styles.colFlex]}>{set.distance > 0 ? formatDistance(set.distance, distUnit) : '-'}</Text>}
-                          {cfg.showRir && (
-                            <View style={[styles.tableCellBox, styles.colRir]}>
-                              <RirCircle value={set.rir} size={24} />
+                      {(() => {
+                        let workingCount = 0;
+                        return group.sets.map((set) => {
+                          if (!set.is_warmup) workingCount += 1;
+                          return (
+                            <View key={set.id} style={styles.tableRow}>
+                              <View style={[styles.setCellStack, styles.colSet]}>
+                                {set.is_warmup ? (
+                                  <View style={styles.warmupCircle}>
+                                    <Text style={styles.warmupText}>W</Text>
+                                  </View>
+                                ) : (
+                                  <Text style={styles.tableCell}>{workingCount}</Text>
+                                )}
+                              </View>
+                              {showWeight && <Text style={[styles.tableCell, styles.colFlex]}>{formatWeight(set.weight, weightUnit)}</Text>}
+                              {showReps && <Text style={[styles.tableCell, styles.colFlex]}>{set.reps_performed}</Text>}
+                              {showDuration && <Text style={[styles.tableCell, styles.colFlex]}>{set.duration > 0 ? formatDurationValue(set.duration) : '-'}</Text>}
+                              {showDistance && <Text style={[styles.tableCell, styles.colFlex]}>{set.distance > 0 ? formatDistance(set.distance, distUnit) : '-'}</Text>}
+                              {cfg.showRir && (
+                                <View style={[styles.tableCellBox, styles.colRir]}>
+                                  <RirCircle value={set.rir} size={24} />
+                                </View>
+                              )}
                             </View>
-                          )}
-                        </View>
-                      ))}
+                          );
+                        });
+                      })()}
                     </>
                   );
                 })()}
@@ -1664,6 +1678,23 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
   tableCellBox: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  setCellStack: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warmupCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#D4A017',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warmupText: {
+    fontSize: 11,
+    fontFamily: fonts.bold,
+    color: '#fff',
   },
   inlineEditorContainer: {
     paddingTop: 2,
