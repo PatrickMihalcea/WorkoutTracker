@@ -23,6 +23,7 @@ import Svg, {
 import { DashboardData, ExerciseProgression, TimeSeriesPoint } from '../../services';
 import { Card, ExercisePickerModal } from '../ui';
 import { BODY_MEASUREMENT_METRICS, Exercise, MeasurementMetricKey } from '../../models';
+import { PremiumFeatureKey } from '../../models/subscription';
 import { useProfileStore } from '../../stores/profile.store';
 import { getMeasurementGoalFromProfile, measurementGoalToDisplay } from '../../utils/measurementGoals';
 import { weightUnitLabel } from '../../utils/units';
@@ -74,6 +75,8 @@ const RADAR_AXES: { label: string; angle: number }[] = [
 
 interface Dashboard2Props {
   data: DashboardData;
+  hasPremium?: boolean;
+  onPressUpgrade?: (feature: PremiumFeatureKey) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
   onChangeWeeks?: (weeks: number) => void;
@@ -115,6 +118,8 @@ function useDashboardStyles() {
 
 export function Dashboard({
   data,
+  hasPremium = false,
+  onPressUpgrade,
   onRefresh,
   refreshing,
   onChangeWeeks,
@@ -195,6 +200,11 @@ export function Dashboard({
   }
 
   const handleRangeChange = (weeks: number) => {
+    if (!hasPremium && (weeks > 12 || weeks === 0)) {
+      onPressUpgrade?.('advanced_analytics');
+      return;
+    }
+
     setSelectedRange(weeks);
     onChangeWeeks?.(weeks);
     if (weeks === 0 && granularityMode === 'W') {
@@ -206,6 +216,14 @@ export function Dashboard({
   const handleGranularityChange = (mode: GranularityMode) => {
     setGranularityMode(mode);
     onChangeGranularityMode?.(mode);
+  };
+
+  const handleChartModePress = (mode: ChartMode) => {
+    if (!hasPremium && mode === 'abs') {
+      onPressUpgrade?.('advanced_analytics');
+      return;
+    }
+    onChangeChartMode?.(mode);
   };
 
   const handleExerciseSelect = (exercise: Exercise) => {
@@ -258,6 +276,22 @@ export function Dashboard({
         }
       >
         <HeroStatsRow stats={data.summaryStats} />
+        {!hasPremium ? (
+          <Card style={styles.card}>
+            <SectionTitle title="Premium" />
+            <Text style={styles.chartEmptyText}>
+              Unlock absolute chart mode and longer history ranges with Setora Premium.
+            </Text>
+            <TouchableOpacity
+              style={styles.exerciseSelectBtn}
+              onPress={() => onPressUpgrade?.('advanced_analytics')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.exerciseSelectText}>View premium options</Text>
+              <Text style={styles.exerciseSelectArrow}>›</Text>
+            </TouchableOpacity>
+          </Card>
+        ) : null}
         <ContributionGrid
           workoutDays={data.workoutDays}
           selectedRange={selectedRange}
@@ -317,7 +351,7 @@ export function Dashboard({
           style={[styles.filterBar, isLight && styles.filterBarLight]}
         >
           <TimeRangeDropdown selected={selectedRange} onChange={handleRangeChange} />
-          <ChartModeToggle selected={chartMode} onChange={(m) => onChangeChartMode?.(m)} />
+          <ChartModeToggle selected={chartMode} onChange={handleChartModePress} />
           {chartMode === 'abs' && (
             <GranularityPicker selected={granularityMode} onChange={handleGranularityChange} isAll={selectedRange === 0} />
           )}

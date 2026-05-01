@@ -18,6 +18,7 @@ import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { DEFAULT_THEME, isLightTheme } from '../src/constants/themes';
 import { WorkoutFloatingPill, WorkoutOverlayProvider } from '../src/components/workout';
 import { notificationService, onboardingService } from '../src/services';
+import { useSubscriptionStore } from '../src/stores/subscription.store';
 
 
 const HAS_OPENED_KEY = 'has_opened_before';
@@ -31,6 +32,10 @@ function RootLayoutInner() {
   const { session, initialized, initialize } = useAuthStore();
   const { profile, loading: profileLoading, resolved: profileResolved, updateProfile } = useProfileStore();
   const { fetchRoutines, fetchActiveRoutine, activeRoutineInitialized } = useRoutineStore();
+  const {
+    initialize: initializeSubscriptionStore,
+    clear: clearSubscriptionStore,
+  } = useSubscriptionStore();
   const segments = useSegments();
   const router = useRouter();
   const [hasOpenedBefore, setHasOpenedBefore] = useState<boolean | null>(null);
@@ -78,6 +83,17 @@ function RootLayoutInner() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    if (!initialized) return;
+
+    if (session?.user?.id) {
+      void initializeSubscriptionStore(session.user.id);
+      return;
+    }
+
+    void clearSubscriptionStore();
+  }, [clearSubscriptionStore, initializeSubscriptionStore, initialized, session?.user?.id]);
 
   useEffect(() => {
     void notificationService.initialize();

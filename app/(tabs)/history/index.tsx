@@ -4,14 +4,16 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Dashboard } from '../../../src/components/history/Dashboard';
 import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
 import type { GranularityMode, HistoryChartMode } from '../../../src/components/history/HistoryViewContext';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useSubscriptionStore } from '../../../src/stores/subscription.store';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
+import type { PremiumFeatureKey } from '../../../src/models/subscription';
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   loadingContainer: {
@@ -23,6 +25,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
 });
 
 export default function HistoryScreen() {
+  const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const {
@@ -34,6 +37,7 @@ export default function HistoryScreen() {
   } = useHistoryView();
   const user = useAuthStore((s) => s.user);
   const { profile } = useProfileStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
   const wUnit = profile?.weight_unit ?? 'kg';
   const hUnit = profile?.height_unit ?? 'cm';
   const [refreshing, setRefreshing] = useState(false);
@@ -68,6 +72,10 @@ export default function HistoryScreen() {
     setChartMode(mode);
   }, [setChartMode]);
 
+  const handleUpgrade = useCallback((feature: PremiumFeatureKey) => {
+    router.push(`/(tabs)/profile/subscription?feature=${feature}&source=history_dashboard`);
+  }, [router]);
+
   const prevGranRef = useRef(granularity);
   const prevChartModeRef = useRef(chartMode);
 
@@ -87,6 +95,13 @@ export default function HistoryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartMode]);
 
+  useEffect(() => {
+    if (isPremium) return;
+    if (chartMode === 'abs') {
+      setChartMode('rel');
+    }
+  }, [chartMode, isPremium, setChartMode]);
+
   if (dashboardLoading && !dashboardData) {
     return (
       <View style={styles.loadingContainer}>
@@ -99,6 +114,8 @@ export default function HistoryScreen() {
     return (
       <Dashboard
         data={dashboardData}
+        hasPremium={isPremium}
+        onPressUpgrade={handleUpgrade}
         onRefresh={onRefresh}
         refreshing={refreshing}
         onChangeWeeks={handleChangeWeeks}

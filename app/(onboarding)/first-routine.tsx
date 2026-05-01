@@ -23,7 +23,9 @@ import {
   RoutineWeekCount,
 } from '../../src/models';
 import { onboardingService } from '../../src/services';
+import type { AiRoutineAccessStatus } from '../../src/services/onboarding.service';
 import { useProfileStore } from '../../src/stores/profile.store';
+import { useSubscriptionStore } from '../../src/stores/subscription.store';
 
 const SCREEN_COLORS = {
   card: '#121A1F',
@@ -45,7 +47,9 @@ const SCREEN_COLORS = {
 export default function FirstRoutineScreen() {
   const router = useRouter();
   const { updateProfile } = useProfileStore();
-  const [mode, setMode] = useState<OnboardingRoutineGenerationMode>('ai');
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
+  const [aiAccess, setAiAccess] = useState<AiRoutineAccessStatus>('free');
+  const [mode, setMode] = useState<OnboardingRoutineGenerationMode>('template');
   const [daysPerWeek, setDaysPerWeek] = useState<3 | 4 | 5>(4);
   const [sessionMinutes, setSessionMinutes] = useState<30 | 60 | 90>(60);
   const [weekCount, setWeekCount] = useState<RoutineWeekCount>(4);
@@ -56,9 +60,54 @@ export default function FirstRoutineScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleModeChange = (nextMode: OnboardingRoutineGenerationMode) => {
+    const canUseAi = aiAccess === 'free' || aiAccess === 'premium';
+    if (nextMode === 'ai' && !canUseAi) {
+      Alert.alert(
+        aiAccess === 'in_progress'
+          ? 'AI routine in progress'
+          : isPremium
+          ? 'Monthly AI credits used'
+          : 'Premium feature',
+        aiAccess === 'in_progress'
+          ? 'Your AI routine is already being generated. Please wait for it to finish.'
+          : isPremium
+          ? 'You have already used your 3 Setora Pro AI routine credits for this month.'
+          : 'Your free AI routine has already been used. Additional AI routine generation is part of Setora Pro.',
+      );
+      return;
+    }
     setMode(nextMode);
     setWeekCount(nextMode === 'ai' ? 2 : 4);
   };
+
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      try {
+        const status = await onboardingService.getAiRoutineAccessStatus({ isPremium });
+        if (!active) return;
+        setAiAccess(status);
+        setMode((current) => {
+          if (current === 'ai' && status === 'locked') return 'template';
+          if (current === 'template' && (status === 'free' || status === 'premium')) return 'ai';
+          return current;
+        });
+        if (status === 'locked') {
+          setWeekCount(4);
+        } else {
+          setWeekCount((current) => (current === 4 ? 2 : current));
+        }
+      } catch {
+        if (!active) return;
+        setAiAccess('locked');
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [isPremium]);
 
   useEffect(() => {
     let active = true;
@@ -102,6 +151,23 @@ export default function FirstRoutineScreen() {
   }, [router, updateProfile]);
 
   const handleContinue = async () => {
+    const canUseAi = aiAccess === 'free' || aiAccess === 'premium';
+    if (mode === 'ai' && !canUseAi) {
+      Alert.alert(
+        aiAccess === 'in_progress'
+          ? 'AI routine in progress'
+          : isPremium
+          ? 'Monthly AI credits used'
+          : 'Premium feature',
+        aiAccess === 'in_progress'
+          ? 'Your AI routine is already being generated. Please wait for it to finish.'
+          : isPremium
+          ? 'You have already used your 3 Setora Pro AI routine credits for this month. Switch to Fast Start to finish onboarding.'
+          : 'Your free AI routine has already been used. Additional AI routine generation is part of Setora Pro. Switch to Fast Start to finish onboarding.',
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await onboardingService.generateFirstRoutine({
@@ -154,7 +220,13 @@ export default function FirstRoutineScreen() {
           >
             <Text style={[styles.modeTitle, mode === 'ai' && styles.modeTitleActive]}>Personalized by AI</Text>
             <Text style={[styles.modeHint, mode === 'ai' && styles.modeHintActive]}>
-              Tailored to your setup.
+              {aiAccess === 'premium'
+                ? 'Tailored to your setup.'
+                : aiAccess === 'free'
+                ? 'Your first AI routine is free.'
+                : isPremium
+                ? '3 AI routines per month with Setora Pro.'
+                : 'Additional AI routines require Setora Pro.'}
             </Text>
           </TouchableOpacity>
 

@@ -24,3 +24,4 @@ export { notificationService } from './notification.service';
 export { onboardingService } from './onboarding.service';
 export { exerciseMediaService } from './exerciseMedia.service';
 export { feedbackService } from './feedback.service';
+export { subscriptionService } from './subscription.service';

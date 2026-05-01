@@ -47,14 +47,18 @@ function getFocusedLeafRouteName(route: { state?: unknown; name?: string }): str
   return typeof current?.name === 'string' ? current.name : null;
 }
 
-function BottomTabBar({ state, navigation }: MaterialTopTabBarProps) {
+function BottomTabBar({
+  state,
+  navigation,
+  hidden = false,
+}: MaterialTopTabBarProps & { hidden?: boolean }) {
   const insets = useSafeAreaInsets();
   const { colors, theme } = useTheme();
   const isLight = isLightTheme(theme);
   const { chromeHidden } = useWorkoutOverlay();
   const slideY = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
-  const shouldHide = chromeHidden;
+  const shouldHide = chromeHidden || hidden;
   const [renderChrome, setRenderChrome] = useState(!shouldHide);
 
   useEffect(() => {
@@ -175,6 +179,8 @@ function TabLayoutInner() {
     || segment === 'history'
     || segment === 'profile'
   ));
+  const hideTabBar = currentTab === 'routines' && segments.includes('create');
+  const isCreateRoutine = hideTabBar;
   const hasActiveChart = chartActive || (currentTab === 'history' && chartMode === 'abs');
 
   useEffect(() => {
@@ -195,10 +201,10 @@ function TabLayoutInner() {
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: colors.background }]}
-      edges={['top']}
+      edges={isCreateRoutine ? [] : ['top']}
     >
       <SwipeableTabs
-        tabBar={(props) => <BottomTabBar {...props} />}
+        tabBar={(props) => <BottomTabBar {...props} hidden={hideTabBar} />}
         tabBarPosition="bottom"
         screenOptions={{
           swipeEnabled: isAtTabRoot && !hasActiveChart,

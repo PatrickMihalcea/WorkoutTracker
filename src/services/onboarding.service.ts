@@ -18,6 +18,7 @@ const ROUTINE_GENERATION_POLL_INTERVAL_MS = 2500;
 
 type RepairContext = NonNullable<GenerateOnboardingRoutineRequest['repair_context']>;
 type RoutineGenerationContext = 'onboarding' | 'routine';
+export type AiRoutineAccessStatus = 'premium' | 'free' | 'locked' | 'in_progress';
 
 interface PendingRoutineGeneration {
   jobId: string;
@@ -496,6 +497,64 @@ async function generateFirstRoutineInBackground(args: {
 }
 
 export const onboardingService = {
+  async getAiRoutineAccessStatus(args?: {
+    isPremium?: boolean;
+  }): Promise<AiRoutineAccessStatus> {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const userId = session?.user?.id;
+    if (!userId) {
+      throw new Error('You must be signed in to create a routine.');
+    }
+
+    const [{ data: generationJob, error: generationJobError }, { data: profile, error: profileError }] = await Promise.all([
+      supabase
+        .from('routine_generation_jobs')
+        .select('status')
+        .eq('user_id', userId)
+        .eq('mode', 'ai')
+        .in('status', ['queued', 'running'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('user_profiles')
+        .select('ai_generation_credits, ai_generation_credits_refilled_at')
+        .eq('id', userId)
+        .maybeSingle(),
+    ]);
+
+    if (generationJobError) throw generationJobError;
+    if (profileError) throw profileError;
+
+    if (generationJob?.status === 'queued' || generationJob?.status === 'running') {
+      return 'in_progress';
+    }
+
+    const credits = profile?.ai_generation_credits ?? 0;
+    if (credits > 0) {
+      return args?.isPremium ? 'premium' : 'free';
+    }
+
+    if (args?.isPremium) {
+      const now = new Date();
+      const refilledAt = profile?.ai_generation_credits_refilled_at
+        ? new Date(profile.ai_generation_credits_refilled_at)
+        : null;
+      const refillDue = !refilledAt
+        || refilledAt.getUTCFullYear() !== now.getUTCFullYear()
+        || refilledAt.getUTCMonth() !== now.getUTCMonth();
+
+      if (refillDue) {
+        return 'premium';
+      }
+    }
+
+    return 'locked';
+  },
+
   async getPendingRoutineGeneration(): Promise<PendingRoutineGeneration | null> {
     return readPendingRoutineGeneration();
   },

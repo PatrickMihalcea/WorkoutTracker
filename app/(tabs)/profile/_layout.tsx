@@ -8,6 +8,7 @@ export default function ProfileLayout() {
       <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
       <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       <Stack.Screen name="account" options={{ title: 'Account' }} />
+      <Stack.Screen name="subscription" options={{ title: 'Subscription' }} />
       <Stack.Screen name="change-username" options={{ title: 'Change Username' }} />
       <Stack.Screen name="change-email" options={{ title: 'Change Email' }} />
       <Stack.Screen name="change-password" options={{ title: 'Change Password' }} />

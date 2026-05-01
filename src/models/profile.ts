@@ -40,6 +40,8 @@ export interface UserProfile {
   notify_workout_rest_days_enabled: boolean;
   show_routine_performance: boolean;
   onboarding_complete: boolean;
+  ai_generation_credits: number;
+  ai_generation_credits_refilled_at: string | null;
   body_weight_kg_goal?: number | null;
   waist_cm_goal?: number | null;
   body_fat_pct_goal?: number | null;
@@ -60,6 +62,9 @@ export interface UserProfile {
   created_at: string;
 }
 
-export type UserProfileInsert = Omit<UserProfile, 'created_at'>;
+export type UserProfileInsert = Omit<UserProfile, 'created_at' | 'ai_generation_credits' | 'ai_generation_credits_refilled_at'> & {
+  ai_generation_credits?: number;
+  ai_generation_credits_refilled_at?: string | null;
+};
 export type UserProfileUpdate = Partial<Omit<UserProfile, 'id' | 'created_at'>>;
 export type UserProfileMeasurementGoalField = MeasurementGoalColumn;

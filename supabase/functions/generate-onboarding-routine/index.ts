@@ -54,6 +54,16 @@ interface JobRow {
   error_message: string | null;
 }
 
+interface SubscriptionStateRow {
+  is_active: boolean;
+}
+
+interface ConsumedAiCreditRow {
+  allowed: boolean;
+  remaining_credits: number;
+  reason: string;
+}
+
 function jsonResponse(body: unknown, status: number = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -294,6 +304,65 @@ async function fetchUserContext(args: {
     height_unit: userProfile.height_unit === 'in' || userProfile.height_unit === 'cm' ? userProfile.height_unit : null,
     weight_unit: userProfile.weight_unit === 'lbs' || userProfile.weight_unit === 'kg' ? userProfile.weight_unit : null,
     distance_unit: userProfile.distance_unit === 'miles' || userProfile.distance_unit === 'km' ? userProfile.distance_unit : null,
+  };
+}
+
+async function userHasPremiumAccess(args: {
+  supabase: ReturnType<typeof createClient>;
+  userId: string;
+}): Promise<boolean> {
+  const { supabase, userId } = args;
+  const { data, error } = await supabase
+    .from('user_subscription_state')
+    .select('is_active')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as SubscriptionStateRow | null)?.is_active ?? false;
+}
+
+async function consumeAiGenerationCredit(args: {
+  supabase: ReturnType<typeof createClient>;
+  isPremium: boolean;
+}): Promise<
+  | { allowed: true; reason: 'premium' | 'free'; remainingCredits: number }
+  | { allowed: false; reason: 'premium_required' | 'no_credits' | 'profile_not_found' | 'unauthorized'; remainingCredits: number }
+> {
+  const { supabase, isPremium } = args;
+  const { data, error } = await supabase.rpc('consume_ai_generation_credit', {
+    p_is_premium: isPremium,
+  });
+
+  if (error) throw error;
+
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row) {
+    return {
+      allowed: false,
+      reason: 'profile_not_found',
+      remainingCredits: 0,
+    };
+  }
+
+  const typed = row as ConsumedAiCreditRow;
+  if (!typed.allowed) {
+    return {
+      allowed: false,
+      reason:
+        typed.reason === 'no_credits'
+        || typed.reason === 'profile_not_found'
+        || typed.reason === 'unauthorized'
+          ? typed.reason
+          : 'premium_required',
+      remainingCredits: typed.remaining_credits ?? 0,
+    };
+  }
+
+  return {
+    allowed: true,
+    reason: typed.reason === 'premium' ? 'premium' : 'free',
+    remainingCredits: typed.remaining_credits ?? 0,
   };
 }
 
@@ -562,6 +631,26 @@ Deno.serve(async (request) => {
   }
 
   if (isStartPayload(body)) {
+    if (body.mode === 'ai') {
+      const hasPremium = await userHasPremiumAccess({
+        supabase: auth.supabase,
+        userId: auth.userId,
+      });
+      const access = await consumeAiGenerationCredit({
+        supabase: auth.supabase,
+        isPremium: hasPremium,
+      });
+      if (!access.allowed) {
+        return jsonResponse({
+          error: access.reason === 'no_credits'
+            ? 'You have no AI routine credits remaining this month.'
+            : access.reason === 'premium_required'
+            ? 'Your free AI routine has already been used. Setora Pro is required for more AI routines.'
+            : 'You must finish setting up your profile before creating an AI routine.',
+        }, 403);
+      }
+    }
+
     const nowIso = new Date().toISOString();
     const weekCount = resolveWeekCount(body.mode, body.week_count);
     const { data: createdJob, error: createJobError } = await auth.supabase
@@ -639,6 +728,26 @@ Deno.serve(async (request) => {
   }
 
   if (isLegacyPayload(body)) {
+    if (body.mode === 'ai') {
+      const hasPremium = await userHasPremiumAccess({
+        supabase: auth.supabase,
+        userId: auth.userId,
+      });
+      const access = await consumeAiGenerationCredit({
+        supabase: auth.supabase,
+        isPremium: hasPremium,
+      });
+      if (!access.allowed) {
+        return jsonResponse({
+          error: access.reason === 'no_credits'
+            ? 'You have no AI routine credits remaining this month.'
+            : access.reason === 'premium_required'
+            ? 'Your free AI routine has already been used. Setora Pro is required for more AI routines.'
+            : 'You must finish setting up your profile before creating an AI routine.',
+        }, 403);
+      }
+    }
+
     try {
       const generated = await generateAndPersistRoutine({
         supabase: auth.supabase,

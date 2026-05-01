@@ -53,6 +53,14 @@
     ],
     "extra": {
       "router": {},
+      "revenueCat": {
+        "entitlementId": "Setora Pro",
+        "offeringId": "default",
+        "useTestStore": true,
+        "testApiKey": "test_hzdPRMAnYFruOAwFIvSERdteFhs",
+        "iosApiKey": "",
+        "androidApiKey": ""
+      },
       "eas": {
         "projectId": "fc602efb-0f30-4edc-aece-e9663e734d6a"
       }

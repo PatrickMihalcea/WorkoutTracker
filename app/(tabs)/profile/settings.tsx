@@ -104,6 +104,11 @@ export default function SettingsScreen() {
           onPress={() => router.push('/(tabs)/profile/account')}
           styles={styles}
         />
+        <SettingsItem
+          label="Subscription"
+          onPress={() => router.push('/(tabs)/profile/subscription')}
+          styles={styles}
+        />
       </View>
 
       <Text style={styles.sectionHeader}>Preferences</Text>
