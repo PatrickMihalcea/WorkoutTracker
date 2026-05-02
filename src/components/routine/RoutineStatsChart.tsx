@@ -2,6 +2,8 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAuthStore } from '../../stores/auth.store';
 import { useProfileStore } from '../../stores/profile.store';
+import { useSubscriptionStore } from '../../stores/subscription.store';
+import { usePaywall } from '../../contexts/PaywallContext';
 import { dashboardService, RoutineChartData } from '../../services';
 import { fonts } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -39,9 +41,11 @@ export function RoutineStatsChart({ routineId }: RoutineStatsChartProps) {
   const { colors } = useTheme();
   const { user } = useAuthStore();
   const { profile } = useProfileStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
+  const { showPaywall } = usePaywall();
   const wUnit = profile?.weight_unit ?? 'kg';
 
-  const [selectedRange, setSelectedRange] = useState(12);
+  const [selectedRange, setSelectedRange] = useState(4);
   const [granularityMode, setGranularityMode] = useState<GranularityMode>('W');
   const [chartMode, setChartMode] = useState<ChartMode>('rel');
   const [metric, setMetric] = useState<RoutineMetric>('volume');
@@ -51,7 +55,7 @@ export function RoutineStatsChart({ routineId }: RoutineStatsChartProps) {
 
   const [renderedMode, setRenderedMode] = useState<ChartMode>('rel');
   const [renderedGranularity, setRenderedGranularity] = useState<GranularityMode>('W');
-  const [renderedRange, setRenderedRange] = useState(12);
+  const [renderedRange, setRenderedRange] = useState(4);
 
   const loadData = useCallback(async () => {
     if (!user?.id) return;
@@ -83,19 +87,27 @@ export function RoutineStatsChart({ routineId }: RoutineStatsChartProps) {
   }, [loadData]);
 
   const handleRangeChange = useCallback((weeks: number) => {
+    if (!isPremium && weeks !== 4) {
+      showPaywall('advanced_analytics');
+      return;
+    }
     setSelectedRange(weeks);
     if (weeks === 0 && granularityMode === 'W') {
       setGranularityMode('M');
     }
-  }, [granularityMode]);
+  }, [isPremium, showPaywall, granularityMode]);
 
   const handleGranularityChange = useCallback((mode: GranularityMode) => {
     setGranularityMode(mode);
   }, []);
 
   const handleChartModeChange = useCallback((mode: ChartMode) => {
+    if (!isPremium && mode === 'abs') {
+      showPaywall('advanced_analytics');
+      return;
+    }
     setChartMode(mode);
-  }, []);
+  }, [isPremium, showPaywall]);
 
   const points: TimeSeriesPoint[] = chartData
     ? (metric === 'volume' ? chartData.volume : metric === 'reps' ? chartData.reps : chartData.duration)

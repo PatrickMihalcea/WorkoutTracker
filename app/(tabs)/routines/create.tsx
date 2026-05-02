@@ -21,6 +21,7 @@ import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useSubscriptionStore } from '../../../src/stores/subscription.store';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 
 type CreateMode = 'custom' | OnboardingRoutineGenerationMode;
 
@@ -45,6 +46,7 @@ const SCREEN_COLORS = {
 
 export default function CreateRoutineScreen() {
   const router = useRouter();
+  const { showPaywall } = usePaywall();
   const { user } = useAuthStore();
   const { createRoutine } = useRoutineStore();
   const isPremium = useSubscriptionStore((state) => state.isPremium);
@@ -175,7 +177,7 @@ export default function CreateRoutineScreen() {
           Alert.alert('Monthly AI credits used', 'You have already used your 3 Setora Pro AI routine credits for this month.');
           return;
         }
-        router.push('/(tabs)/profile/subscription?feature=ai_routine_generation&source=routine_create_cta');
+        showPaywall('ai_routine_generation');
         return;
       }
       Alert.alert('AI routine in progress', 'Your AI routine is already being generated. Please wait for it to finish.');

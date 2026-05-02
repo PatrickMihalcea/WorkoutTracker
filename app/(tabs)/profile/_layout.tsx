@@ -13,7 +13,7 @@ export default function ProfileLayout() {
       <Stack.Screen name="change-email" options={{ title: 'Change Email' }} />
       <Stack.Screen name="change-password" options={{ title: 'Change Password' }} />
       <Stack.Screen name="units" options={{ title: 'Units' }} />
-      <Stack.Screen name="colour-customization" options={{ title: 'Colour Customization' }} />
+      <Stack.Screen name="colour-customization" options={{ title: 'Theme' }} />
       <Stack.Screen name="workouts" options={{ title: 'Workouts' }} />
       <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
       <Stack.Screen name="about" options={{ title: 'About' }} />

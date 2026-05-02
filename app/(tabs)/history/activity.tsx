@@ -14,6 +14,8 @@ import {
 } from '../../../src/components/history/ActivityCalendar';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useSubscriptionStore } from '../../../src/stores/subscription.store';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import { fonts, spacing } from '../../../src/constants';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import { isLightTheme } from '../../../src/constants/themes';
@@ -29,13 +31,15 @@ export default function ActivityScreen() {
   const { initialRange } = useLocalSearchParams<{ initialRange?: string }>();
   const { user } = useAuthStore();
   const { profile } = useProfileStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
+  const { showPaywall } = usePaywall();
   const wUnit = profile?.weight_unit ?? 'kg';
   const hUnit = profile?.height_unit ?? 'cm';
 
   const initial = Number(initialRange);
   const initialWeeks = Number.isFinite(initial) ? initial : 12;
 
-  const [selectedRange, setSelectedRange] = useState(initialWeeks);
+  const [selectedRange, setSelectedRange] = useState(!isPremium ? 4 : initialWeeks);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [loading, setLoading] = useState(true);
   const [workoutDays, setWorkoutDays] = useState<string[]>([]);
@@ -86,7 +90,16 @@ export default function ActivityScreen() {
           tint={filterBlurTint}
           style={[styles.filterBar, isLight && styles.filterBarLight]}
         >
-          <TimeRangeDropdown selected={selectedRange} onChange={setSelectedRange} />
+          <TimeRangeDropdown
+            selected={selectedRange}
+            onChange={(v) => {
+              if (!isPremium && v !== 4) {
+                showPaywall('advanced_analytics');
+                return;
+              }
+              setSelectedRange(v);
+            }}
+          />
           <View style={styles.toggleRow}>
             <TouchableOpacity
               style={[styles.toggleChip, viewMode === 'month' && styles.toggleChipActive]}

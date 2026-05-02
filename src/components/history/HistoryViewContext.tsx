@@ -41,7 +41,7 @@ export function HistoryViewProvider({ children }: { children: React.ReactNode })
   const [chartMode, setChartMode] = useState<HistoryChartMode>('rel');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
-  const [weeks, setWeeks] = useState(12);
+  const [weeks, setWeeks] = useState(4);
   const [granularity, setGranularity] = useState<GranularityMode>('W');
 
   const loadDashboard = useCallback(async (

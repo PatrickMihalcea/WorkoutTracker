@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -76,6 +76,7 @@ const RADAR_AXES: { label: string; angle: number }[] = [
 interface Dashboard2Props {
   data: DashboardData;
   hasPremium?: boolean;
+  weeks?: number;
   onPressUpgrade?: (feature: PremiumFeatureKey) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
@@ -119,6 +120,7 @@ function useDashboardStyles() {
 export function Dashboard({
   data,
   hasPremium = false,
+  weeks: weeksProp,
   onPressUpgrade,
   onRefresh,
   refreshing,
@@ -133,7 +135,16 @@ export function Dashboard({
   const { profile } = useProfileStore();
   const wUnit = profile?.weight_unit ?? 'kg';
   const hUnit = profile?.height_unit ?? 'cm';
-  const [selectedRange, setSelectedRange] = useState(12);
+  const [selectedRange, setSelectedRange] = useState(weeksProp ?? 4);
+
+  // Keep local selection in sync when the parent overrides weeks (e.g. free-tier guard).
+  useEffect(() => {
+    if (weeksProp !== undefined && weeksProp !== selectedRange) {
+      setSelectedRange(weeksProp);
+    }
+  // weeksProp changes are the only signal we care about
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weeksProp]);
   const [granularityMode, setGranularityMode] = useState<GranularityMode>('W');
   const [measurementMetric, setMeasurementMetric] = useState<MeasurementMetricKey>('body_weight');
   const [selectedExercise, setSelectedExercise] = useState<{ id: string; name: string } | null>(null);
@@ -200,7 +211,7 @@ export function Dashboard({
   }
 
   const handleRangeChange = (weeks: number) => {
-    if (!hasPremium && (weeks > 12 || weeks === 0)) {
+    if (!hasPremium && weeks !== 4) {
       onPressUpgrade?.('advanced_analytics');
       return;
     }
@@ -276,22 +287,6 @@ export function Dashboard({
         }
       >
         <HeroStatsRow stats={data.summaryStats} />
-        {!hasPremium ? (
-          <Card style={styles.card}>
-            <SectionTitle title="Premium" />
-            <Text style={styles.chartEmptyText}>
-              Unlock absolute chart mode and longer history ranges with Setora Premium.
-            </Text>
-            <TouchableOpacity
-              style={styles.exerciseSelectBtn}
-              onPress={() => onPressUpgrade?.('advanced_analytics')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.exerciseSelectText}>View premium options</Text>
-              <Text style={styles.exerciseSelectArrow}>›</Text>
-            </TouchableOpacity>
-          </Card>
-        ) : null}
         <ContributionGrid
           workoutDays={data.workoutDays}
           selectedRange={selectedRange}
@@ -711,7 +706,8 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
   onMetricChange: (m: SpotlightMetric) => void;
   onPickExercise: () => void;
 }) {
-  const { styles } = useDashboardStyles();
+  const { styles, isLight } = useDashboardStyles();
+  const spotlightColor = isLight ? '#F59E0B' : '#FFEAA7';
   const { profile: spotProfile } = useProfileStore();
   const spotWLabel = spotProfile?.weight_unit === 'lbs' ? 'lbs' : 'kg';
 
@@ -774,6 +770,7 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
         options={METRIC_OPTIONS}
         selected={metric}
         onChange={onMetricChange}
+        activeColor={spotlightColor}
       />
     </>
   );
@@ -800,7 +797,7 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
         title="Exercise Spotlight"
         subtitle={subtitleMap[metric]}
         headerContent={header}
-        frontColor="#FFEAA7"
+        frontColor={spotlightColor}
         formatTooltipValue={fmtTooltip}
         minYStep={minStepMap[metric]}
       />
@@ -815,7 +812,7 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
       title="Exercise Spotlight"
       subtitle={subtitleMap[metric]}
       headerContent={header}
-      frontColor="#FFEAA7"
+      frontColor={spotlightColor}
       formatTooltipValue={fmtTooltip}
       minYStep={minStepMap[metric]}
     />

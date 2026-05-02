@@ -11,6 +11,7 @@ import {
   UIManager,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, usePathname, useRouter, useNavigation } from 'expo-router';
@@ -18,6 +19,8 @@ import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
+import { useSubscriptionStore } from '../../../src/stores/subscription.store';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import { useWorkoutOverlay } from '../../../src/components/workout';
 import { routineService, notificationService } from '../../../src/services';
 import { MAX_ROUTINE_WEEKS, type AddWeekMode } from '../../../src/services/routine.service';
@@ -288,6 +291,8 @@ export default function RoutineDetailScreen() {
   const navigation = useNavigation();
   const { routines, currentRoutine, fetchRoutineDetail, setActive, deactivate } = useRoutineStore();
   const { profile, updateProfile } = useProfileStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
+  const { showPaywall } = usePaywall();
   const { expand: expandWorkout, setChromeHidden } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
   const dUnit = profile?.distance_unit ?? 'km';
@@ -312,6 +317,7 @@ export default function RoutineDetailScreen() {
   const [copyDaySource, setCopyDaySource] = useState<RoutineDayWithExercises | null>(null);
   const [copyDayTargetRoutineId, setCopyDayTargetRoutineId] = useState<string | null>(null);
   const [copyDayTargetWeek, setCopyDayTargetWeek] = useState<number | null>(null);
+  const [showRoutineDropdown, setShowRoutineDropdown] = useState(false);
   const [copyingDay, setCopyingDay] = useState(false);
 
   const [showDirectAddPicker, setShowDirectAddPicker] = useState(false);
@@ -517,8 +523,9 @@ export default function RoutineDetailScreen() {
 
   const visibleWeekCount = useMemo(() => {
     if (!currentRoutine) return 0;
-    return Math.min(currentRoutine.week_count, MAX_ROUTINE_WEEKS);
-  }, [currentRoutine]);
+    const cap = !isPremium ? 2 : MAX_ROUTINE_WEEKS;
+    return Math.min(currentRoutine.week_count, cap);
+  }, [currentRoutine, isPremium]);
 
   const weekItems = useMemo(() => {
     if (!currentRoutine || visibleWeekCount <= 0) return [];
@@ -827,6 +834,10 @@ export default function RoutineDetailScreen() {
 
   const openAddWeekMenu = useCallback(() => {
     if (!currentRoutine || updatingWeeks) return;
+    if (!isPremium && currentRoutine.week_count >= 2) {
+      showPaywall('advanced_analytics');
+      return;
+    }
     if (currentRoutine.week_count >= MAX_ROUTINE_WEEKS) {
       Alert.alert('Maximum reached', `You can have up to ${MAX_ROUTINE_WEEKS} weeks.`);
       return;
@@ -1666,19 +1677,58 @@ export default function RoutineDetailScreen() {
         scrollable
       >
         <Text style={styles.fieldLabel}>Routine</Text>
-        <ChipPicker
-          items={copyDayRoutineOptions}
-          selected={copyDayTargetRoutineId}
-          onChange={(val) => {
-            setCopyDayTargetRoutineId(val ?? null);
-            setCopyDayTargetWeek(1);
-          }}
-          allowDeselect={false}
-          keyboardPersistTaps
-          horizontal={false}
-          maxHeight={160}
-          style={copyingDay ? styles.disabledSection : undefined}
-        />
+        <TouchableOpacity
+          style={[styles.routineDropdownTrigger, copyingDay && styles.disabledSection]}
+          onPress={() => setShowRoutineDropdown(true)}
+          disabled={copyingDay}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.routineDropdownTriggerText} numberOfLines={1}>
+            {copyDayRoutineOptions.find((o) => o.value === copyDayTargetRoutineId)?.label ?? 'Select routine'}
+          </Text>
+          <Text style={styles.routineDropdownChevron}>▾</Text>
+        </TouchableOpacity>
+        <Modal visible={showRoutineDropdown} transparent animationType="fade">
+          <TouchableOpacity
+            style={styles.routineDropdownOverlay}
+            activeOpacity={1}
+            onPress={() => setShowRoutineDropdown(false)}
+          >
+            <View style={styles.routineDropdownMenu}>
+              <ScrollView
+                style={styles.routineDropdownScroll}
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+              >
+                {copyDayRoutineOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[
+                      styles.routineDropdownItem,
+                      option.value === copyDayTargetRoutineId && styles.routineDropdownItemActive,
+                    ]}
+                    onPress={() => {
+                      setCopyDayTargetRoutineId(option.value);
+                      setCopyDayTargetWeek(1);
+                      setShowRoutineDropdown(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.routineDropdownItemText,
+                        option.value === copyDayTargetRoutineId && styles.routineDropdownItemTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
         <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Week</Text>
         <ChipPicker
           items={copyDayWeekOptions}
@@ -2000,5 +2050,64 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.regular,
     marginBottom: 8,
+  },
+  routineDropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 4,
+  },
+  routineDropdownTriggerText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: fonts.semiBold,
+    color: colors.text,
+    marginRight: 8,
+  },
+  routineDropdownChevron: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  routineDropdownOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  routineDropdownMenu: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxHeight: 320,
+    minWidth: 260,
+    overflow: 'hidden',
+  },
+  routineDropdownScroll: {
+    paddingVertical: 6,
+  },
+  routineDropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  routineDropdownItemActive: {
+    backgroundColor: colors.text,
+  },
+  routineDropdownItemText: {
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    color: colors.textSecondary,
+  },
+  routineDropdownItemTextActive: {
+    color: colors.background,
+    fontFamily: fonts.semiBold,
   },
 });

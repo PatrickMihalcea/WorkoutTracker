@@ -4,6 +4,8 @@ import { useLocalSearchParams, Stack } from 'expo-router';
 import { useAuthStore } from '../../../../src/stores/auth.store';
 import { useProfileStore } from '../../../../src/stores/profile.store';
 import { useRoutineStore } from '../../../../src/stores/routine.store';
+import { useSubscriptionStore } from '../../../../src/stores/subscription.store';
+import { usePaywall } from '../../../../src/contexts/PaywallContext';
 import { dashboardService, routineService, RoutineChartData } from '../../../../src/services';
 import { fonts, spacing } from '../../../../src/constants';
 import {
@@ -53,13 +55,15 @@ function DayDetailsContent() {
   const { user } = useAuthStore();
   const { profile } = useProfileStore();
   const { currentRoutine } = useRoutineStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
+  const { showPaywall } = usePaywall();
   const { scrollEnabled } = useChartInteraction();
   const wUnit = profile?.weight_unit ?? 'kg';
 
   const [day, setDay] = useState<RoutineDayWithExercises | null>(null);
   const [dayLoading, setDayLoading] = useState(true);
 
-  const [selectedRange, setSelectedRange] = useState(12);
+  const [selectedRange, setSelectedRange] = useState(4);
   const [granularityMode, setGranularityMode] = useState<GranularityMode>('W');
   const [chartMode, setChartMode] = useState<ChartMode>('rel');
   const [metric, setMetric] = useState<RoutineMetric>('volume');
@@ -67,7 +71,7 @@ function DayDetailsContent() {
   const [chartLoading, setChartLoading] = useState(true);
   const [renderedMode, setRenderedMode] = useState<ChartMode>('rel');
   const [renderedGranularity, setRenderedGranularity] = useState<GranularityMode>('W');
-  const [renderedRange, setRenderedRange] = useState(12);
+  const [renderedRange, setRenderedRange] = useState(4);
 
   const loadDay = useCallback(async () => {
     if (!dayId) return;
@@ -116,11 +120,15 @@ function DayDetailsContent() {
   }, [loadChartData]);
 
   const handleRangeChange = useCallback((weeks: number) => {
+    if (!isPremium && weeks !== 4) {
+      showPaywall('advanced_analytics');
+      return;
+    }
     setSelectedRange(weeks);
     if (weeks === 0 && granularityMode === 'W') {
       setGranularityMode('M');
     }
-  }, [granularityMode]);
+  }, [isPremium, showPaywall, granularityMode]);
 
   const points: TimeSeriesPoint[] = chartData
     ? (metric === 'volume' ? chartData.volume : metric === 'reps' ? chartData.reps : chartData.duration)
@@ -277,7 +285,10 @@ function DayDetailsContent() {
           selectedRange={selectedRange}
           onChangeRange={handleRangeChange}
           chartMode={chartMode}
-          onChangeChartMode={setChartMode}
+          onChangeChartMode={(mode) => {
+            if (!isPremium && mode === 'abs') { showPaywall('advanced_analytics'); return; }
+            setChartMode(mode);
+          }}
           granularityMode={granularityMode}
           onChangeGranularity={setGranularityMode}
         />

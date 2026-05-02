@@ -119,6 +119,12 @@ async function ensureConfigured(): Promise<SubscriptionInitResult> {
   }
 
   if (!purchasesConfigured) {
+    if (!Purchases || typeof Purchases.setLogLevel !== 'function') {
+      return {
+        available: false,
+        message: 'RevenueCat native module is not available in this build.',
+      };
+    }
     Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.VERBOSE : LOG_LEVEL.INFO);
     const alreadyConfigured = await Purchases.isConfigured().catch(() => false);
     if (!alreadyConfigured) {

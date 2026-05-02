@@ -13,6 +13,7 @@ import { useAuthStore } from '../../src/stores/auth.store';
 import { useWorkoutStore } from '../../src/stores/workout.store';
 import { useSessionStore } from '../../src/stores/session.store';
 import { useTheme } from '../../src/contexts/ThemeContext';
+import { PaywallProvider } from '../../src/contexts/PaywallContext';
 
 const { Navigator } = createMaterialTopTabNavigator();
 const SwipeableTabs = withLayoutContext(Navigator);
@@ -241,11 +242,13 @@ function TabLayoutInner() {
 
 export default function TabLayout() {
   return (
-    <ChartInteractionProvider>
-      <HistoryViewProvider>
-        <TabLayoutInner />
-      </HistoryViewProvider>
-    </ChartInteractionProvider>
+    <PaywallProvider>
+      <ChartInteractionProvider>
+        <HistoryViewProvider>
+          <TabLayoutInner />
+        </HistoryViewProvider>
+      </ChartInteractionProvider>
+    </PaywallProvider>
   );
 }
 

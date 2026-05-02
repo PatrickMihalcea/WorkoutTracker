@@ -5,6 +5,7 @@ import { useProfileStore } from '../../stores/profile.store';
 import { Card } from '../ui';
 import { fonts, spacing } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
+import { isLightTheme } from '../../constants/themes';
 
 interface MuscleSlice {
   label: string;
@@ -16,6 +17,13 @@ type BodySlug =
   | 'triceps' | 'quadriceps' | 'hamstring' | 'gluteal' | 'calves'
   | 'abs' | 'forearm' | 'trapezius' | 'obliques' | 'tibialis'
   | 'adductors' | 'neck' | 'head' | 'knees' | 'hands' | 'feet' | 'ankles';
+
+const ALL_BODY_SLUGS: BodySlug[] = [
+  'abs', 'adductors', 'ankles', 'biceps', 'calves', 'chest', 'deltoids',
+  'feet', 'forearm', 'gluteal', 'hamstring', 'hands', 'head', 'knees',
+  'lower-back', 'neck', 'obliques', 'quadriceps', 'tibialis', 'trapezius',
+  'triceps', 'upper-back',
+];
 
 const MUSCLE_TO_SLUGS: Record<string, BodySlug[]> = {
   chest:      ['chest'],
@@ -70,10 +78,19 @@ const MUSCLE_TO_SLUGS: Record<string, BodySlug[]> = {
   ],
 };
 
-const INTENSITY_COLORS = [
+const INTENSITY_COLORS_DARK = [
   'rgba(34, 85, 204, 0.25)',
   'rgba(78, 170, 221, 0.50)',
   'rgba(240, 208, 96, 0.72)',
+  'rgba(240, 112, 48, 0.88)',
+  'rgba(208, 32, 32, 1.0)',
+];
+
+// Light mode: level 1 → previous level 2; level 2 → richer blue; level 3 → richer yellow
+const INTENSITY_COLORS_LIGHT = [
+  'rgba(78, 170, 221, 0.50)',
+  'rgba(24, 110, 200, 0.78)',
+  'rgba(230, 175, 18, 0.90)',
   'rgba(240, 112, 48, 0.88)',
   'rgba(208, 32, 32, 1.0)',
 ];
@@ -98,7 +115,7 @@ function toBodyData(slices: MuscleSlice[], overrideMax?: number) {
     const slugs = getSlugs(slice.label);
     if (!slugs) continue;
     const ratio = Math.min(slice.value / maxVal, 1);
-    const intensity = Math.max(1, Math.min(INTENSITY_COLORS.length, Math.ceil(ratio * INTENSITY_COLORS.length)));
+    const intensity = Math.max(1, Math.min(5, Math.ceil(ratio * 5)));
     for (const slug of slugs) {
       slugIntensity.set(slug, Math.max(slugIntensity.get(slug) ?? 0, intensity));
     }
@@ -151,12 +168,22 @@ function HeatmapTooltip({ colors }: { colors: ReturnType<typeof useTheme>['color
 }
 
 export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set distribution by muscle group', bare = false, maxValue }: MuscleHeatmapProps) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
   const { profile } = useProfileStore();
   const bodyGender = profile?.sex === 'female' ? 'female' : 'male';
   const isEmpty = data.length === 0;
 
-  const bodyData = toBodyData(data, maxValue);
+  const intensityColors = isLight ? INTENSITY_COLORS_LIGHT : INTENSITY_COLORS_DARK;
+  const unworkedFill = isLight ? '#D8DCE3' : colors.surfaceLight;
+  const bodyData = useMemo(() => {
+    const worked = toBodyData(data, maxValue);
+    const workedSlugs = new Set(worked.map((d) => d.slug));
+    const unworked = ALL_BODY_SLUGS
+      .filter((slug) => !workedSlugs.has(slug))
+      .map((slug) => ({ slug, styles: { fill: unworkedFill } }));
+    return [...worked, ...unworked];
+  }, [data, maxValue, unworkedFill]);
 
   const Wrapper = bare ? View : Card;
 
@@ -231,8 +258,7 @@ export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set 
             side="front"
             scale={1}
             border={colors.border}
-            colors={INTENSITY_COLORS}
-            defaultFill={colors.surfaceLight}
+            colors={intensityColors}
           />
         </View>
         <View style={styles.bodyHalf}>
@@ -242,8 +268,7 @@ export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set 
             side="back"
             scale={1}
             border={colors.border}
-            colors={INTENSITY_COLORS}
-            defaultFill={colors.surfaceLight}
+            colors={intensityColors}
           />
         </View>
       </View>
@@ -251,7 +276,7 @@ export function MuscleHeatmap({ data, title = 'Muscle Heatmap', subtitle = 'Set 
       <View style={styles.legend}>
         <Text style={styles.legendLabel}>Low</Text>
         <View style={styles.legendBar}>
-          {INTENSITY_COLORS.map((c, i) => (
+          {intensityColors.map((c, i) => (
             <View key={i} style={[styles.legendSegment, { backgroundColor: c }]} />
           ))}
         </View>

@@ -4,7 +4,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { Dashboard } from '../../../src/components/history/Dashboard';
 import { useHistoryView } from '../../../src/components/history/HistoryViewContext';
 import type { GranularityMode, HistoryChartMode } from '../../../src/components/history/HistoryViewContext';
@@ -12,6 +12,7 @@ import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
 import { useSubscriptionStore } from '../../../src/stores/subscription.store';
 import { useTheme } from '../../../src/contexts/ThemeContext';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 import type { PremiumFeatureKey } from '../../../src/models/subscription';
 
@@ -25,8 +26,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
 });
 
 export default function HistoryScreen() {
-  const router = useRouter();
   const { colors } = useTheme();
+  const { showPaywall } = usePaywall();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const {
     chartMode, setChartMode,
@@ -73,8 +74,8 @@ export default function HistoryScreen() {
   }, [setChartMode]);
 
   const handleUpgrade = useCallback((feature: PremiumFeatureKey) => {
-    router.push(`/(tabs)/profile/subscription?feature=${feature}&source=history_dashboard`);
-  }, [router]);
+    showPaywall(feature);
+  }, [showPaywall]);
 
   const prevGranRef = useRef(granularity);
   const prevChartModeRef = useRef(chartMode);
@@ -97,10 +98,13 @@ export default function HistoryScreen() {
 
   useEffect(() => {
     if (isPremium) return;
-    if (chartMode === 'abs') {
-      setChartMode('rel');
-    }
+    if (chartMode === 'abs') setChartMode('rel');
   }, [chartMode, isPremium, setChartMode]);
+
+  useEffect(() => {
+    if (isPremium) return;
+    if (weeks !== 4) setWeeks(4);
+  }, [weeks, isPremium, setWeeks]);
 
   if (dashboardLoading && !dashboardData) {
     return (
@@ -115,6 +119,7 @@ export default function HistoryScreen() {
       <Dashboard
         data={dashboardData}
         hasPremium={isPremium}
+        weeks={weeks}
         onPressUpgrade={handleUpgrade}
         onRefresh={onRefresh}
         refreshing={refreshing}

@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts } from '../../../src/constants';
 import { useTheme } from '../../../src/contexts/ThemeContext';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 
 const createStyles = (colors: ThemeColors, footerBottomOffset: number) => StyleSheet.create({
@@ -78,6 +79,7 @@ function SettingsItem({ label, onPress, styles }: SettingsItemProps) {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { showPaywall } = usePaywall();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const footerBottomOffset = Math.max(insets.bottom, 8) + 56;
@@ -106,7 +108,7 @@ export default function SettingsScreen() {
         />
         <SettingsItem
           label="Subscription"
-          onPress={() => router.push('/(tabs)/profile/subscription')}
+          onPress={() => showPaywall()}
           styles={styles}
         />
       </View>
@@ -124,7 +126,7 @@ export default function SettingsScreen() {
           styles={styles}
         />
         <SettingsItem
-          label="Colour Customization"
+          label="Theme"
           onPress={() => router.push('/(tabs)/profile/colour-customization')}
           styles={styles}
         />
