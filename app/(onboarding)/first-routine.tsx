@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Alert,
   StyleSheet,
   Text,
@@ -50,14 +51,34 @@ export default function FirstRoutineScreen() {
   const isPremium = useSubscriptionStore((state) => state.isPremium);
   const [aiAccess, setAiAccess] = useState<AiRoutineAccessStatus>('free');
   const [mode, setMode] = useState<OnboardingRoutineGenerationMode>('template');
-  const [daysPerWeek, setDaysPerWeek] = useState<3 | 4 | 5>(4);
-  const [sessionMinutes, setSessionMinutes] = useState<30 | 60 | 90>(60);
-  const [weekCount, setWeekCount] = useState<RoutineWeekCount>(4);
-  const [goal, setGoal] = useState<OnboardingGoal>('muscle_gain');
-  const [experience, setExperience] = useState<OnboardingExperience>('beginner');
-  const [equipment, setEquipment] = useState<OnboardingEquipmentPreference>('full_gym');
-  const [focusMuscle, setFocusMuscle] = useState<OnboardingFocusMuscle>('none');
+  const [daysPerWeek, setDaysPerWeek] = useState<3 | 4 | 5 | null>(null);
+  const [sessionMinutes, setSessionMinutes] = useState<30 | 60 | 90 | null>(null);
+  const [weekCount, setWeekCount] = useState<RoutineWeekCount | null>(null);
+  const [goal, setGoal] = useState<OnboardingGoal | null>(null);
+  const [experience, setExperience] = useState<OnboardingExperience | null>(null);
+  const [equipment, setEquipment] = useState<OnboardingEquipmentPreference | null>(null);
+  const [focusMuscle, setFocusMuscle] = useState<OnboardingFocusMuscle | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const SECTION_COUNT = 7;
+  const [unlockedCount, setUnlockedCount] = useState(1);
+  const sectionAnims = useRef(
+    Array.from({ length: SECTION_COUNT }, (_, i) => new Animated.Value(i === 0 ? 1 : 0))
+  ).current;
+  const ctaAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (unlockedCount <= 1) return;
+    const idx = unlockedCount - 1;
+    const anim = idx < SECTION_COUNT ? sectionAnims[idx] : ctaAnim;
+    Animated.timing(anim, { toValue: 1, duration: 320, useNativeDriver: true }).start();
+  // sectionAnims and ctaAnim are stable refs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unlockedCount]);
+
+  const unlock = (completedIndex: number) => {
+    setUnlockedCount((prev) => Math.max(prev, completedIndex + 2));
+  };
 
   const handleModeChange = (nextMode: OnboardingRoutineGenerationMode) => {
     const canUseAi = aiAccess === 'free' || aiAccess === 'premium';
@@ -77,7 +98,12 @@ export default function FirstRoutineScreen() {
       return;
     }
     setMode(nextMode);
-    setWeekCount(nextMode === 'ai' ? 2 : 4);
+    const filled = [daysPerWeek, sessionMinutes, weekCount, goal, experience, equipment, focusMuscle];
+    const firstNull = filled.findIndex((v) => v === null);
+    const restored = firstNull === -1 ? SECTION_COUNT + 1 : firstNull + 1;
+    setUnlockedCount(restored);
+    sectionAnims.forEach((anim, i) => anim.setValue(i < restored ? 1 : 0));
+    ctaAnim.setValue(restored > SECTION_COUNT ? 1 : 0);
   };
 
   useEffect(() => {
@@ -94,9 +120,7 @@ export default function FirstRoutineScreen() {
           return current;
         });
         if (status === 'locked') {
-          setWeekCount(4);
-        } else {
-          setWeekCount((current) => (current === 4 ? 2 : current));
+          setWeekCount(null);
         }
       } catch {
         if (!active) return;
@@ -124,6 +148,9 @@ export default function FirstRoutineScreen() {
       setEquipment(pending.payload.answers.equipment);
       setFocusMuscle(pending.payload.answers.focus_muscle);
       setWeekCount((pending.payload.week_count ?? (pending.payload.mode === 'ai' ? 2 : 4)) as RoutineWeekCount);
+      setUnlockedCount(SECTION_COUNT + 1);
+      sectionAnims.forEach((anim) => anim.setValue(1));
+      ctaAnim.setValue(1);
       setLoading(true);
 
       try {
@@ -172,14 +199,14 @@ export default function FirstRoutineScreen() {
     try {
       const result = await onboardingService.generateFirstRoutine({
         mode,
-        week_count: weekCount,
+        week_count: weekCount ?? undefined,
         answers: {
-          days_per_week: daysPerWeek,
-          session_minutes: sessionMinutes,
-          goal,
-          experience,
-          equipment,
-          focus_muscle: focusMuscle,
+          days_per_week: daysPerWeek!,
+          session_minutes: sessionMinutes!,
+          goal: goal!,
+          experience: experience!,
+          equipment: equipment!,
+          focus_muscle: focusMuscle!,
         },
       }, {
         context: 'onboarding',
@@ -210,7 +237,11 @@ export default function FirstRoutineScreen() {
         onBack={() => router.back()}
         title="Build your first routine"
         subtitle="Choose a quick setup now. You can edit everything later."
-        footer={<OnboardingActionButton title="Create My Routine" onPress={handleContinue} loading={loading} />}
+        footer={
+          <Animated.View style={{ opacity: ctaAnim }} pointerEvents={unlockedCount > SECTION_COUNT ? 'auto' : 'none'}>
+            <OnboardingActionButton title="Create My Routine" onPress={handleContinue} loading={loading} />
+          </Animated.View>
+        }
       >
         <View style={styles.modeRow}>
           <TouchableOpacity
@@ -242,141 +273,167 @@ export default function FirstRoutineScreen() {
           </TouchableOpacity>
         </View>
 
-        <QuestionBlock label="Days per week">
-          <ChipPicker
-            chipStyle={styles.selectionChip}
-            chipSelectedStyle={styles.selectionChipSelected}
-            chipTextStyle={styles.selectionChipText}
-            chipTextSelectedStyle={styles.selectionChipTextSelected}
-            allowDeselect={false}
-            selected={daysPerWeek}
-            onChange={(value) => setDaysPerWeek((value ?? 4) as 3 | 4 | 5)}
-            items={[
-              { key: '3', label: '3 days', value: 3 },
-              { key: '4', label: '4 days', value: 4 },
-              { key: '5', label: '5 days', value: 5 },
-            ]}
-            horizontal={false}
-          />
-        </QuestionBlock>
+        <Animated.View style={{ opacity: sectionAnims[0] }}>
+          <QuestionBlock label="Days per week">
+            <ChipPicker
+              chipStyle={styles.selectionChip}
+              chipSelectedStyle={styles.selectionChipSelected}
+              chipTextStyle={styles.selectionChipText}
+              chipTextSelectedStyle={styles.selectionChipTextSelected}
+              allowDeselect={false}
+              selected={daysPerWeek}
+              onChange={(value) => { if (value !== null) { setDaysPerWeek(value as 3 | 4 | 5); unlock(0); } }}
+              items={[
+                { key: '3', label: '3 days', value: 3 },
+                { key: '4', label: '4 days', value: 4 },
+                { key: '5', label: '5 days', value: 5 },
+              ]}
+              horizontal={false}
+            />
+          </QuestionBlock>
+        </Animated.View>
 
-        <QuestionBlock label="Session length">
-          <ChipPicker
-            chipStyle={styles.selectionChip}
-            chipSelectedStyle={styles.selectionChipSelected}
-            chipTextStyle={styles.selectionChipText}
-            chipTextSelectedStyle={styles.selectionChipTextSelected}
-            allowDeselect={false}
-            selected={sessionMinutes}
-            onChange={(value) => setSessionMinutes((value ?? 60) as 30 | 60 | 90)}
-            items={[
-              { key: '30', label: '30 min', value: 30 },
-              { key: '60', label: '60 min', value: 60 },
-              { key: '90', label: '90 min', value: 90 },
-            ]}
-            horizontal={false}
-          />
-        </QuestionBlock>
+        {unlockedCount > 1 && (
+          <Animated.View style={{ opacity: sectionAnims[1] }}>
+            <QuestionBlock label="Session length">
+              <ChipPicker
+                chipStyle={styles.selectionChip}
+                chipSelectedStyle={styles.selectionChipSelected}
+                chipTextStyle={styles.selectionChipText}
+                chipTextSelectedStyle={styles.selectionChipTextSelected}
+                allowDeselect={false}
+                selected={sessionMinutes}
+                onChange={(value) => { if (value !== null) { setSessionMinutes(value as 30 | 60 | 90); unlock(1); } }}
+                items={[
+                  { key: '30', label: '30 min', value: 30 },
+                  { key: '60', label: '60 min', value: 60 },
+                  { key: '90', label: '90 min', value: 90 },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+          </Animated.View>
+        )}
 
-        <QuestionBlock label="Plan length">
-          <ChipPicker
-            chipStyle={styles.selectionChip}
-            chipSelectedStyle={styles.selectionChipSelected}
-            chipTextStyle={styles.selectionChipText}
-            chipTextSelectedStyle={styles.selectionChipTextSelected}
-            allowDeselect={false}
-            selected={weekCount}
-            onChange={(value) => setWeekCount((value ?? 4) as RoutineWeekCount)}
-            items={[
-              { key: '1', label: '1 week', value: 1 },
-              { key: '2', label: '2 weeks', value: 2 },
-              { key: '3', label: '3 weeks', value: 3 },
-              { key: '4', label: '4 weeks', value: 4 },
-              { key: '5', label: '5 weeks', value: 5 },
-              { key: '6', label: '6 weeks', value: 6 },
-            ]}
-            horizontal={false}
-          />
-        </QuestionBlock>
+        {unlockedCount > 2 && (
+          <Animated.View style={{ opacity: sectionAnims[2] }}>
+            <QuestionBlock label="Plan length">
+              <ChipPicker
+                chipStyle={styles.selectionChip}
+                chipSelectedStyle={styles.selectionChipSelected}
+                chipTextStyle={styles.selectionChipText}
+                chipTextSelectedStyle={styles.selectionChipTextSelected}
+                allowDeselect={false}
+                selected={weekCount}
+                onChange={(value) => { if (value !== null) { setWeekCount(value as RoutineWeekCount); unlock(2); } }}
+                items={[
+                  { key: '1', label: '1 week', value: 1 },
+                  { key: '2', label: '2 weeks', value: 2 },
+                  { key: '3', label: '3 weeks', value: 3 },
+                  { key: '4', label: '4 weeks', value: 4 },
+                  { key: '5', label: '5 weeks', value: 5 },
+                  { key: '6', label: '6 weeks', value: 6 },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+          </Animated.View>
+        )}
 
-        <QuestionBlock label="Primary goal">
-          <ChipPicker
-            chipStyle={styles.selectionChip}
-            chipSelectedStyle={styles.selectionChipSelected}
-            chipTextStyle={styles.selectionChipText}
-            chipTextSelectedStyle={styles.selectionChipTextSelected}
-            allowDeselect={false}
-            selected={goal}
-            onChange={(value) => setGoal((value ?? 'muscle_gain') as OnboardingGoal)}
-            items={[
-              { key: 'muscle_gain', label: 'Muscle gain', value: 'muscle_gain' },
-              { key: 'fat_loss', label: 'Fat loss', value: 'fat_loss' },
-              { key: 'general_fitness', label: 'General fitness', value: 'general_fitness' },
-            ]}
-            horizontal={false}
-          />
-        </QuestionBlock>
+        {unlockedCount > 3 && (
+          <Animated.View style={{ opacity: sectionAnims[3] }}>
+            <QuestionBlock label="Primary goal">
+              <ChipPicker
+                chipStyle={styles.selectionChip}
+                chipSelectedStyle={styles.selectionChipSelected}
+                chipTextStyle={styles.selectionChipText}
+                chipTextSelectedStyle={styles.selectionChipTextSelected}
+                allowDeselect={false}
+                selected={goal}
+                onChange={(value) => { if (value !== null) { setGoal(value as OnboardingGoal); unlock(3); } }}
+                items={[
+                  { key: 'muscle_gain', label: 'Muscle gain', value: 'muscle_gain' },
+                  { key: 'fat_loss', label: 'Fat loss', value: 'fat_loss' },
+                  { key: 'general_fitness', label: 'General fitness', value: 'general_fitness' },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+          </Animated.View>
+        )}
 
-        <QuestionBlock label="Experience level">
-          <ChipPicker
-            chipStyle={styles.selectionChip}
-            chipSelectedStyle={styles.selectionChipSelected}
-            chipTextStyle={styles.selectionChipText}
-            chipTextSelectedStyle={styles.selectionChipTextSelected}
-            allowDeselect={false}
-            selected={experience}
-            onChange={(value) => setExperience((value ?? 'beginner') as OnboardingExperience)}
-            items={[
-              { key: 'beginner', label: 'Beginner', value: 'beginner' },
-              { key: 'intermediate', label: 'Intermediate', value: 'intermediate' },
-              { key: 'advanced', label: 'Advanced', value: 'advanced' },
-            ]}
-            horizontal={false}
-          />
-        </QuestionBlock>
+        {unlockedCount > 4 && (
+          <Animated.View style={{ opacity: sectionAnims[4] }}>
+            <QuestionBlock label="Experience level">
+              <ChipPicker
+                chipStyle={styles.selectionChip}
+                chipSelectedStyle={styles.selectionChipSelected}
+                chipTextStyle={styles.selectionChipText}
+                chipTextSelectedStyle={styles.selectionChipTextSelected}
+                allowDeselect={false}
+                selected={experience}
+                onChange={(value) => { if (value !== null) { setExperience(value as OnboardingExperience); unlock(4); } }}
+                items={[
+                  { key: 'beginner', label: 'Beginner', value: 'beginner' },
+                  { key: 'intermediate', label: 'Intermediate', value: 'intermediate' },
+                  { key: 'advanced', label: 'Advanced', value: 'advanced' },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+          </Animated.View>
+        )}
 
-        <QuestionBlock label="Equipment">
-          <ChipPicker
-            chipStyle={styles.selectionChip}
-            chipSelectedStyle={styles.selectionChipSelected}
-            chipTextStyle={styles.selectionChipText}
-            chipTextSelectedStyle={styles.selectionChipTextSelected}
-            allowDeselect={false}
-            selected={equipment}
-            onChange={(value) => setEquipment((value ?? 'full_gym') as OnboardingEquipmentPreference)}
-            items={[
-              { key: 'full_gym', label: 'Full gym', value: 'full_gym' },
-              { key: 'dumbbells_bench', label: 'Dumbbells + bench', value: 'dumbbells_bench' },
-              { key: 'bodyweight_minimal', label: 'Bodyweight / minimal', value: 'bodyweight_minimal' },
-            ]}
-            horizontal={false}
-          />
-        </QuestionBlock>
+        {unlockedCount > 5 && (
+          <Animated.View style={{ opacity: sectionAnims[5] }}>
+            <QuestionBlock label="Equipment">
+              <ChipPicker
+                chipStyle={styles.selectionChip}
+                chipSelectedStyle={styles.selectionChipSelected}
+                chipTextStyle={styles.selectionChipText}
+                chipTextSelectedStyle={styles.selectionChipTextSelected}
+                allowDeselect={false}
+                selected={equipment}
+                onChange={(value) => { if (value !== null) { setEquipment(value as OnboardingEquipmentPreference); unlock(5); } }}
+                items={[
+                  { key: 'full_gym', label: 'Full gym', value: 'full_gym' },
+                  { key: 'dumbbells_bench', label: 'Dumbbells + bench', value: 'dumbbells_bench' },
+                  { key: 'bodyweight_minimal', label: 'Bodyweight / minimal', value: 'bodyweight_minimal' },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+          </Animated.View>
+        )}
 
-        <QuestionBlock label="Slight muscle focus (optional)">
-          <ChipPicker
-            chipStyle={styles.selectionChip}
-            chipSelectedStyle={styles.selectionChipSelected}
-            chipTextStyle={styles.selectionChipText}
-            chipTextSelectedStyle={styles.selectionChipTextSelected}
-            allowDeselect={false}
-            selected={focusMuscle}
-            onChange={(value) => setFocusMuscle((value ?? 'none') as OnboardingFocusMuscle)}
-            items={[
-              { key: 'none', label: 'None', value: 'none' },
-              { key: 'chest', label: 'Chest', value: 'chest' },
-              { key: 'back', label: 'Back', value: 'back' },
-              { key: 'arms', label: 'Arms', value: 'arms' },
-              { key: 'biceps', label: 'Biceps', value: 'biceps' },
-              { key: 'triceps', label: 'Triceps', value: 'triceps' },
-              { key: 'shoulders', label: 'Shoulders', value: 'shoulders' },
-              { key: 'legs', label: 'Legs', value: 'legs' },
-              { key: 'glutes', label: 'Glutes', value: 'glutes' },
-              { key: 'core', label: 'Core', value: 'core' },
-            ]}
-            horizontal={false}
-          />
-        </QuestionBlock>
+        {unlockedCount > 6 && (
+          <Animated.View style={{ opacity: sectionAnims[6] }}>
+            <QuestionBlock label="Slight muscle focus (optional)">
+              <ChipPicker
+                chipStyle={styles.selectionChip}
+                chipSelectedStyle={styles.selectionChipSelected}
+                chipTextStyle={styles.selectionChipText}
+                chipTextSelectedStyle={styles.selectionChipTextSelected}
+                allowDeselect={false}
+                selected={focusMuscle}
+                onChange={(value) => { if (value !== null) { setFocusMuscle(value as OnboardingFocusMuscle); unlock(6); } }}
+                items={[
+                  { key: 'none', label: 'None', value: 'none' },
+                  { key: 'chest', label: 'Chest', value: 'chest' },
+                  { key: 'back', label: 'Back', value: 'back' },
+                  { key: 'arms', label: 'Arms', value: 'arms' },
+                  { key: 'biceps', label: 'Biceps', value: 'biceps' },
+                  { key: 'triceps', label: 'Triceps', value: 'triceps' },
+                  { key: 'shoulders', label: 'Shoulders', value: 'shoulders' },
+                  { key: 'legs', label: 'Legs', value: 'legs' },
+                  { key: 'glutes', label: 'Glutes', value: 'glutes' },
+                  { key: 'core', label: 'Core', value: 'core' },
+                ]}
+                horizontal={false}
+              />
+            </QuestionBlock>
+          </Animated.View>
+        )}
       </OnboardingScaffold>
 
       <RoutineCreationLoadingOverlay visible={loading} mode={mode} context="onboarding" />

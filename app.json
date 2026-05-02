@@ -56,10 +56,10 @@
       "revenueCat": {
         "entitlementId": "Setora Pro",
         "offeringId": "default",
-        "useTestStore": true,
+        "useTestStore": false,
         "testApiKey": "test_hzdPRMAnYFruOAwFIvSERdteFhs",
         "iosApiKey": "appl_CZOTxOHzXTTtQrQSeuhhGAzisod",
-        "androidApiKey": ""
+        "androidApiKey": "goog_ngeznkiHxoMCibdwyfXzypOTxus"
       },
       "eas": {
         "projectId": "fc602efb-0f30-4edc-aece-e9663e734d6a"

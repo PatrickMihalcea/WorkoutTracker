@@ -4,6 +4,7 @@ import {
   Animated,
   Dimensions,
   FlatList,
+  Linking,
   Modal,
   StyleSheet,
   Text,
@@ -288,16 +289,15 @@ export function PaywallModal({ visible, onClose, feature }: PaywallModalProps) {
   };
 
   const handleManage = async () => {
-    try {
-      await presentCustomerCenter();
-    } catch (error) {
-      if (managementUrl) {
-        const { Linking } = await import('react-native');
-        await Linking.openURL(managementUrl).catch(() => {});
-      } else {
-        Alert.alert('Unavailable', error instanceof Error ? error.message : 'Could not open subscription management.');
-      }
+    handleClose();
+    const url = managementUrl ?? 'itms-apps://apps.apple.com/account/subscriptions';
+    const canOpen = await Linking.canOpenURL(url).catch(() => false);
+    if (canOpen) {
+      await Linking.openURL(url).catch(() => {});
+    } else {
+      Alert.alert('Manage Subscription', 'Go to Settings → Apple ID → Subscriptions to manage your plan.');
     }
+    void presentCustomerCenter().catch(() => {});
   };
 
   const ctaLabel = purchaseLoading      ? 'Processing…'
@@ -392,6 +392,10 @@ export function PaywallModal({ visible, onClose, feature }: PaywallModalProps) {
           <View style={styles.bottom}>
             {!available && availabilityMessage ? (
               <Text style={styles.unavailableText}>{availabilityMessage}</Text>
+            ) : packages.length === 0 ? (
+              <Text style={styles.unavailableText}>
+                {loading ? 'Loading plans…' : 'No plans available. Check back soon.'}
+              </Text>
             ) : (
               <View style={styles.planRow}>
                 {[monthlyPkg, annualPkg, lifetimePkg].map((pkg) => {
