@@ -87,6 +87,12 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
   routineMetaActive: {
     color: isLight ? '#FFFFFF' : colors.textSecondary,
   },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.xs,
+    marginBottom: 12,
+  },
 });
 
 export default function RoutineListScreen() {
@@ -101,6 +107,14 @@ export default function RoutineListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const lockedRoutineIds = useMemo(() => getLockedRoutineIds(routines, isPremium), [routines, isPremium]);
   const canCreateMoreRoutines = useMemo(() => canCreateAnotherRoutine(routines, isPremium), [routines, isPremium]);
+
+  type ListItem = Routine | { type: 'divider' };
+  const sortedRoutines = useMemo<ListItem[]>(() => {
+    const active   = routines.filter((r) => r.is_active);
+    const inactive = routines.filter((r) => !r.is_active);
+    if (active.length === 0 || inactive.length === 0) return routines;
+    return [...active, { type: 'divider' as const }, ...inactive];
+  }, [routines]);
 
   const loadRoutines = useCallback(async () => {
     await fetchRoutines();
@@ -167,7 +181,10 @@ export default function RoutineListScreen() {
     router.push(`/(tabs)/routines/${routine.id}`);
   }, [lockedRoutineIds, router, showPaywall]);
 
-  const renderRoutine = ({ item }: { item: Routine }) => {
+  const renderRoutine = ({ item }: { item: ListItem }) => {
+    if ('type' in item) {
+      return <View style={styles.divider} />;
+    }
     const isLocked = lockedRoutineIds.has(item.id);
 
     return (
@@ -195,7 +212,7 @@ export default function RoutineListScreen() {
               
             </View>
             <Text style={[styles.routineMeta, item.is_active && styles.routineMetaActive]}>
-              {item.week_count} {item.week_count === 1 ? 'week' : 'weeks'} · Current {item.current_week}
+              {item.week_count} {item.week_count === 1 ? 'week' : 'weeks'} · Week {item.current_week} / {item.week_count}
             </Text>
           </View>
           <View style={styles.menuWrap}>
@@ -264,8 +281,8 @@ export default function RoutineListScreen() {
   return (
     <View style={styles.container}>
       <FlatList
-        data={routines}
-        keyExtractor={(item) => item.id}
+        data={sortedRoutines}
+        keyExtractor={(item) => 'type' in item ? 'divider' : item.id}
         renderItem={renderRoutine}
         contentContainerStyle={styles.list}
         refreshing={refreshing}

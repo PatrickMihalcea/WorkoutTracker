@@ -8,6 +8,8 @@ import {
   RefreshControl,
   Animated,
   Modal,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -20,13 +22,17 @@ import Svg, {
   G as SvgG,
   Rect as SvgRect,
 } from 'react-native-svg';
-import { DashboardData, ExerciseProgression, TimeSeriesPoint } from '../../services';
+import { DashboardData, ExerciseProgression, TimeSeriesPoint, exerciseDetailService, ExerciseDetailData } from '../../services';
 import { Card, ExercisePickerModal } from '../ui';
 import { BODY_MEASUREMENT_METRICS, Exercise, MeasurementMetricKey } from '../../models';
 import { PremiumFeatureKey } from '../../models/subscription';
 import { useProfileStore } from '../../stores/profile.store';
+import { useAuthStore } from '../../stores/auth.store';
+import { useSubscriptionStore } from '../../stores/subscription.store';
+import { usePaywall } from '../../contexts/PaywallContext';
 import { getMeasurementGoalFromProfile, measurementGoalToDisplay } from '../../utils/measurementGoals';
-import { weightUnitLabel } from '../../utils/units';
+import { weightUnitLabel, distanceUnitLabel } from '../../utils/units';
+import { formatDurationValue } from '../../utils/duration';
 import { fonts, spacing } from '../../constants';
 import { useTheme } from '../../contexts/ThemeContext';
 import { isLightTheme } from '../../constants/themes';
@@ -96,13 +102,91 @@ interface ChartSectionProps extends ChartConfigProps {
   data: TimeSeriesPoint[];
 }
 
-type SpotlightMetric = 'weight' | 'volume' | 'reps' | '1rm';
-const METRIC_OPTIONS: { key: SpotlightMetric; label: string }[] = [
-  { key: 'weight', label: 'Weight' },
-  { key: 'volume', label: 'Volume' },
-  { key: 'reps', label: 'Reps' },
-  { key: '1rm', label: '1RM' },
-];
+
+function getSpotlightMetricOptions(exerciseType: string): { key: string; label: string }[] {
+  switch (exerciseType) {
+    case 'weight_reps':
+    case 'weighted_bodyweight':
+      return [
+        { key: 'heaviestWeight', label: 'Weight' },
+        { key: 'est1RM', label: '1RM' },
+        { key: 'bestSetVolume', label: 'Set Vol' },
+        { key: 'sessionVolume', label: 'Session Vol' },
+        { key: 'totalReps', label: 'Reps' },
+      ];
+    case 'bodyweight_reps':
+      return [
+        { key: 'maxReps', label: 'Max Reps' },
+        { key: 'sessionReps', label: 'Session' },
+        { key: 'totalReps', label: 'Total' },
+      ];
+    case 'assisted_bodyweight':
+      return [
+        { key: 'lightestAssist', label: 'Lightest' },
+        { key: 'maxReps', label: 'Max Reps' },
+        { key: 'totalReps', label: 'Total' },
+      ];
+    case 'duration':
+      return [
+        { key: 'longestDuration', label: 'Longest' },
+        { key: 'sessionDuration', label: 'Session' },
+      ];
+    case 'duration_weight':
+      return [
+        { key: 'heaviestWeight', label: 'Weight' },
+        { key: 'longestDuration', label: 'Longest' },
+      ];
+    case 'distance_duration':
+      return [
+        { key: 'farthestDistance', label: 'Distance' },
+        { key: 'longestDuration', label: 'Duration' },
+        { key: 'bestPace', label: 'Pace' },
+      ];
+    case 'weight_distance':
+      return [
+        { key: 'heaviestWeight', label: 'Weight' },
+        { key: 'farthestDistance', label: 'Distance' },
+      ];
+    default:
+      return [
+        { key: 'heaviestWeight', label: 'Weight' },
+        { key: 'est1RM', label: '1RM' },
+        { key: 'sessionVolume', label: 'Volume' },
+        { key: 'totalReps', label: 'Reps' },
+      ];
+  }
+}
+
+function isSpotlightDurationMetric(key: string): boolean {
+  return key.includes('Duration') || key === 'longestDuration' || key === 'sessionDuration';
+}
+
+function getSpotlightTooltipFormatter(key: string, wUnit: string, dUnit: string): (v: number) => string {
+  const wLabel = wUnit === 'lbs' ? 'lbs' : 'kg';
+  const dLabel = dUnit === 'miles' ? 'mi' : 'km';
+  if (key.includes('Volume') || key === 'bestSetVolume' || key === 'sessionVolume')
+    return (v) => `${formatVolume(v)} vol`;
+  if (isSpotlightDurationMetric(key))
+    return (v) => formatDurationValue(v);
+  if (key.includes('Reps') || key === 'maxReps' || key === 'totalReps' || key === 'sessionReps')
+    return (v) => `${v} reps`;
+  if (key.includes('Pace') || key === 'bestPace')
+    return (v) => `${v.toFixed(2)} ${dLabel}/min`;
+  if (key.includes('Distance') || key === 'farthestDistance')
+    return (v) => `${Math.round(v * 10) / 10} ${dLabel}`;
+  return (v) => `${v} ${wLabel}`;
+}
+
+function getSpotlightMinYStep(key: string): number {
+  if (key.includes('Volume') || key === 'bestSetVolume' || key === 'sessionVolume') return 500;
+  if (key.includes('Reps') || key === 'maxReps' || key === 'totalReps' || key === 'sessionReps') return 2;
+  if (key.includes('Pace') || key === 'bestPace') return 0.5;
+  return 10;
+}
+
+const crownIcon = require('../../../assets/icons/crown.png') as number;
+
+const BASIC_MEASUREMENT_KEYS: MeasurementMetricKey[] = ['body_weight', 'body_fat_pct', 'waist'];
 
 const MEASUREMENT_OPTIONS = BODY_MEASUREMENT_METRICS.map((m) => ({
   key: m.key,
@@ -172,7 +256,6 @@ export function Dashboard({
     setShowExercisePicker(false);
     setTimeout(() => openExerciseDetail(exerciseId), 280);
   }, [openExerciseDetail]);
-  const [spotlightMetric, setSpotlightMetric] = useState<SpotlightMetric>('weight');
   const [filtersOpen, setFiltersOpen] = useState(true);
   const filterAnim = useRef(new Animated.Value(1)).current;
   const FILTER_BAR_HEIGHT = 40;
@@ -191,10 +274,14 @@ export function Dashboard({
       return {
         exerciseId: selectedExercise.id,
         exerciseName: selectedExercise.name,
+        exerciseType: null,
         weightPoints: [],
         volumePoints: [],
         repsPoints: [],
         oneRMPoints: [],
+        durationPoints: [],
+        distancePoints: [],
+        pacePoints: [],
       };
     }
     if (data.exerciseProgressions.length === 0) return null;
@@ -306,8 +393,6 @@ export function Dashboard({
         {activeExercise ? (
           <ExerciseSpotlightSection
             active={activeExercise}
-            metric={spotlightMetric}
-            onMetricChange={setSpotlightMetric}
             onPickExercise={() => setShowExercisePicker(true)}
             {...chartConfig}
           />
@@ -506,9 +591,14 @@ function MeasurementMetricDropdown({
   selected: MeasurementMetricKey;
   onChange: (next: MeasurementMetricKey) => void;
 }) {
-  const { styles } = useDashboardStyles();
+  const { styles, isLight } = useDashboardStyles();
   const [open, setOpen] = useState(false);
+  const { isPremium } = useSubscriptionStore();
+  const { showPaywall } = usePaywall();
   const selectedLabel = MEASUREMENT_OPTIONS.find((m) => m.key === selected)?.label ?? 'Metric';
+
+  const basicOptions = BASIC_MEASUREMENT_KEYS.map((k) => MEASUREMENT_OPTIONS.find((m) => m.key === k)!).filter(Boolean);
+  const advancedOptions = MEASUREMENT_OPTIONS.filter((m) => !BASIC_MEASUREMENT_KEYS.includes(m.key as MeasurementMetricKey));
 
   return (
     <View>
@@ -528,36 +618,71 @@ function MeasurementMetricDropdown({
           onPress={() => setOpen(false)}
         >
           <View style={styles.metricDropdownMenu}>
-            <ScrollView
-              style={styles.metricDropdownScroll}
-              contentContainerStyle={styles.metricDropdownScrollContent}
-              showsVerticalScrollIndicator
-              nestedScrollEnabled
-            >
-              {MEASUREMENT_OPTIONS.map((option) => (
-                <TouchableOpacity
-                  key={option.key}
-                  style={[
-                    styles.metricDropdownItem,
-                    option.key === selected && styles.metricDropdownItemActive,
-                  ]}
-                  onPress={() => {
-                    onChange(option.key);
-                    setOpen(false);
-                  }}
-                  activeOpacity={0.7}
+            {(() => {
+              const items = (
+                <View style={styles.metricDropdownScrollContent}>
+                  {basicOptions.map((option) => (
+                    <TouchableOpacity
+                      key={option.key}
+                      style={[
+                        styles.metricDropdownItem,
+                        option.key === selected && styles.metricDropdownItemActive,
+                      ]}
+                      onPress={() => { onChange(option.key); setOpen(false); }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.metricDropdownItemText, option.key === selected && styles.metricDropdownItemTextActive]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  {isPremium ? (
+                    advancedOptions.map((option) => (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[
+                          styles.metricDropdownItem,
+                          option.key === selected && styles.metricDropdownItemActive,
+                        ]}
+                        onPress={() => { onChange(option.key); setOpen(false); }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.metricDropdownItemText, option.key === selected && styles.metricDropdownItemTextActive]}>
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.metricDropdownItem}
+                      onPress={() => { setOpen(false); showPaywall(); }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Image
+                          source={crownIcon}
+                          style={{ width: 14, height: 14 }}
+                          resizeMode="contain"
+                          tintColor={isLight ? '#000' : '#fff'}
+                        />
+                        <Text style={styles.metricDropdownItemText}>Advanced</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+
+              return isPremium ? (
+                <ScrollView
+                  style={styles.metricDropdownScroll}
+                  showsVerticalScrollIndicator
+                  nestedScrollEnabled
                 >
-                  <Text
-                    style={[
-                      styles.metricDropdownItemText,
-                      option.key === selected && styles.metricDropdownItemTextActive,
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  {items}
+                </ScrollView>
+              ) : items;
+            })()}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -694,65 +819,53 @@ const VolumeSection = React.memo(function VolumeSection({
 
 const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
   active,
-  metric,
-  onMetricChange,
   onPickExercise,
   mode,
   weeks,
   chartMode,
 }: ChartConfigProps & {
   active: ExerciseProgression;
-  metric: SpotlightMetric;
-  onMetricChange: (m: SpotlightMetric) => void;
   onPickExercise: () => void;
 }) {
   const { styles, isLight } = useDashboardStyles();
   const spotlightColor = isLight ? '#F59E0B' : '#FFEAA7';
   const { profile: spotProfile } = useProfileStore();
-  const spotWLabel = spotProfile?.weight_unit === 'lbs' ? 'lbs' : 'kg';
+  const { user } = useAuthStore();
+  const wUnit = spotProfile?.weight_unit ?? 'kg';
+  const dUnit = spotProfile?.distance_unit ?? 'km';
 
-  const pointsMap: Record<SpotlightMetric, TimeSeriesPoint[]> = {
-    weight: active.weightPoints,
-    volume: active.volumePoints,
-    reps: active.repsPoints,
-    '1rm': active.oneRMPoints,
-  };
+  const [detailData, setDetailData] = useState<ExerciseDetailData | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [selectedMetric, setSelectedMetric] = useState<string>('');
 
-  const rawPoints = pointsMap[metric] ?? active.weightPoints;
+  useEffect(() => {
+    if (!user?.id || !active.exerciseId) return;
+    setDetailData(null);
+    setLoadingDetail(true);
+    exerciseDetailService.getData(user.id, active.exerciseId, wUnit, dUnit)
+      .then((d) => {
+        setDetailData(d);
+        const options = getSpotlightMetricOptions(d.exercise.exercise_type ?? 'weight_reps');
+        setSelectedMetric((prev) => options.find((o) => o.key === prev) ? prev : options[0].key);
+      })
+      .catch(() => setDetailData(null))
+      .finally(() => setLoadingDetail(false));
+  // wUnit/dUnit intentionally excluded — avoid refetch on unit change mid-session
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, active.exerciseId]);
 
-  // Match SimpleLineChart behavior so the caller controls the empty state.
-  const points = useMemo(
-    () => rawPoints.filter((p) => p.value > 0),
-    [rawPoints],
-  );
+  const exerciseType = detailData?.exercise.exercise_type ?? active.exerciseType ?? 'weight_reps';
+  const metricOptions = getSpotlightMetricOptions(exerciseType);
+  const activeMetric = metricOptions.find((o) => o.key === selectedMetric) ? selectedMetric : metricOptions[0]?.key ?? '';
 
-  const subtitleMap: Record<SpotlightMetric, string> = {
-    weight: 'Max weight per session',
-    volume: 'Total volume per session',
-    reps: 'Total reps per session',
-    '1rm': 'Estimated 1 Rep Max per session',
-  };
-
-  const tooltipSuffix: Record<SpotlightMetric, string> = {
-    weight: ` ${spotWLabel}`,
-    volume: ' vol',
-    reps: ' reps',
-    '1rm': ` ${spotWLabel}`,
-  };
-
-  const minStepMap: Record<SpotlightMetric, number> = {
-    weight: 10,
-    volume: 500,
-    reps: 2,
-    '1rm': 10,
-  };
+  const points = useMemo(() => {
+    if (!detailData) return [];
+    return (detailData.timeSeries[activeMetric] ?? []).filter((p) => p.value > 0);
+  }, [detailData, activeMetric]);
 
   const fmtTooltip = useCallback(
-    (v: number) => {
-      const val = metric === 'volume' ? formatVolume(v) : String(v);
-      return val + tooltipSuffix[metric];
-    },
-    [metric, tooltipSuffix],
+    (v: number) => getSpotlightTooltipFormatter(activeMetric, wUnit, dUnit)(v),
+    [activeMetric, wUnit, dUnit],
   );
 
   const header = (
@@ -767,26 +880,33 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
       </TouchableOpacity>
 
       <MetricChips
-        options={METRIC_OPTIONS}
-        selected={metric}
-        onChange={onMetricChange}
+        options={metricOptions}
+        selected={activeMetric}
+        onChange={setSelectedMetric}
         activeColor={spotlightColor}
       />
     </>
   );
 
-  if (points.length === 0) {
+  if (loadingDetail) {
     return (
-      <Card style={styles.card}>
+      <View style={{ marginBottom: spacing.md, paddingVertical: spacing.sm }}>
         <SectionTitle title="Exercise Spotlight" />
         {header}
+        <ActivityIndicator style={{ marginVertical: 24 }} color={spotlightColor} />
+      </View>
+    );
+  }
 
-        <Text style={styles.chartSubtitle}>{subtitleMap[metric]}</Text>
-
+  if (points.length === 0) {
+    return (
+      <View style={{ marginBottom: spacing.md, paddingVertical: spacing.sm }}>
+        <SectionTitle title="Exercise Spotlight" />
+        {header}
         <Text style={styles.chartEmptyText}>
           No logged sessions for this exercise in the selected range.
         </Text>
-      </Card>
+      </View>
     );
   }
 
@@ -795,11 +915,11 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
       <SimpleLineChart
         data={points}
         title="Exercise Spotlight"
-        subtitle={subtitleMap[metric]}
+        subtitle={metricOptions.find((o) => o.key === activeMetric)?.label ?? ''}
         headerContent={header}
         frontColor={spotlightColor}
         formatTooltipValue={fmtTooltip}
-        minYStep={minStepMap[metric]}
+        minYStep={getSpotlightMinYStep(activeMetric)}
       />
     );
   }
@@ -810,11 +930,11 @@ const ExerciseSpotlightSection = React.memo(function ExerciseSpotlightSection({
       mode={mode}
       weeks={weeks}
       title="Exercise Spotlight"
-      subtitle={subtitleMap[metric]}
+      subtitle={metricOptions.find((o) => o.key === activeMetric)?.label ?? ''}
       headerContent={header}
       frontColor={spotlightColor}
       formatTooltipValue={fmtTooltip}
-      minYStep={minStepMap[metric]}
+      minYStep={getSpotlightMinYStep(activeMetric)}
     />
   );
 });

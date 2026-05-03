@@ -38,10 +38,14 @@ export interface TimeSeriesPoint {
 export interface ExerciseProgression {
   exerciseId: string;
   exerciseName: string;
+  exerciseType: string | null;
   weightPoints: TimeSeriesPoint[];
   volumePoints: TimeSeriesPoint[];
   repsPoints: TimeSeriesPoint[];
   oneRMPoints: TimeSeriesPoint[];
+  durationPoints: TimeSeriesPoint[];
+  distancePoints: TimeSeriesPoint[];
+  pacePoints: TimeSeriesPoint[];
 }
 
 export interface DashboardData {
@@ -338,7 +342,7 @@ function mapToPointsAvg(
     }));
 }
 
-const SESSION_SELECT = 'id, routine_day_id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, exercise_id, exercise:exercises(name, muscle_group, exercise_type, secondary_muscles))';
+const SESSION_SELECT = 'id, routine_day_id, started_at, completed_at, status, sets:set_logs(weight, reps_performed, rir, duration, distance, exercise_id, exercise:exercises(name, muscle_group, exercise_type, secondary_muscles))';
 const BODY_MEASUREMENT_SELECT = ['logged_on', ...BODY_MEASUREMENT_METRICS.map((m) => m.column)].join(', ');
 
 type RawMeasurement = Pick<BodyMeasurement, 'logged_on' | MeasurementValueColumn>;
@@ -896,6 +900,8 @@ type RawSession = {
     weight: number;
     reps_performed: number;
     rir: number | null;
+    duration: number;
+    distance: number;
     exercise_id: string;
     exercise: { name: string; muscle_group: string; exercise_type?: string } | null;
   }[];
@@ -1087,48 +1093,65 @@ function computeWorkoutDays(sessions: RawSession[]): string[] {
 function computeExerciseProgressions(sessions: RawSession[], granularity: Granularity, skeleton: TimeSeriesPoint[] | null): ExerciseProgression[] {
   const exerciseMap = new Map<string, {
     name: string;
+    type: string | null;
     weight: Map<string, number>;
     volume: Map<string, number>;
     reps: Map<string, number>;
     oneRM: Map<string, number>;
+    duration: Map<string, number>;
+    distance: Map<string, number>;
+    paceDuration: Map<string, number>;
+    paceDistance: Map<string, number>;
   }>();
 
   for (const s of sessions) {
     const key = getBucketKey(new Date(s.started_at), granularity);
 
     for (const set of s.sets) {
-      if (!set.exercise || set.weight <= 0) continue;
+      if (!set.exercise) continue;
       const id = set.exercise_id;
       if (!exerciseMap.has(id)) {
         exerciseMap.set(id, {
           name: set.exercise.name,
-          weight: new Map(),
-          volume: new Map(),
-          reps: new Map(),
-          oneRM: new Map(),
+          type: set.exercise.exercise_type ?? null,
+          weight: new Map(), volume: new Map(), reps: new Map(), oneRM: new Map(),
+          duration: new Map(), distance: new Map(),
+          paceDuration: new Map(), paceDistance: new Map(),
         });
       }
       const entry = exerciseMap.get(id)!;
 
-      const existingWeight = entry.weight.get(key) ?? 0;
-      if (set.weight > existingWeight) {
-        entry.weight.set(key, set.weight);
-      }
+      if (set.weight > 0) {
+        const existingWeight = entry.weight.get(key) ?? 0;
+        if (set.weight > existingWeight) entry.weight.set(key, set.weight);
 
-      const existingVol = entry.volume.get(key) ?? 0;
-      entry.volume.set(key, existingVol + set.weight * set.reps_performed);
+        const existingVol = entry.volume.get(key) ?? 0;
+        entry.volume.set(key, existingVol + set.weight * set.reps_performed);
 
-      const existingReps = entry.reps.get(key) ?? 0;
-      entry.reps.set(key, existingReps + set.reps_performed);
-
-      const estimated1RM = estimateOneRepFromSet(set);
-      const existing1RM = entry.oneRM.get(key);
-      if (set.exercise?.exercise_type === 'assisted_bodyweight') {
-        if (existing1RM === undefined || estimated1RM < existing1RM) {
+        const estimated1RM = estimateOneRepFromSet(set);
+        const existing1RM = entry.oneRM.get(key);
+        if (set.exercise?.exercise_type === 'assisted_bodyweight') {
+          if (existing1RM === undefined || estimated1RM < existing1RM) entry.oneRM.set(key, estimated1RM);
+        } else if (estimated1RM > (existing1RM ?? 0)) {
           entry.oneRM.set(key, estimated1RM);
         }
-      } else if (estimated1RM > (existing1RM ?? 0)) {
-        entry.oneRM.set(key, estimated1RM);
+      }
+
+      if (set.reps_performed > 0) {
+        const existingReps = entry.reps.get(key) ?? 0;
+        entry.reps.set(key, existingReps + set.reps_performed);
+      }
+
+      if (set.duration > 0) {
+        const existingDur = entry.duration.get(key) ?? 0;
+        if (set.duration > existingDur) entry.duration.set(key, set.duration);
+        entry.paceDuration.set(key, (entry.paceDuration.get(key) ?? 0) + set.duration);
+      }
+
+      if (set.distance > 0) {
+        const existingDist = entry.distance.get(key) ?? 0;
+        if (set.distance > existingDist) entry.distance.set(key, set.distance);
+        entry.paceDistance.set(key, (entry.paceDistance.get(key) ?? 0) + set.distance);
       }
     }
   }
@@ -1137,18 +1160,34 @@ function computeExerciseProgressions(sessions: RawSession[], granularity: Granul
     skeleton ? stampValues(skeleton, map) : mapToPoints(map, granularity);
 
   return [...exerciseMap.entries()]
-    .filter(([, v]) => v.weight.size >= 2)
-    .map(([exerciseId, data]) => ({
-      exerciseId,
-      exerciseName: data.name,
-      weightPoints: stamp(data.weight),
-      volumePoints: stamp(data.volume),
-      repsPoints: stamp(data.reps),
-      oneRMPoints: stamp(data.oneRM),
-    }))
+    .filter(([, v]) => {
+      const hasWeightData = v.weight.size >= 2;
+      const hasDurationData = v.duration.size >= 2;
+      const hasDistanceData = v.distance.size >= 2;
+      return hasWeightData || hasDurationData || hasDistanceData;
+    })
+    .map(([exerciseId, data]) => {
+      const paceMap = new Map<string, number>();
+      for (const [k, dur] of data.paceDuration.entries()) {
+        const dist = data.paceDistance.get(k) ?? 0;
+        if (dist > 0) paceMap.set(k, Math.round(dur / dist));
+      }
+      return {
+        exerciseId,
+        exerciseName: data.name,
+        exerciseType: data.type,
+        weightPoints: stamp(data.weight),
+        volumePoints: stamp(data.volume),
+        repsPoints: stamp(data.reps),
+        oneRMPoints: stamp(data.oneRM),
+        durationPoints: stamp(data.duration),
+        distancePoints: stamp(data.distance),
+        pacePoints: stamp(paceMap),
+      };
+    })
     .sort((a, b) => {
-      const maxA = Math.max(...a.weightPoints.map((p) => p.value));
-      const maxB = Math.max(...b.weightPoints.map((p) => p.value));
+      const maxA = Math.max(0, ...a.weightPoints.map((p) => p.value), ...a.durationPoints.map((p) => p.value), ...a.distancePoints.map((p) => p.value));
+      const maxB = Math.max(0, ...b.weightPoints.map((p) => p.value), ...b.durationPoints.map((p) => p.value), ...b.distancePoints.map((p) => p.value));
       return maxB - maxA;
     });
 }
@@ -1215,10 +1254,14 @@ function computeDurationRaw(sessions: RawSession[]): TimeSeriesPoint[] {
 function computeExerciseProgressionsRaw(sessions: RawSession[]): ExerciseProgression[] {
   const exerciseMap = new Map<string, {
     name: string;
+    type: string | null;
     weight: TimeSeriesPoint[];
     volume: TimeSeriesPoint[];
     reps: TimeSeriesPoint[];
     oneRM: TimeSeriesPoint[];
+    duration: TimeSeriesPoint[];
+    distance: TimeSeriesPoint[];
+    pace: TimeSeriesPoint[];
   }>();
 
   for (const s of sessions) {
@@ -1230,30 +1273,48 @@ function computeExerciseProgressionsRaw(sessions: RawSession[]): ExerciseProgres
       totalVol: number;
       totalReps: number;
       best1RM: number;
+      maxDuration: number;
+      maxDistance: number;
+      totalDuration: number;
+      totalDistance: number;
       name: string;
+      type: string | null;
     }>();
 
     for (const set of s.sets) {
-      if (!set.exercise || set.weight <= 0) continue;
+      if (!set.exercise) continue;
       const id = set.exercise_id;
       const existing = sessionExercises.get(id) ?? {
-        maxWeight: 0, totalVol: 0, totalReps: 0, best1RM: 0, name: set.exercise.name,
+        maxWeight: 0, totalVol: 0, totalReps: 0, best1RM: 0,
+        maxDuration: 0, maxDistance: 0, totalDuration: 0, totalDistance: 0,
+        name: set.exercise.name, type: set.exercise.exercise_type ?? null,
       };
-      existing.maxWeight = Math.max(existing.maxWeight, set.weight);
-      existing.totalVol += set.weight * set.reps_performed;
-      existing.totalReps += set.reps_performed;
-      const est1RM = estimateOneRepFromSet(set);
-      if (set.exercise?.exercise_type === 'assisted_bodyweight') {
-        existing.best1RM = existing.best1RM > 0 ? Math.min(existing.best1RM, est1RM) : est1RM;
-      } else {
-        existing.best1RM = Math.max(existing.best1RM, est1RM);
+
+      if (set.weight > 0) {
+        existing.maxWeight = Math.max(existing.maxWeight, set.weight);
+        existing.totalVol += set.weight * set.reps_performed;
+        const est1RM = estimateOneRepFromSet(set);
+        if (set.exercise?.exercise_type === 'assisted_bodyweight') {
+          existing.best1RM = existing.best1RM > 0 ? Math.min(existing.best1RM, est1RM) : est1RM;
+        } else {
+          existing.best1RM = Math.max(existing.best1RM, est1RM);
+        }
+      }
+      if (set.reps_performed > 0) existing.totalReps += set.reps_performed;
+      if (set.duration > 0) {
+        existing.maxDuration = Math.max(existing.maxDuration, set.duration);
+        existing.totalDuration += set.duration;
+      }
+      if (set.distance > 0) {
+        existing.maxDistance = Math.max(existing.maxDistance, set.distance);
+        existing.totalDistance += set.distance;
       }
       sessionExercises.set(id, existing);
     }
 
     for (const [id, ex] of sessionExercises) {
       if (!exerciseMap.has(id)) {
-        exerciseMap.set(id, { name: ex.name, weight: [], volume: [], reps: [], oneRM: [] });
+        exerciseMap.set(id, { name: ex.name, type: ex.type, weight: [], volume: [], reps: [], oneRM: [], duration: [], distance: [], pace: [] });
       }
       const entry = exerciseMap.get(id)!;
       const pt = (v: number): TimeSeriesPoint => ({ key: s.started_at, label, value: v, date: ts });
@@ -1261,22 +1322,34 @@ function computeExerciseProgressionsRaw(sessions: RawSession[]): ExerciseProgres
       entry.volume.push(pt(ex.totalVol));
       entry.reps.push(pt(ex.totalReps));
       entry.oneRM.push(pt(ex.best1RM));
+      entry.duration.push(pt(ex.maxDuration));
+      entry.distance.push(pt(ex.maxDistance));
+      const pace = ex.totalDistance > 0 ? Math.round(ex.totalDuration / ex.totalDistance) : 0;
+      entry.pace.push(pt(pace));
     }
   }
 
   return [...exerciseMap.entries()]
-    .filter(([, v]) => v.weight.length >= 2)
+    .filter(([, v]) => {
+      return v.weight.filter((p) => p.value > 0).length >= 2
+        || v.duration.filter((p) => p.value > 0).length >= 2
+        || v.distance.filter((p) => p.value > 0).length >= 2;
+    })
     .map(([exerciseId, data]) => ({
       exerciseId,
       exerciseName: data.name,
+      exerciseType: data.type,
       weightPoints: data.weight,
       volumePoints: data.volume,
       repsPoints: data.reps,
       oneRMPoints: data.oneRM,
+      durationPoints: data.duration,
+      distancePoints: data.distance,
+      pacePoints: data.pace,
     }))
     .sort((a, b) => {
-      const maxA = Math.max(...a.weightPoints.map((p) => p.value));
-      const maxB = Math.max(...b.weightPoints.map((p) => p.value));
+      const maxA = Math.max(0, ...a.weightPoints.map((p) => p.value), ...a.durationPoints.map((p) => p.value), ...a.distancePoints.map((p) => p.value));
+      const maxB = Math.max(0, ...b.weightPoints.map((p) => p.value), ...b.durationPoints.map((p) => p.value), ...b.distancePoints.map((p) => p.value));
       return maxB - maxA;
     });
 }
