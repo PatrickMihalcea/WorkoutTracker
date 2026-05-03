@@ -19,8 +19,11 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { routineService, sessionService } from '../../../src/services';
 import type { SessionRecordAchieved, SessionRecordMetric } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useRoutineStore } from '../../../src/stores/routine.store';
+import { useSubscriptionStore } from '../../../src/stores/subscription.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useAuthStore } from '../../../src/stores/auth.store';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import { useWorkoutOverlay } from '../../../src/components/workout';
 import { AppHeaderBackButton, AppHeaderButton, Card, Button, BottomSheetModal, OverflowMenu, ExercisePickerModal, SupersetBracket, RirCircle, ExerciseIconPreview } from '../../../src/components/ui';
 import { SetsTableEditor, TemplateSetRow, buildSetsPayload } from '../../../src/components/routine/SetsTableEditor';
@@ -45,6 +48,7 @@ import { useTheme } from '../../../src/contexts/ThemeContext';
 import { isLightTheme, type ThemeColors } from '../../../src/constants/themes';
 import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../../src/utils/exerciseMedia';
 import { PortalHost } from '../../../src/components/ui/PortalHost';
+import { getLockedRoutineIds } from '../../../src/utils/routineAccess';
 
 const EXERCISE_THUMB_PLACEHOLDER = require('../../../assets/Setora-black-and-white.png');
 const SESSION_EDITOR_MODAL_HEIGHT = 390;
@@ -269,6 +273,9 @@ export default function SessionDetailScreen() {
     exerciseId?: string;
   }>();
   const { profile } = useProfileStore();
+  const { routines, fetchRoutines } = useRoutineStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
+  const { showPaywall } = usePaywall();
   const isCompletionView = justCompleted === '1';
   const weightUnit = profile?.weight_unit ?? 'kg';
   const distUnit = profile?.distance_unit ?? 'km';
@@ -303,6 +310,8 @@ export default function SessionDetailScreen() {
   const exerciseNodeRef = useRef<Record<string, View | null>>({});
   const pendingPickerReopenRef = useRef<'swap' | 'add' | null>(null);
   const pendingExerciseDetailTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lockedSessionRedirectedRef = useRef(false);
+  const lockedRoutineIds = useMemo(() => getLockedRoutineIds(routines, isPremium), [routines, isPremium]);
 
   const scrollSessionExerciseIntoView = useCallback((groupKey: string) => {
     const node = exerciseNodeRef.current[groupKey];
@@ -400,6 +409,10 @@ export default function SessionDetailScreen() {
   }, [loadSession]));
 
   useFocusEffect(useCallback(() => {
+    void fetchRoutines();
+  }, [fetchRoutines]));
+
+  useFocusEffect(useCallback(() => {
     const which = pendingPickerReopenRef.current;
     if (!which) return;
     pendingPickerReopenRef.current = null;
@@ -442,6 +455,25 @@ export default function SessionDetailScreen() {
       active = false;
     };
   }, [session?.routine_day_id]);
+
+  useEffect(() => {
+    if (!session || lockedSessionRedirectedRef.current) return;
+
+    const weekIndex = session.routine_week_index ?? session.routine_day?.week_index ?? null;
+    if (!isPremium && weekIndex != null && weekIndex > 2) {
+      lockedSessionRedirectedRef.current = true;
+      showPaywall('advanced_analytics');
+      router.replace('/(tabs)/profile');
+      return;
+    }
+
+    const routineId = session.routine_day?.routine?.id;
+    if (routineId && lockedRoutineIds.has(routineId)) {
+      lockedSessionRedirectedRef.current = true;
+      showPaywall('unlimited_routines');
+      router.replace('/(tabs)/profile');
+    }
+  }, [isPremium, lockedRoutineIds, router, session, showPaywall]);
 
   const handleStartWorkout = () => {
     if (!session || !user) return;
@@ -867,11 +899,7 @@ export default function SessionDetailScreen() {
 
   const handleHeaderBack = useCallback(() => {
     if (isCompletionView) {
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace('/(tabs)/profile');
-      }
+      router.dismissTo('/(tabs)/profile');
       return;
     }
     if (from === 'exercise-history' && returnExerciseId) {

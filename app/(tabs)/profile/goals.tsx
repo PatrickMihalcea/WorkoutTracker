@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { Button, Card, Input } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
+import { isLightTheme } from '../../../src/constants/themes';
 import { BODY_MEASUREMENT_METRICS, MeasurementMetricKey } from '../../../src/models';
 import { UserProfileUpdate } from '../../../src/models/profile';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useSubscriptionStore } from '../../../src/stores/subscription.store';
 import {
   getMeasurementGoalFromProfile,
   measurementGoalFieldForMetric,
@@ -17,6 +20,8 @@ import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
 
 type GoalFormValues = Record<MeasurementMetricKey, string>;
+const BASIC_GOAL_KEYS: MeasurementMetricKey[] = ['body_weight', 'body_fat_pct', 'waist'];
+const CROWN_ICON = require('../../../assets/icons/crown.png') as number;
 
 function buildEmptyGoalForm(): GoalFormValues {
   return BODY_MEASUREMENT_METRICS.reduce((acc, metric) => {
@@ -26,16 +31,30 @@ function buildEmptyGoalForm(): GoalFormValues {
 }
 
 export default function GoalsScreen() {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, theme } = useTheme();
+  const isLight = isLightTheme(theme);
+  const styles = useMemo(() => createStyles(colors, isLight), [colors, isLight]);
   const navigation = useNavigation();
+  const { showPaywall } = usePaywall();
   const { profile, updateProfile } = useProfileStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
   const weightUnit = profile?.weight_unit ?? 'kg';
   const heightUnit = profile?.height_unit ?? 'cm';
   const [saving, setSaving] = useState(false);
+  const [advancedExpanded, setAdvancedExpanded] = useState(true);
   const [values, setValues] = useState<GoalFormValues>(buildEmptyGoalForm);
   const initialValuesRef = useRef<GoalFormValues>(buildEmptyGoalForm());
   const allowNextLeaveRef = useRef(false);
+  const basicMetrics = useMemo(
+    () => BASIC_GOAL_KEYS
+      .map((key) => BODY_MEASUREMENT_METRICS.find((metric) => metric.key === key))
+      .filter((metric): metric is typeof BODY_MEASUREMENT_METRICS[number] => !!metric),
+    [],
+  );
+  const advancedMetrics = useMemo(
+    () => BODY_MEASUREMENT_METRICS.filter((metric) => !BASIC_GOAL_KEYS.includes(metric.key)),
+    [],
+  );
 
   const unitLabelByMetric = useMemo(() => {
     return BODY_MEASUREMENT_METRICS.reduce((acc, metric) => {
@@ -156,11 +175,12 @@ export default function GoalsScreen() {
         </View>
 
         <Card style={styles.card}>
+          <Text style={styles.sectionTitle}>Basic</Text>
           <Text style={styles.subtitle}>
-            Set your current target for each metric. Leave blank if you do not want a goal line.
+            Set simple targets for your core progress markers. Leave blank if you do not want a goal line.
           </Text>
 
-          {BODY_MEASUREMENT_METRICS.map((metric) => (
+          {basicMetrics.map((metric) => (
             <Input
               key={metric.key}
               label={`${metric.label} (${unitLabelByMetric[metric.key]})`}
@@ -171,12 +191,56 @@ export default function GoalsScreen() {
             />
           ))}
         </Card>
+
+        <Card style={styles.card}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={styles.sectionToggle}
+            onPress={() => setAdvancedExpanded((prev) => !prev)}
+          >
+            <View style={styles.sectionHeaderText}>
+              <View style={styles.sectionTitleRow}>
+                <Text style={styles.sectionTitle}>Advanced</Text>
+                {!isPremium ? <Image source={CROWN_ICON} style={styles.crownIcon} resizeMode="contain" /> : null}
+              </View>
+              <Text style={[styles.subtitle, styles.sectionToggleSubtitle]}>
+                {isPremium
+                  ? 'Fine-tune longer-term body measurement goals for more detailed tracking.'
+                  : 'Advanced measurement goals are available with Setora Pro. Tap any field to unlock.'}
+              </Text>
+            </View>
+            <Text style={styles.sectionToggleIcon}>{advancedExpanded ? '▾' : '▸'}</Text>
+          </TouchableOpacity>
+
+          {advancedExpanded ? (
+            <>
+              {advancedMetrics.map((metric) => (
+                <View key={metric.key} style={styles.lockedFieldWrap}>
+                  <Input
+                    label={`${metric.label} (${unitLabelByMetric[metric.key]})`}
+                    value={values[metric.key]}
+                    onChangeText={(text) => setValues((prev) => ({ ...prev, [metric.key]: text }))}
+                    keyboardType="decimal-pad"
+                    placeholder="No goal"
+                    editable={isPremium}
+                  />
+                  {!isPremium ? (
+                    <Pressable
+                      style={styles.lockedFieldOverlay}
+                      onPress={() => showPaywall('advanced_analytics')}
+                    />
+                  ) : null}
+                </View>
+              ))}
+            </>
+          ) : null}
+        </Card>
       </ScrollView>
     </View>
   );
 }
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -200,11 +264,57 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   card: {
     paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  sectionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  sectionHeaderText: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingRight: spacing.sm,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    color: colors.text,
+    fontFamily: fonts.bold,
+    marginBottom: spacing.xs,
+  },
+  crownIcon: {
+    width: 13,
+    height: 13,
+    tintColor: isLight ? '#111111' : '#FFFFFF',
+    marginTop: -2,
+    marginLeft: 2,
+  },
+  sectionToggleIcon: {
+    fontSize: 16,
+    color: colors.textMuted,
+    fontFamily: fonts.semiBold,
   },
   subtitle: {
     fontSize: 12,
     color: colors.textMuted,
     fontFamily: fonts.regular,
     marginBottom: spacing.sm,
+  },
+  sectionToggleSubtitle: {
+    marginBottom: 0,
+    marginTop: 2,
+  },
+  lockedFieldWrap: {
+    position: 'relative',
+  },
+  lockedFieldOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
   },
 });

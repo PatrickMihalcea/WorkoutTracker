@@ -22,6 +22,7 @@ import { useProfileStore } from '../../../src/stores/profile.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useSubscriptionStore } from '../../../src/stores/subscription.store';
 import { usePaywall } from '../../../src/contexts/PaywallContext';
+import { canCreateAnotherRoutine } from '../../../src/utils/routineAccess';
 
 type CreateMode = 'custom' | OnboardingRoutineGenerationMode;
 
@@ -48,7 +49,7 @@ export default function CreateRoutineScreen() {
   const router = useRouter();
   const { showPaywall } = usePaywall();
   const { user } = useAuthStore();
-  const { createRoutine } = useRoutineStore();
+  const { createRoutine, routines } = useRoutineStore();
   const isPremium = useSubscriptionStore((state) => state.isPremium);
   const profile = useProfileStore((state) => state.profile);
   const [aiAccess, setAiAccess] = useState<AiRoutineAccessStatus>('locked');
@@ -103,6 +104,7 @@ export default function CreateRoutineScreen() {
     if (mode === 'ai') return 'Build with AI';
     return 'Build Routine';
   }, [mode]);
+  const canCreateMoreRoutines = useMemo(() => canCreateAnotherRoutine(routines, isPremium), [routines, isPremium]);
 
   useEffect(() => {
     let active = true;
@@ -170,17 +172,23 @@ export default function CreateRoutineScreen() {
   }, [router]);
 
   const handleCreate = async () => {
+    if (mode === 'ai' && aiAccess === 'in_progress') {
+      Alert.alert('AI routine in progress', 'Your AI routine is already being generated. Please wait for it to finish.');
+      return;
+    }
+
+    if (!canCreateMoreRoutines) {
+      showPaywall('unlimited_routines');
+      return;
+    }
+
     const canUseAi = aiAccess === 'free' || aiAccess === 'premium';
     if (mode === 'ai' && !canUseAi) {
-      if (aiAccess === 'locked') {
-        if (isPremium) {
-          Alert.alert('Monthly AI credits used', 'You have already used your 3 Setora Pro AI routine credits for this month.');
-          return;
-        }
-        showPaywall('ai_routine_generation');
+      if (isPremium) {
+        Alert.alert('Monthly AI credits used', 'You have already used your 3 Setora Pro AI routine credits for this month.');
         return;
       }
-      Alert.alert('AI routine in progress', 'Your AI routine is already being generated. Please wait for it to finish.');
+      showPaywall('ai_routine_generation');
       return;
     }
 

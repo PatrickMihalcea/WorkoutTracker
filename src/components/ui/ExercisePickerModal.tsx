@@ -26,11 +26,14 @@ import { ChipPicker, MultiChipPicker } from './ChipPicker';
 import { FieldDropdown } from './FieldDropdown';
 import { ExerciseIconPreview } from './ExerciseIconPreview';
 import { useTheme } from '../../contexts/ThemeContext';
+import { usePaywall } from '../../contexts/PaywallContext';
 import { isLightTheme } from '../../constants/themes';
 import { fonts } from '../../constants';
 import { confirmDeleteExercise } from '../../utils/confirmDeleteExercise';
+import { canCreateCustomExercise, FREE_CUSTOM_EXERCISE_LIMIT } from '../../utils/exerciseAccess';
 import { EXERCISE_TYPE_ITEMS } from '../../utils/exerciseType';
 import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../utils/exerciseMedia';
+import { useSubscriptionStore } from '../../stores/subscription.store';
 
 const chartIcon = require('../../../assets/icons/chart.png');
 const exerciseThumbPlaceholder = require('../../../assets/Setora-black-and-white.png');
@@ -229,8 +232,10 @@ export function ExercisePickerModal({
   selectedExerciseId,
 }: ExercisePickerModalProps) {
   const { colors, theme } = useTheme();
+  const { showPaywall } = usePaywall();
   const isLight = isLightTheme(theme);
   const { user } = useAuthStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [search, setSearch] = useState('');
   const [muscleFilter, setMuscleFilter] = useState<MuscleGroup | null>(null);
@@ -503,6 +508,11 @@ export function ExercisePickerModal({
     return applyFilters(exercises.filter((e) => e.user_id === user.id));
   }, [equipmentFilter, exercises, muscleFilter, search, user]);
 
+  const totalCustomExerciseCount = useMemo(() => {
+    if (!user) return 0;
+    return exercises.filter((exercise) => exercise.user_id === user.id).length;
+  }, [exercises, user]);
+
   useEffect(() => {
     customExerciseIdsRef.current = customExercises.map((exercise) => exercise.id);
   }, [customExercises]);
@@ -710,8 +720,35 @@ export function ExercisePickerModal({
     );
   };
 
+  const handleCustomExerciseLimitReached = () => {
+    Alert.alert(
+      'Custom Exercise Limit Reached',
+      `Free users can create up to ${FREE_CUSTOM_EXERCISE_LIMIT} custom exercises. Upgrade to Setora Pro to add more or long press on an exercise to delete it.`,
+      [
+        { text: 'Not Now', style: 'cancel' },
+        {
+          text: 'View Pro',
+          onPress: () => showPaywall('custom_exercises'),
+        },
+      ],
+    );
+  };
+
+  const handleStartCreateExercise = () => {
+    if (!canCreateCustomExercise(totalCustomExerciseCount, isPremium)) {
+      handleCustomExerciseLimitReached();
+      return;
+    }
+
+    setShowCreateExercise(true);
+  };
+
   const handleCreateExercise = async () => {
     if (!user || !newExerciseName.trim()) { Alert.alert('Error', 'Please enter an exercise name'); return; }
+    if (!canCreateCustomExercise(totalCustomExerciseCount, isPremium)) {
+      handleCustomExerciseLimitReached();
+      return;
+    }
     if (newSecondaryMuscles.includes(newExerciseMuscle)) {
       Alert.alert('Invalid selection', 'Primary muscle group cannot also be selected as a secondary muscle.');
       return;
@@ -1015,7 +1052,7 @@ export function ExercisePickerModal({
             </View>
             {!(Platform.OS === 'android' && isKeyboardVisible) && (
               <View style={styles.footer}>
-                <Button title="+ Create New Exercise" variant="secondary" onPress={() => setShowCreateExercise(true)} />
+                <Button title="+ Create New Exercise" variant="secondary" onPress={handleStartCreateExercise} />
               </View>
             )}
           </>

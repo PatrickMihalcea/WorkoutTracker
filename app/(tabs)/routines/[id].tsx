@@ -67,6 +67,7 @@ import type { ThemeColors } from '../../../src/constants/themes';
 import { getExercisePreviewUrl, getExerciseThumbnailUrl } from '../../../src/utils/exerciseMedia';
 import { EditorDirection, EditableFieldKind } from '../../../src/components/set-editor/types';
 import { PortalHost } from '../../../src/components/ui/PortalHost';
+import { getLockedRoutineIds } from '../../../src/utils/routineAccess';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -289,7 +290,7 @@ export default function RoutineDetailScreen() {
   const pathname = usePathname();
   const { user } = useAuthStore();
   const navigation = useNavigation();
-  const { routines, currentRoutine, fetchRoutineDetail, setActive, deactivate } = useRoutineStore();
+  const { routines, routinesLoaded, currentRoutine, fetchRoutines, fetchRoutineDetail, setActive, deactivate } = useRoutineStore();
   const { profile, updateProfile } = useProfileStore();
   const isPremium = useSubscriptionStore((state) => state.isPremium);
   const { showPaywall } = usePaywall();
@@ -419,6 +420,9 @@ export default function RoutineDetailScreen() {
     return SET_EDITOR_OPEN_DELAY_MS;
   }, [setChromeHidden]);
   const pickerVisible = showSwapPicker || showDirectAddPicker;
+  const lockedRoutineIds = useMemo(() => getLockedRoutineIds(routines, isPremium), [routines, isPremium]);
+  const lockedRoutineRedirectRef = useRef<string | null>(null);
+  const routineId = Array.isArray(id) ? id[0] : id;
 
   useEffect(() => {
     setChromeHidden(!!setEditorVisibleEntryId || pickerVisible);
@@ -566,8 +570,33 @@ export default function RoutineDetailScreen() {
   }, [currentRoutine, deferredSelectedWeek]);
 
   useEffect(() => {
-    if (id) fetchRoutineDetail(id);
-  }, [id, fetchRoutineDetail]);
+    if (!routinesLoaded) {
+      void fetchRoutines();
+    }
+  }, [fetchRoutines, routinesLoaded]);
+
+  useEffect(() => {
+    if (!routineId || !routinesLoaded || !lockedRoutineIds.has(routineId)) return;
+    if (lockedRoutineRedirectRef.current === routineId) return;
+
+    lockedRoutineRedirectRef.current = routineId;
+    const lockedRoutine = routines.find((routine) => routine.id === routineId);
+
+    if (lockedRoutine?.is_active) {
+      void deactivate(routineId).catch(() => {
+        // Deactivation is best-effort here; fetchRoutines also enforces this on refresh.
+      });
+    }
+
+    showPaywall('unlimited_routines');
+    router.replace('/(tabs)/routines');
+  }, [deactivate, lockedRoutineIds, routineId, router, routines, routinesLoaded, showPaywall]);
+
+  useEffect(() => {
+    if (routineId && routinesLoaded && !lockedRoutineIds.has(routineId)) {
+      fetchRoutineDetail(routineId);
+    }
+  }, [routineId, routinesLoaded, lockedRoutineIds, fetchRoutineDetail]);
 
   useEffect(() => {
     if (!currentRoutine) return;
@@ -630,7 +659,7 @@ export default function RoutineDetailScreen() {
       });
       setShowAddDay(false);
       setDayLabel('');
-      fetchRoutineDetail(id);
+      fetchRoutineDetail(routineId);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }
@@ -683,7 +712,7 @@ export default function RoutineDetailScreen() {
       );
       setExpandedIds((prev) => new Set([...prev, newEntry.id]));
       setShowDirectAddPicker(false);
-      if (id) fetchRoutineDetail(id);
+      if (routineId) fetchRoutineDetail(routineId);
     } catch (error: unknown) {
       Alert.alert('Error', (error as Error).message);
     }

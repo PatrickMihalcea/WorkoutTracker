@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,8 +13,10 @@ import {
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useNavigation, usePreventRemove } from '@react-navigation/native';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useSubscriptionStore } from '../../../src/stores/subscription.store';
 import { BodyMeasurement, BODY_MEASUREMENT_METRICS, MeasurementMetricKey } from '../../../src/models';
 import { measurementService } from '../../../src/services';
 import { profileService } from '../../../src/services/profile.service';
@@ -29,6 +33,8 @@ type FormSnapshot = {
   values: FormValues;
 };
 const MAX_SCROLL_TO_LOG_RETRIES = 12;
+const BASIC_MEASUREMENT_KEYS: MeasurementMetricKey[] = ['body_weight', 'body_fat_pct', 'waist'];
+const CROWN_ICON = require('../../../assets/icons/crown.png') as number;
 
 function toDateKey(d: Date): string {
   const y = d.getFullYear();
@@ -75,10 +81,12 @@ function areSnapshotsEqual(a: FormSnapshot | null, b: FormSnapshot | null): bool
 export default function MeasurementsScreen() {
   const { colors, theme } = useTheme();
   const isLight = isLightTheme(theme);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, isLight), [colors, isLight]);
   const navigation = useNavigation();
+  const { showPaywall } = usePaywall();
   const user = useAuthStore((s) => s.user);
   const { profile, setProfile } = useProfileStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
   const wUnit = profile?.weight_unit ?? 'kg';
   const hUnit = profile?.height_unit ?? 'cm';
   const wLabel = wUnit === 'lbs' ? 'lbs' : 'kg';
@@ -91,7 +99,8 @@ export default function MeasurementsScreen() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<BodyMeasurement | null>(null);
   const [formDate, setFormDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(Platform.OS === 'ios');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [advancedExpanded, setAdvancedExpanded] = useState(true);
   const [formValues, setFormValues] = useState<FormValues>(createEmptyFormValues);
   const scrollRef = useRef<ScrollView>(null);
   const logYByIdRef = useRef<Record<string, number>>({});
@@ -99,6 +108,16 @@ export default function MeasurementsScreen() {
   const pendingScrollRetriesRef = useRef(0);
   const initialFormSnapshotRef = useRef<FormSnapshot | null>(null);
   const allowNextLeaveRef = useRef(false);
+  const basicMetrics = useMemo(
+    () => BASIC_MEASUREMENT_KEYS
+      .map((key) => BODY_MEASUREMENT_METRICS.find((metric) => metric.key === key))
+      .filter((metric): metric is typeof BODY_MEASUREMENT_METRICS[number] => !!metric),
+    [],
+  );
+  const advancedMetrics = useMemo(
+    () => BODY_MEASUREMENT_METRICS.filter((metric) => !BASIC_MEASUREMENT_KEYS.includes(metric.key)),
+    [],
+  );
 
   const scrollToTop = useCallback(() => {
     requestAnimationFrame(() => {
@@ -198,7 +217,7 @@ export default function MeasurementsScreen() {
     setFormDate(new Date());
     setEditingLog(null);
     setFormOpen(false);
-    setShowDatePicker(Platform.OS === 'ios');
+    setShowDatePicker(false);
     initialFormSnapshotRef.current = null;
   }, []);
 
@@ -209,7 +228,7 @@ export default function MeasurementsScreen() {
     setFormValues(nextValues);
     setFormDate(nextDate);
     setFormOpen(true);
-    setShowDatePicker(Platform.OS === 'ios');
+    setShowDatePicker(false);
     initialFormSnapshotRef.current = buildFormSnapshot(nextDate, nextValues);
     scrollToTop();
   }, [scrollToTop]);
@@ -228,7 +247,7 @@ export default function MeasurementsScreen() {
     const nextDate = fromDateKey(log.logged_on);
     setFormDate(nextDate);
     setFormOpen(true);
-    setShowDatePicker(Platform.OS === 'ios');
+    setShowDatePicker(false);
     initialFormSnapshotRef.current = buildFormSnapshot(nextDate, nextValues);
     scrollToTop();
   }, [scrollToTop, toDisplayValue]);
@@ -481,37 +500,93 @@ export default function MeasurementsScreen() {
         </View>
 
         {formOpen && (
-          <Card style={styles.formCard}>
-            <Text style={styles.formTitle}>{editingLog ? 'Edit Entry' : 'New Entry'}</Text>
-            <Text style={styles.formSubtitle}>Date and at least one measurement are required.</Text>
+          <>
+            <Card style={styles.formCard}>
+              <Text style={styles.formTitle}>{editingLog ? 'Edit Entry' : 'New Entry'}</Text>
+              <Text style={styles.formSubtitle}>Date and at least one measurement are required.</Text>
 
-            <Text style={styles.fieldLabel}>Date</Text>
-            {Platform.OS === 'android' && (
-              <TouchableOpacity style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
+              <Text style={styles.fieldLabel}>Date</Text>
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={() => setShowDatePicker((prev) => (Platform.OS === 'ios' ? !prev : true))}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.dateButtonText}>{formDate.toLocaleDateString()}</Text>
               </TouchableOpacity>
-            )}
-            {showDatePicker && (
-              <DateTimePicker
-                value={formDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleDateChange}
-                maximumDate={new Date()}
-                themeVariant={isLight ? 'light' : 'dark'}
-              />
-            )}
+              {showDatePicker && (
+                <DateTimePicker
+                  value={formDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  onChange={handleDateChange}
+                  maximumDate={new Date()}
+                  textColor={Platform.OS === 'ios' ? colors.text : undefined}
+                  themeVariant={isLight ? 'light' : 'dark'}
+                />
+              )}
+            </Card>
 
-            {BODY_MEASUREMENT_METRICS.map((metric) => (
-              <Input
-                key={metric.key}
-                label={`${metric.label} (${unitLabelForMetric(metric.key)})`}
-                value={formValues[metric.key]}
-                onChangeText={(text) => setFormValues((prev) => ({ ...prev, [metric.key]: text }))}
-                keyboardType="decimal-pad"
-                placeholder="0"
-              />
-            ))}
+            <Card style={styles.formCard}>
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionTitle}>Basic</Text>
+                <Text style={styles.sectionSubtitle}>Core measurements for quick progress tracking.</Text>
+                {basicMetrics.map((metric) => (
+                  <Input
+                    key={metric.key}
+                    label={`${metric.label} (${unitLabelForMetric(metric.key)})`}
+                    value={formValues[metric.key]}
+                    onChangeText={(text) => setFormValues((prev) => ({ ...prev, [metric.key]: text }))}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                  />
+                ))}
+              </View>
+            </Card>
+
+            <Card style={styles.formCard}>
+              <View style={styles.sectionBlock}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.sectionToggle}
+                  onPress={() => setAdvancedExpanded((prev) => !prev)}
+                >
+                  <View style={styles.sectionHeaderText}>
+                    <View style={styles.sectionTitleRow}>
+                      <Text style={styles.sectionTitle}>Advanced</Text>
+                      {!isPremium ? <Image source={CROWN_ICON} style={styles.crownIcon} resizeMode="contain" /> : null}
+                    </View>
+                    <Text style={[styles.sectionSubtitle, styles.sectionToggleSubtitle]}>
+                      {isPremium
+                        ? 'Detailed body measurements for more granular tracking.'
+                        : 'Advanced measurements are available with Setora Pro. Tap any field to unlock.'}
+                    </Text>
+                  </View>
+                  <Text style={styles.sectionToggleIcon}>{advancedExpanded ? '▾' : '▸'}</Text>
+                </TouchableOpacity>
+                {advancedExpanded ? (
+                  <>
+                    {advancedMetrics.map((metric) => (
+                      <View key={metric.key} style={styles.lockedFieldWrap}>
+                        <Input
+                          label={`${metric.label} (${unitLabelForMetric(metric.key)})`}
+                          value={formValues[metric.key]}
+                          onChangeText={(text) => setFormValues((prev) => ({ ...prev, [metric.key]: text }))}
+                          keyboardType="decimal-pad"
+                          placeholder="0"
+                          editable={isPremium}
+                        />
+                        {!isPremium ? (
+                          <Pressable
+                            style={styles.lockedFieldOverlay}
+                            onPress={() => showPaywall('advanced_analytics')}
+                          />
+                        ) : null}
+                      </View>
+                    ))}
+                  </>
+                ) : null}
+              </View>
+            </Card>
 
             {editingLog && (
               <View style={styles.formActions}>
@@ -523,7 +598,7 @@ export default function MeasurementsScreen() {
                 />
               </View>
             )}
-          </Card>
+          </>
         )}
 
         {!formOpen && (loading ? (
@@ -590,7 +665,7 @@ export default function MeasurementsScreen() {
   );
 }
 
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -652,6 +727,60 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.text,
     fontFamily: fonts.regular,
     fontSize: 15,
+  },
+  sectionBlock: {
+    marginBottom: 0,
+  },
+  sectionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  sectionHeaderText: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingRight: spacing.sm,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    color: colors.text,
+    fontFamily: fonts.bold,
+    marginBottom: spacing.xs,
+  },
+  crownIcon: {
+    width: 13,
+    height: 13,
+    tintColor: isLight ? '#111111' : '#FFFFFF',
+    marginTop: -2,
+    marginLeft: 2,
+  },
+  sectionToggleIcon: {
+    fontSize: 16,
+    color: colors.textMuted,
+    fontFamily: fonts.semiBold,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    marginBottom: spacing.sm,
+  },
+  sectionToggleSubtitle: {
+    marginBottom: 0,
+    marginTop: 2,
+  },
+  lockedFieldWrap: {
+    position: 'relative',
+  },
+  lockedFieldOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
   },
   formActions: {
     flexDirection: 'row',

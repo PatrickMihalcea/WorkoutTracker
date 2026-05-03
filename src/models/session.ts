@@ -14,6 +14,7 @@ export interface WorkoutSession {
     label: string;
     week_index: number;
     routine?: {
+      id: string;
       name: string;
     };
   } | null;

@@ -21,6 +21,7 @@ const WEEK_COUNT_BY_MODE: Record<GenerationMode, number> = {
   template: 4,
   ai: 2,
 };
+const ROUTINE_GENERATION_STALE_AFTER_MS = 15 * 60 * 1000;
 
 function isValidWeekCount(value: unknown): value is RoutineWeekCount {
   return value === 1 || value === 2 || value === 3 || value === 4 || value === 5 || value === 6;
@@ -52,6 +53,9 @@ interface JobRow {
   routine_id: string | null;
   routine_name: string | null;
   error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
 }
 
 interface SubscriptionStateRow {
@@ -102,6 +106,42 @@ function isValidRepairContext(value: unknown): value is NonNullable<GenerateOnbo
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return Array.isArray(v.validation_errors) && 'previous_output' in v;
+}
+
+function getJobHeartbeatMs(job: Pick<JobRow, 'created_at' | 'updated_at' | 'started_at'>): number {
+  const timestamp = job.updated_at || job.started_at || job.created_at;
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isJobStale(job: Pick<JobRow, 'created_at' | 'updated_at' | 'started_at'>): boolean {
+  const heartbeatMs = getJobHeartbeatMs(job);
+  if (!heartbeatMs) return false;
+  return Date.now() - heartbeatMs > ROUTINE_GENERATION_STALE_AFTER_MS;
+}
+
+async function expireStaleJob(args: {
+  supabase: ReturnType<typeof createClient>;
+  userId: string;
+  jobId: string;
+}): Promise<void> {
+  const { supabase, userId, jobId } = args;
+  const nowIso = new Date().toISOString();
+  const { error } = await supabase
+    .from('routine_generation_jobs')
+    .update({
+      status: 'failed',
+      error_message: 'Routine generation timed out. Please try again.',
+      completed_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('id', jobId)
+    .eq('user_id', userId)
+    .in('status', ['queued', 'running']);
+
+  if (error) {
+    throw error;
+  }
 }
 
 function isLegacyPayload(value: unknown): value is GenerateOnboardingRoutineRequest {
@@ -693,7 +733,7 @@ Deno.serve(async (request) => {
   if (isStatusPayload(body)) {
     const { data: job, error: jobError } = await auth.supabase
       .from('routine_generation_jobs')
-      .select('id, status, generation_mode_used, routine_id, routine_name, error_message')
+      .select('id, status, generation_mode_used, routine_id, routine_name, error_message, created_at, updated_at, started_at')
       .eq('id', body.job_id)
       .eq('user_id', auth.userId)
       .maybeSingle();
@@ -706,6 +746,18 @@ Deno.serve(async (request) => {
     }
 
     const typedJob = job as JobRow;
+    if ((typedJob.status === 'queued' || typedJob.status === 'running') && isJobStale(typedJob)) {
+      await expireStaleJob({
+        supabase: auth.supabase,
+        userId: auth.userId,
+        jobId: typedJob.id,
+      });
+      return jsonResponse({
+        status: 'failed',
+        error: 'Routine generation timed out. Please try again.',
+      });
+    }
+
     if (typedJob.status === 'completed' && typedJob.routine_id && typedJob.routine_name && typedJob.generation_mode_used) {
       return jsonResponse({
         status: 'completed',

@@ -49,7 +49,7 @@ export const sessionService = {
   async getAll(): Promise<WorkoutSessionWithRoutine[]> {
     const { data, error } = await supabase
       .from('workout_sessions')
-      .select('*, routine_day:routine_days(label, week_index, routine:routines(name))')
+      .select('*, routine_day:routine_days(label, week_index, routine:routines(id, name))')
       .order('started_at', { ascending: false });
     if (error) throw error;
     return data as WorkoutSessionWithRoutine[];
@@ -58,7 +58,7 @@ export const sessionService = {
   async getById(id: string): Promise<SessionWithSets> {
     const { data, error } = await supabase
       .from('workout_sessions')
-      .select('*, routine_day:routine_days(label, week_index, routine:routines(name)), sets:set_logs(*)')
+      .select('*, routine_day:routine_days(label, week_index, routine:routines(id, name)), sets:set_logs(*)')
       .eq('id', id)
       .single();
     if (error) throw error;
@@ -76,7 +76,7 @@ export const sessionService = {
   async getByIdWithExercises(id: string): Promise<SessionWithSetsAndExercises> {
     const { data, error } = await supabase
       .from('workout_sessions')
-      .select('*, routine_day:routine_days(label, week_index, routine:routines(name)), sets:set_logs(*, exercise:exercises(*))')
+      .select('*, routine_day:routine_days(label, week_index, routine:routines(id, name)), sets:set_logs(*, exercise:exercises(*))')
       .eq('id', id)
       .single();
     if (error) throw error;

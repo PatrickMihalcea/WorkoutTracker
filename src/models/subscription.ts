@@ -2,7 +2,9 @@ export const PREMIUM_ENTITLEMENT_ID = 'Setora Pro';
 
 export type PremiumFeatureKey =
   | 'ai_routine_generation'
-  | 'advanced_analytics';
+  | 'advanced_analytics'
+  | 'unlimited_routines'
+  | 'custom_exercises';
 
 export interface UserSubscriptionState {
   user_id: string;
@@ -45,8 +47,21 @@ export const PREMIUM_FEATURE_COPY: Record<
     shortTitle: 'Advanced analytics',
     description: 'Unlock deeper dashboard views, longer history windows, and premium progression analysis.',
   },
+  unlimited_routines: {
+    title: 'Unlimited Routines',
+    shortTitle: 'Unlimited routines',
+    description: 'Create, duplicate, and access more than two routines with Setora Pro.',
+  },
+  custom_exercises: {
+    title: 'More Custom Exercises',
+    shortTitle: 'Custom exercises',
+    description: 'Create more than four custom exercises and keep expanding your personal exercise library with Setora Pro.',
+  },
 };
 
 export function isPremiumFeatureKey(value: unknown): value is PremiumFeatureKey {
-  return value === 'ai_routine_generation' || value === 'advanced_analytics';
+  return value === 'ai_routine_generation'
+    || value === 'advanced_analytics'
+    || value === 'unlimited_routines'
+    || value === 'custom_exercises';
 }

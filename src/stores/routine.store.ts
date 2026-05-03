@@ -3,6 +3,8 @@ import { Exercise, Routine, RoutineWithDays } from '../models';
 import { routineService } from '../services';
 import { notificationService } from '../services/notification.service';
 import { useProfileStore } from './profile.store';
+import { useSubscriptionStore } from './subscription.store';
+import { getLockedRoutineIds } from '../utils/routineAccess';
 
 interface RoutineState {
   routines: Routine[];
@@ -36,7 +38,35 @@ export const useRoutineStore = create<RoutineState>((set) => ({
     set({ loading: true });
     try {
       const routines = await routineService.getAll();
-      set({ routines, routinesLoaded: true });
+      const isPremium = useSubscriptionStore.getState().isPremium;
+      const lockedRoutineIds = getLockedRoutineIds(routines, isPremium);
+      const lockedActiveRoutine = routines.find((routine) => routine.is_active && lockedRoutineIds.has(routine.id));
+
+      if (lockedActiveRoutine) {
+        await routineService.deactivate(lockedActiveRoutine.id);
+      }
+
+      set((state) => {
+        const currentRoutine = state.currentRoutine;
+        let nextCurrentRoutine = currentRoutine;
+
+        if (currentRoutine && currentRoutine.id === lockedActiveRoutine?.id) {
+          nextCurrentRoutine = { ...currentRoutine, is_active: false };
+        }
+
+        return {
+          routines: lockedActiveRoutine
+            ? routines.map((routine) => (
+              routine.id === lockedActiveRoutine.id
+                ? { ...routine, is_active: false }
+                : routine
+            ))
+            : routines,
+          routinesLoaded: true,
+          activeRoutine: state.activeRoutine?.id === lockedActiveRoutine?.id ? null : state.activeRoutine,
+          currentRoutine: nextCurrentRoutine,
+        };
+      });
     } finally {
       set({ loading: false });
     }
@@ -45,6 +75,38 @@ export const useRoutineStore = create<RoutineState>((set) => ({
   fetchActiveRoutine: async () => {
     try {
       const routine = await routineService.getActive();
+      if (!routine) {
+        set({ activeRoutine: null, activeRoutineInitialized: true });
+        return;
+      }
+
+      const isPremium = useSubscriptionStore.getState().isPremium;
+
+      if (!isPremium) {
+        const routines = await routineService.getAll();
+        const lockedRoutineIds = getLockedRoutineIds(routines, false);
+
+        if (lockedRoutineIds.has(routine.id)) {
+          await routineService.deactivate(routine.id);
+          set((state) => {
+            const currentRoutine = state.currentRoutine;
+            let nextCurrentRoutine = currentRoutine;
+
+            if (currentRoutine && currentRoutine.id === routine.id) {
+              nextCurrentRoutine = { ...currentRoutine, is_active: false };
+            }
+
+            return {
+              routines: state.routines.map((entry) => entry.id === routine.id ? { ...entry, is_active: false } : entry),
+              activeRoutine: null,
+              activeRoutineInitialized: true,
+              currentRoutine: nextCurrentRoutine,
+            };
+          });
+          return;
+        }
+      }
+
       set({ activeRoutine: routine, activeRoutineInitialized: true });
     } catch {
       set({ activeRoutineInitialized: true });

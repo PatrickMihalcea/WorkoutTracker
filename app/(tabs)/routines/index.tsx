@@ -7,16 +7,22 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
+import { useSubscriptionStore } from '../../../src/stores/subscription.store';
 import { Button, Card, EmptyState, OverflowMenu, OverflowMenuItem } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
 import { isLightTheme } from '../../../src/constants/themes';
 import { Routine } from '../../../src/models';
 import { useTheme } from '../../../src/contexts/ThemeContext';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import type { ThemeColors } from '../../../src/constants/themes';
+import { canCreateAnotherRoutine, getLockedRoutineIds } from '../../../src/utils/routineAccess';
+
+const CROWN_ICON = require('../../../assets/icons/crown.png');
 
 const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.create({
   container: {
@@ -50,6 +56,11 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
     minWidth: 0,
     paddingRight: spacing.xs,
   },
+  routineNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   menuWrap: {
     marginLeft: spacing.xs,
     justifyContent: 'flex-start',
@@ -61,6 +72,11 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
     color: colors.text,
     flexShrink: 1,
     lineHeight: 22,
+  },
+  crownIcon: {
+    width: 15,
+    height: 15,
+    tintColor: isLight ? '#111111' : '#FFFFFF',
   },
   routineMeta: {
     marginTop: 2,
@@ -75,12 +91,16 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
 
 export default function RoutineListScreen() {
   const router = useRouter();
+  const { showPaywall } = usePaywall();
   const { colors, gradients, theme } = useTheme();
   const isLight = isLightTheme(theme);
   const styles = useMemo(() => createStyles(colors, isLight), [colors, isLight]);
   const { user } = useAuthStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
   const { routines, fetchRoutines, setActive, deleteRoutine, duplicateRoutine, routinesLoaded } = useRoutineStore();
   const [refreshing, setRefreshing] = useState(false);
+  const lockedRoutineIds = useMemo(() => getLockedRoutineIds(routines, isPremium), [routines, isPremium]);
+  const canCreateMoreRoutines = useMemo(() => canCreateAnotherRoutine(routines, isPremium), [routines, isPremium]);
 
   const loadRoutines = useCallback(async () => {
     await fetchRoutines();
@@ -127,6 +147,10 @@ export default function RoutineListScreen() {
 
   const handleDuplicate = async (routine: Routine) => {
     if (!user) return;
+    if (!canCreateMoreRoutines) {
+      showPaywall('unlimited_routines');
+      return;
+    }
     try {
       const created = await duplicateRoutine(routine.id, user.id);
       router.push(`/(tabs)/routines/${created.id}`);
@@ -135,19 +159,41 @@ export default function RoutineListScreen() {
     }
   };
 
-  const renderRoutine = ({ item }: { item: Routine }) => (
-    <TouchableOpacity
-      activeOpacity={0.7}
-      onPress={() => router.push(`/(tabs)/routines/${item.id}`)}
-      onLongPress={() => handleDelete(item)}
-    >
+  const handleOpenRoutine = useCallback((routine: Routine) => {
+    if (lockedRoutineIds.has(routine.id)) {
+      showPaywall('unlimited_routines');
+      return;
+    }
+    router.push(`/(tabs)/routines/${routine.id}`);
+  }, [lockedRoutineIds, router, showPaywall]);
+
+  const renderRoutine = ({ item }: { item: Routine }) => {
+    const isLocked = lockedRoutineIds.has(item.id);
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => handleOpenRoutine(item)}
+        onLongPress={() => handleDelete(item)}
+      >
       <Card
         style={StyleSheet.flatten([styles.routineCard, item.is_active ? styles.activeCard : undefined])}
         gradientColors={item.is_active ? gradients.accent : undefined}
       >
         <View style={styles.routineHeader}>
           <View style={styles.routineInfo}>
-            <Text style={[styles.routineName, item.is_active && isLight && { color: '#FFFFFF' }]}>{item.name}</Text>
+            <View style={styles.routineNameRow}>
+              <Text style={[styles.routineName, item.is_active && isLight && { color: '#FFFFFF' }]}>
+              {isLocked ? (
+                <View>
+                  <Image source={CROWN_ICON} style={styles.crownIcon} resizeMode="contain" />
+                </View>
+              ) : null}
+              {isLocked ? ' ' : ''}{item.name}
+                
+              </Text>
+              
+            </View>
             <Text style={[styles.routineMeta, item.is_active && styles.routineMetaActive]}>
               {item.week_count} {item.week_count === 1 ? 'week' : 'weeks'} · Current {item.current_week}
             </Text>
@@ -155,33 +201,44 @@ export default function RoutineListScreen() {
           <View style={styles.menuWrap}>
             <OverflowMenu
               triggerColor={item.is_active && isLight ? '#FFFFFF' : undefined}
-              items={[
-                {
-                  label: 'Set Active',
-                  onPress: () => handleSetActive(item),
-                  disabled: item.is_active,
-                  highlight: !item.is_active,
-                },
-                {
-                  label: 'Edit',
-                  onPress: () => router.push(`/(tabs)/routines/${item.id}`),
-                },
-                {
-                  label: 'Duplicate',
-                  onPress: () => handleDuplicate(item),
-                },
-                {
-                  label: 'Delete',
-                  onPress: () => handleDelete(item),
-                  destructive: true,
-                },
-              ] as OverflowMenuItem[]}
+              items={(
+                isLocked
+                  ? [
+                    {
+                      label: 'Delete',
+                      onPress: () => handleDelete(item),
+                      destructive: true,
+                    },
+                  ]
+                  : [
+                    {
+                      label: 'Set Active',
+                      onPress: () => handleSetActive(item),
+                      disabled: item.is_active,
+                      highlight: !item.is_active,
+                    },
+                    {
+                      label: 'Edit',
+                      onPress: () => handleOpenRoutine(item),
+                    },
+                    {
+                      label: 'Duplicate',
+                      onPress: () => handleDuplicate(item),
+                    },
+                    {
+                      label: 'Delete',
+                      onPress: () => handleDelete(item),
+                      destructive: true,
+                    },
+                  ]
+              ) as OverflowMenuItem[]}
             />
           </View>
         </View>
       </Card>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   if (!routinesLoaded) {
     return (

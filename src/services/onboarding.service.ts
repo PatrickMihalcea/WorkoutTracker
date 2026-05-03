@@ -15,6 +15,7 @@ const DEFAULT_WEEK_COUNT_BY_MODE: Record<OnboardingRoutineGenerationMode, number
 const MAX_AI_NEW_CALL_ATTEMPTS = 2;
 const PENDING_ROUTINE_GENERATION_KEY = 'pending_routine_generation';
 const ROUTINE_GENERATION_POLL_INTERVAL_MS = 2500;
+const ROUTINE_GENERATION_STALE_AFTER_MS = 15 * 60 * 1000;
 
 type RepairContext = NonNullable<GenerateOnboardingRoutineRequest['repair_context']>;
 type RoutineGenerationContext = 'onboarding' | 'routine';
@@ -25,6 +26,14 @@ interface PendingRoutineGeneration {
   context: RoutineGenerationContext;
   payload: GenerateOnboardingRoutineRequest;
   createdAt: string;
+}
+
+interface RoutineGenerationJobHeartbeatRow {
+  id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
 }
 
 type RoutineGenerationJobStatus =
@@ -154,6 +163,39 @@ function isValidPendingRoutineGeneration(value: unknown): value is PendingRoutin
   if (!payload.answers || typeof payload.answers !== 'object') return false;
 
   return true;
+}
+
+function getRoutineGenerationJobHeartbeatMs(job: Pick<RoutineGenerationJobHeartbeatRow, 'created_at' | 'updated_at' | 'started_at'>): number {
+  const timestamp = job.updated_at || job.started_at || job.created_at;
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isRoutineGenerationJobStale(job: Pick<RoutineGenerationJobHeartbeatRow, 'created_at' | 'updated_at' | 'started_at'>): boolean {
+  const heartbeatMs = getRoutineGenerationJobHeartbeatMs(job);
+  if (!heartbeatMs) return false;
+  return Date.now() - heartbeatMs > ROUTINE_GENERATION_STALE_AFTER_MS;
+}
+
+async function expireStaleRoutineGenerationJob(args: {
+  jobId: string;
+  userId: string;
+}): Promise<void> {
+  const { jobId, userId } = args;
+  const nowIso = new Date().toISOString();
+  const { error } = await supabase
+    .from('routine_generation_jobs')
+    .update({
+      status: 'failed',
+      error_message: 'Routine generation timed out. Please try again.',
+      completed_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('id', jobId)
+    .eq('user_id', userId)
+    .in('status', ['queued', 'running']);
+
+  if (error) throw error;
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -512,7 +554,7 @@ export const onboardingService = {
     const [{ data: generationJob, error: generationJobError }, { data: profile, error: profileError }] = await Promise.all([
       supabase
         .from('routine_generation_jobs')
-        .select('status')
+        .select('id, status, created_at, updated_at, started_at')
         .eq('user_id', userId)
         .eq('mode', 'ai')
         .in('status', ['queued', 'running'])
@@ -529,8 +571,18 @@ export const onboardingService = {
     if (generationJobError) throw generationJobError;
     if (profileError) throw profileError;
 
-    if (generationJob?.status === 'queued' || generationJob?.status === 'running') {
-      return 'in_progress';
+    const typedGenerationJob = generationJob as RoutineGenerationJobHeartbeatRow | null;
+
+    if (typedGenerationJob?.status === 'queued' || typedGenerationJob?.status === 'running') {
+      if (isRoutineGenerationJobStale(typedGenerationJob)) {
+        await expireStaleRoutineGenerationJob({
+          jobId: typedGenerationJob.id,
+          userId,
+        });
+        await clearPendingRoutineGeneration();
+      } else {
+        return 'in_progress';
+      }
     }
 
     const credits = profile?.ai_generation_credits ?? 0;

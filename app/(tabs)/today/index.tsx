@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, Alert, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../../src/stores/auth.store';
 import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useWorkoutStore } from '../../../src/stores/workout.store';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useSubscriptionStore } from '../../../src/stores/subscription.store';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import { useWorkoutOverlay } from '../../../src/components/workout';
 import { Button, Card, EmptyState, BottomSheetModal, RirCircle, SupersetBracket, ChipPicker } from '../../../src/components/ui';
 import { getSupersetPosition, type SupersetGroups } from '../../../src/utils/superset';
@@ -18,6 +20,9 @@ import { DAY_LABELS, DayOfWeek, Routine, RoutineWithDays, RoutineDayWithExercise
 import { routineService } from '../../../src/services';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
+import { getLockedRoutineIds } from '../../../src/utils/routineAccess';
+
+const crownIcon = require('../../../assets/icons/crown.png') as number;
 
 const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.create({
   container: {
@@ -269,6 +274,11 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  chooseRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   chooseRowText: {
     fontSize: 16,
     fontFamily: fonts.semiBold,
@@ -295,16 +305,61 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
   },
+  weekChipScroll: {
+    marginBottom: 12,
+    flexGrow: 0,
+  },
+  weekChipContent: {
+    paddingBottom: 4,
+  },
+  weekChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginRight: 8,
+    backgroundColor: colors.surface,
+  },
+  weekChipSelected: {
+    backgroundColor: colors.text,
+    borderColor: colors.text,
+  },
+  weekChipText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  weekChipTextSelected: {
+    color: colors.background,
+  },
+  weekChipCrown: {
+    width: 13,
+    height: 13,
+    resizeMode: 'contain',
+  },
+  routineCrown: {
+    width: 13,
+    height: 13,
+    resizeMode: 'contain',
+    tintColor: isLight ? '#111111' : '#FFFFFF',
+  },
 });
 
 export default function HomeScreen() {
   const router = useRouter();
   const { colors, gradients, theme } = useTheme();
-  const styles = useMemo(() => createStyles(colors, isLightTheme(theme)), [colors, theme]);
+  const isLight = isLightTheme(theme);
+  const styles = useMemo(() => createStyles(colors, isLight), [colors, isLight]);
   const { user } = useAuthStore();
   const { activeRoutine, activeRoutineInitialized, fetchActiveRoutine } = useRoutineStore();
   const { session: activeSession, startWorkout, resumeWorkout } = useWorkoutStore();
   const { profile } = useProfileStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
+  const { showPaywall } = usePaywall();
   const { expand: expandWorkout } = useWorkoutOverlay();
   const wUnit = profile?.weight_unit ?? 'kg';
   const dUnit = profile?.distance_unit ?? 'km';
@@ -318,6 +373,7 @@ export default function HomeScreen() {
   const [chosenRoutineWeek, setChosenRoutineWeek] = useState<number>(1);
   const [loadingRoutines, setLoadingRoutines] = useState(false);
   const [chosenDay, setChosenDay] = useState<RoutineDayWithExercises | null>(null);
+  const lockedRoutineIds = useMemo(() => getLockedRoutineIds(allRoutines, isPremium), [allRoutines, isPremium]);
 
   useEffect(() => {
     fetchActiveRoutine();
@@ -422,6 +478,11 @@ export default function HomeScreen() {
   };
 
   const handlePickRoutine = async (routine: Routine) => {
+    if (lockedRoutineIds.has(routine.id)) {
+      showPaywall('unlimited_routines');
+      return;
+    }
+
     setLoadingRoutines(true);
     try {
       const full = await routineService.getWithDays(routine.id);
@@ -750,7 +811,12 @@ export default function HomeScreen() {
               <>
                 {allRoutines.map((r) => (
                   <TouchableOpacity key={r.id} style={styles.chooseRow} onPress={() => handlePickRoutine(r)}>
-                    <Text style={styles.chooseRowText}>{r.name}</Text>
+                    <View style={styles.chooseRowHeader}>
+                      {lockedRoutineIds.has(r.id) ? (
+                        <Image source={crownIcon} style={styles.routineCrown} resizeMode="contain" />
+                      ) : null}
+                      <Text style={styles.chooseRowText}>{r.name}</Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
                 {allRoutines.length === 0 && (
@@ -762,16 +828,37 @@ export default function HomeScreen() {
         ) : (
           <>
             <Text style={styles.chooseSubtitle}>Pick a workout</Text>
-            <ChipPicker
-              items={Array.from({ length: chosenRoutine.week_count }, (_, idx) => ({
-                key: String(idx + 1),
-                label: `Week ${idx + 1}`,
-                value: idx + 1,
-              }))}
-              selected={chosenRoutineWeek}
-              onChange={(value) => setChosenRoutineWeek(value ?? chosenRoutine.current_week)}
-              allowDeselect={false}
-            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.weekChipScroll}
+              contentContainerStyle={styles.weekChipContent}
+            >
+              {Array.from({ length: chosenRoutine.week_count }, (_, idx) => {
+                const weekNum = idx + 1;
+                const isLocked = !isPremium && weekNum > 2;
+                const isSelected = chosenRoutineWeek === weekNum;
+                const crownTint = (isSelected === isLight) ? '#FFFFFF' : '#000000';
+                return (
+                  <TouchableOpacity
+                    key={weekNum}
+                    style={[styles.weekChip, isSelected && styles.weekChipSelected]}
+                    onPress={() => {
+                      if (isLocked) { showPaywall(); return; }
+                      setChosenRoutineWeek(weekNum);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.weekChipText, isSelected && styles.weekChipTextSelected]}>
+                      {isLocked ? `W${weekNum}` : `Week ${weekNum}`}
+                    </Text>
+                    {isLocked && (
+                      <Image source={crownIcon} style={[styles.weekChipCrown, { tintColor: crownTint }]} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
             {loadingRoutines ? (
               <ActivityIndicator color={colors.text} style={{ marginVertical: 24 }} />
             ) : (

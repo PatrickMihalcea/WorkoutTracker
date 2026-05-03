@@ -3,15 +3,21 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, Image, Alert, Activ
 import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { sessionService } from '../../../src/services';
 import { useProfileStore } from '../../../src/stores/profile.store';
+import { useRoutineStore } from '../../../src/stores/routine.store';
 import { useSessionStore } from '../../../src/stores/session.store';
+import { useSubscriptionStore } from '../../../src/stores/subscription.store';
 import { AppHeaderButton, Card, EmptyState } from '../../../src/components/ui';
 import { fonts, spacing } from '../../../src/constants';
 import { isLightTheme } from '../../../src/constants/themes';
 import { WorkoutSessionWithRoutine } from '../../../src/models';
+import { usePaywall } from '../../../src/contexts/PaywallContext';
 import { formatDate, formatTime, formatDuration } from '../../../src/utils/date';
 import { formatHeight } from '../../../src/utils/units';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import type { ThemeColors } from '../../../src/constants/themes';
+import { getLockedRoutineIds } from '../../../src/utils/routineAccess';
+
+const CROWN_ICON = require('../../../assets/icons/crown.png') as number;
 
 const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.create({
   container: {
@@ -156,6 +162,12 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
   headerTextWrap: {
     flex: 1,
   },
+  routineNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: 2,
+  },
   routineDayLabel: {
     fontSize: 17,
     fontFamily: fonts.bold,
@@ -165,7 +177,12 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
     fontSize: 13,
     fontFamily: fonts.regular,
     color: colors.textMuted,
-    marginTop: 2,
+  },
+  crownIcon: {
+    width: 13,
+    height: 13,
+    resizeMode: 'contain',
+    tintColor: isLight ? '#111111' : '#FFFFFF',
   },
   recordBadge: {
     flexDirection: 'row',
@@ -230,11 +247,16 @@ const createStyles = (colors: ThemeColors, isLight: boolean) => StyleSheet.creat
 export default function ProfileScreen() {
   const router = useRouter();
   const { colors, gradients, theme } = useTheme();
-  const styles = useMemo(() => createStyles(colors, isLightTheme(theme)), [colors, theme]);
+  const isLight = isLightTheme(theme);
+  const styles = useMemo(() => createStyles(colors, isLight), [colors, isLight]);
+  const { showPaywall } = usePaywall();
   const { profile } = useProfileStore();
+  const { routines, fetchRoutines } = useRoutineStore();
+  const isPremium = useSubscriptionStore((state) => state.isPremium);
 
   const { sessions, recordCounts: sessionRecordCounts, sessionsLoaded: historyLoaded, fetchSessions, removeSession } = useSessionStore();
   const [refreshing, setRefreshing] = useState(false);
+  const lockedRoutineIds = useMemo(() => getLockedRoutineIds(routines, isPremium), [routines, isPremium]);
 
   const displayWeight = () => {
     if (!profile?.weight_kg) return '--';
@@ -251,18 +273,18 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void fetchSessions();
-    }, [fetchSessions]),
+      void Promise.all([fetchSessions(), fetchRoutines()]);
+    }, [fetchRoutines, fetchSessions]),
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await fetchSessions();
+      await Promise.all([fetchSessions(), fetchRoutines()]);
     } finally {
       setRefreshing(false);
     }
-  }, [fetchSessions]);
+  }, [fetchRoutines, fetchSessions]);
 
   const handleDeleteSession = (item: WorkoutSessionWithRoutine) => {
     Alert.alert(
@@ -286,15 +308,38 @@ export default function ProfileScreen() {
     );
   };
 
+  const getLockedHistoryFeature = useCallback((item: WorkoutSessionWithRoutine) => {
+    const routineId = item.routine_day?.routine?.id;
+    const weekIndex = item.routine_week_index ?? item.routine_day?.week_index ?? null;
+
+    if (!isPremium && weekIndex != null && weekIndex > 2) {
+      return 'advanced_analytics' as const;
+    }
+
+    if (routineId && lockedRoutineIds.has(routineId)) {
+      return 'unlimited_routines' as const;
+    }
+
+    return null;
+  }, [isPremium, lockedRoutineIds]);
+
   const renderSession = ({ item }: { item: WorkoutSessionWithRoutine }) => {
     const startTime = formatTime(item.started_at).replace(/\s/g, '');
     const endTime = formatTime(item.completed_at ?? new Date().toISOString()).replace(/\s/g, '');
     const dateLabel = formatDate(item.started_at);
+    const lockedFeature = getLockedHistoryFeature(item);
+    const isLockedHistory = lockedFeature !== null;
 
     return (
       <TouchableOpacity
         activeOpacity={0.7}
-        onPress={() => router.push(`/(tabs)/profile/${item.id}`)}
+        onPress={() => {
+          if (lockedFeature) {
+            showPaywall(lockedFeature);
+            return;
+          }
+          router.push(`/(tabs)/profile/${item.id}`);
+        }}
         onLongPress={() => handleDeleteSession(item)}
       >
         <Card style={styles.sessionCard}>
@@ -302,7 +347,12 @@ export default function ProfileScreen() {
             <View style={styles.headerTextWrap}>
               <Text style={styles.routineDayLabel}>{item.routine_day?.label ?? 'Workout Session'}</Text>
               {item.routine_day?.routine?.name && (
-                <Text style={styles.routineName}>{item.routine_day.routine.name}</Text>
+                <View style={styles.routineNameRow}>
+                  {isLockedHistory ? (
+                    <Image source={CROWN_ICON} style={styles.crownIcon} />
+                  ) : null}
+                  <Text style={styles.routineName}>{item.routine_day.routine.name}</Text>
+                </View>
               )}
             </View>
             {(sessionRecordCounts[item.id] ?? 0) > 0 && (
